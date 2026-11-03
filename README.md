@@ -167,7 +167,7 @@ You can still play simply: walk, attack, defend. But a player who plans can now 
 ### A darker, heavier table
 - **Lighting:** the room is much darker (less ambient light, lower exposure, less glow, more contrast). The lamps over the table make a warm pool of light on the board while the rest of the room falls into shadow, and shadows are crisper.
 - **Tiles feel like stone slabs:** every tile sits on a dark plinth, so it has a thick, stepped edge.
-- **Terrain colors are deep and match each family's card color,** so you can see at a glance where your creatures get +1 attack: Soda Swamp is amber (Snack), Glitter Junkyard is rusty metal (Junk), Static Snowfield is deep ice blue (Weather), Pillow Peaks is a moss green quilt (Critter), Mushroom Mall is dusky purple tile (Spooky) and Lava Laundromat is dark steel (Robo).
+- **Terrain colors are deep and match each family's card color,** so you can see at a glance where your creatures get +1 attack: Soda Swamp is amber (Snack), Glitter Junkyard is rusty metal (Junk), Static Snowfield is deep ice blue (Weather), Pillow Peaks is soft moss green felt (Critter), Mushroom Mall is dusky purple tile (Spooky) and Lava Laundromat is grey steel plate (Robo).
 - **Every creature stands on a heavy round base,** like a painted miniature: dark stone with a thin ring in its side's color (blue for yours, red for the opponent's).
 - During a match the edges of the screen are softly darkened, so your eye goes to the board.
 

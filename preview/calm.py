@@ -11,7 +11,7 @@ import rt
 import models_snack, models_junk, models_weather, models_critter, models_spooky, models_robo, models_extra
 
 OLD = {"Snack": (80, 150, 142), "Junk": (118, 113, 104), "Weather": (196, 210, 226), "Critter": (222, 176, 194), "Spooky": (138, 116, 174), "Robo": (70, 55, 55)}
-NEW = {"Snack": (150, 84, 50), "Junk": (104, 94, 80), "Weather": (78, 112, 150), "Critter": (84, 120, 64), "Spooky": (96, 70, 128), "Robo": (70, 72, 84)}
+NEW = {"Snack": (150, 84, 50), "Junk": (104, 94, 80), "Weather": (78, 112, 150), "Critter": (84, 120, 64), "Spooky": (96, 70, 128), "Robo": (118, 124, 142)}
 middle = ["Spooky", "Weather", "Junk", "Critter", "Snack"]
 def terrain_of(wc, wr):
     if wr <= 2: return "Snack"
