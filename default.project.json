@@ -55,7 +55,7 @@
         "rip": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://83557103344050",
             "Volume": 0.6,
             "Looped": false
           }
@@ -63,7 +63,7 @@
         "pop": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://94689108514318",
             "Volume": 0.6,
             "Looped": false
           }
@@ -71,7 +71,7 @@
         "bonk": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://81805024256609",
             "Volume": 0.6,
             "Looped": false
           }
@@ -79,7 +79,7 @@
         "slap": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://84693354576677",
             "Volume": 0.6,
             "Looped": false
           }
@@ -87,7 +87,7 @@
         "thud": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://88909975591897",
             "Volume": 0.6,
             "Looped": false
           }
@@ -95,7 +95,7 @@
         "heavy": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://132601098890657",
             "Volume": 0.6,
             "Looped": false
           }
@@ -103,7 +103,7 @@
         "land": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://124850114514982",
             "Volume": 0.6,
             "Looped": false
           }
@@ -111,7 +111,7 @@
         "burrow": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://123725150410962",
             "Volume": 0.6,
             "Looped": false
           }
@@ -119,7 +119,7 @@
         "twang": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://139916381336958",
             "Volume": 0.6,
             "Looped": false
           }
@@ -127,7 +127,7 @@
         "whoosh": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://100665736050219",
             "Volume": 0.6,
             "Looped": false
           }
@@ -135,7 +135,7 @@
         "whistle": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://84785811647359",
             "Volume": 0.35,
             "Looped": false
           }
@@ -143,7 +143,7 @@
         "crater": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://98374356490750",
             "Volume": 0.6,
             "Looped": false
           }
@@ -151,7 +151,7 @@
         "beam": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://101419154107757",
             "Volume": 0.6,
             "Looped": false
           }
@@ -159,7 +159,7 @@
         "tick": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://138524947835152",
             "Volume": 0.9,
             "Looped": false
           }
@@ -167,7 +167,7 @@
         "boom": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://82163821934013",
             "Volume": 0.6,
             "Looped": false
           }
@@ -175,7 +175,7 @@
         "wind": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://126855995983888",
             "Volume": 0.6,
             "Looped": false
           }
@@ -183,7 +183,7 @@
         "choir": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://100721012259195",
             "Volume": 0.6,
             "Looped": false
           }
@@ -191,7 +191,7 @@
         "charge": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://113287237199231",
             "Volume": 0.4,
             "Looped": false
           }
@@ -199,7 +199,7 @@
         "glass": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://87290713299907",
             "Volume": 0.6,
             "Looped": false
           }
@@ -207,7 +207,7 @@
         "heartbeat": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://94134841339188",
             "Volume": 0.6,
             "Looped": false
           }
@@ -215,7 +215,7 @@
         "fakesting": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://105216738317928",
             "Volume": 0.6,
             "Looped": false
           }
@@ -223,7 +223,7 @@
         "brawl": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://79622349430069",
             "Volume": 0.35,
             "Looped": true
           }
@@ -231,7 +231,7 @@
         "theme": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://121628784114292",
             "Volume": 0.6,
             "Looped": false
           }
@@ -239,7 +239,7 @@
         "sting_Common": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://133452626697186",
             "Volume": 0.7,
             "Looped": false
           }
@@ -247,7 +247,7 @@
         "sting_Rare": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://105377393013061",
             "Volume": 0.7,
             "Looped": false
           }
@@ -255,7 +255,7 @@
         "sting_Epic": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://84551473334900",
             "Volume": 0.7,
             "Looped": false
           }
@@ -263,7 +263,7 @@
         "sting_Mythic": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://100979527676060",
             "Volume": 0.7,
             "Looped": false
           }
@@ -271,7 +271,7 @@
         "sting_Legendary": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://108733732641603",
             "Volume": 0.7,
             "Looped": false
           }
@@ -279,7 +279,7 @@
         "sting_Secret": {
           "$className": "Sound",
           "$properties": {
-            "SoundId": "",
+            "SoundId": "rbxassetid://103698051400343",
             "Volume": 0.7,
             "Looped": false
           }

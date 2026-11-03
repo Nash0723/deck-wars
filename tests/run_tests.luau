@@ -1062,6 +1062,38 @@ for k, v in pairs(diffWins) do
 end
 table.sort(keys)
 print("Difficulty head-to-head wins: " .. table.concat(keys, "  "))
+-- Settings: the server saves whatever a client sends, so sanitize must drop anything odd
+do
+	local Settings = require("Settings")
+	local clean = Settings.sanitize({ sfx = 3, music = 11, actionCam = "yes", shake = "Low", speed = "Turbo", graphics = "Low", blur = false, hacker = true, packFights = 5 })
+	check(clean.sfx == 3 and clean.shake == "Low" and clean.graphics == "Low" and clean.blur == false, "settings: allowed values are kept")
+	check(clean.music == Settings.Defaults.music and clean.actionCam == true and clean.speed == "Normal" and clean.packFights == "Full", "settings: bad values fall back to the defaults")
+	check(clean.hacker == nil, "settings: unknown keys are dropped")
+	check(Settings.sanitize({ sfx = 2.5 }).sfx == Settings.Defaults.sfx and Settings.sanitize({ sfx = 0 / 0 }).sfx == Settings.Defaults.sfx, "settings: fractional and NaN volumes are refused")
+	check(Settings.sanitize("junk").sfx == Settings.Defaults.sfx, "settings: a non-table gives the defaults")
+	local seen = {}
+	Settings.onChanged(function(key, value, fromLoad)
+		table.insert(seen, key .. "=" .. tostring(value) .. (fromLoad and "(load)" or ""))
+	end)
+	check(Settings.set("speed", "Fast") and Settings.get("speed") == "Fast", "settings: set changes a value")
+	check(not Settings.set("speed", "Turbo") and Settings.get("speed") == "Fast", "settings: set refuses a bad value")
+	check(not Settings.set("speed", "Fast"), "settings: setting the same value again does nothing")
+	Settings.load({ speed = "Slow", sfx = 4 })
+	check(Settings.get("speed") == "Slow" and Settings.get("sfx") == 4, "settings: load applies saved values")
+	Settings.reset()
+	check(Settings.get("speed") == "Normal" and Settings.get("sfx") == Settings.Defaults.sfx, "settings: reset restores the defaults")
+	check(seen[1] == "speed=Fast" and table.find(seen, "speed=Slow(load)") ~= nil, "settings: listeners hear changes and loads (" .. table.concat(seen, " ") .. ")")
+	for key, choices in pairs(Settings.Choices) do
+		check(table.find(choices, Settings.Defaults[key]) ~= nil, "settings: default for " .. key .. " is one of its choices")
+	end
+	for _, v in pairs(Settings.Choices.speed) do
+		check(type(Settings.Pace[v]) == "number", "settings: speed " .. v .. " has a pace")
+	end
+	for _, v in pairs(Settings.Choices.shake) do
+		check(type(Settings.ShakeScale[v]) == "number", "settings: shake " .. v .. " has a scale")
+	end
+end
+
 print(string.format("Tests: %d passed, %d failed", passed, failed))
 
 if failed > 0 then

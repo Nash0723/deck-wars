@@ -42,7 +42,7 @@ function CamRig:setShot(c, now)
 end
 
 function CamRig:addTrauma(x)
-	self.trauma = math.min(1, self.trauma + x)
+	self.trauma = math.min(1, self.trauma + x * (self.shakeScale or 1))
 end
 
 function CamRig:punchFov()
