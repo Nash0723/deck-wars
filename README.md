@@ -52,11 +52,13 @@ cargo build --release --manifest-path tools/luaurun/Cargo.toml
 tools/luaurun/target/release/luaurun tests/run_tests.luau src/shared                   # rules: 211 checks + 120 bot games, about 1 minute
 tools/luaurun/target/release/luaurun -D BAL_GAMES=60 bal/balance.luau src/shared         # deck balance, bot vs bot
 tools/luaurun/target/release/luaurun mock_roblox/harness.luau mock_roblox                # plays matches in a simulated Studio, about 8 minutes
+tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script
+tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 ```
 
 `-D NAME=VALUE` sets a setting before the script runs: `SOAK_GAMES` for the tests, `BAL_GAMES`, `BAL_DIFF`, `BAL_SEED` and `BAL_FIRSTDRAW` for the balance check.
 
-GitHub runs the rules tests and builds the place file for every pull request (`.github/workflows/build.yml`).
+GitHub runs the rules tests and the Pack Brawl tests and builds both place files for every pull request (`.github/workflows/build.yml`).
 
 ## Project layout
 | Path | What it is |
@@ -68,6 +70,10 @@ GitHub runs the rules tests and builds the place file for every pull request (`.
 | `src/world/` | Workspace > MenuRoom (made by `gen_world.py`) |
 | `cards.py`, `gen_*.py`, `models_*.py`, `modelkit.py` | Generators (see above) |
 | `tests/`, `bal/`, `mock_roblox/`, `tools/luaurun/` | Tests, balance check, the simulated Studio and the Luau runner |
+| `pullcinematic.project.json` | The separate Pack Brawl test place (`DeckWars_PullCinematic.rbxlx`) |
+| `src/packbrawl/` | ReplicatedStorage > PackBrawl: the pull cinematic (see "Pack Brawl" below) |
+| `src/pullserver/`, `src/pullclient/` | The test place's PullServer and its Pack Party test panel |
+| `assets/sounds/` | Our own Pack Brawl sounds (made by `tools/make_sounds.py`), ready to upload |
 | `docs/` | Pictures for this README |
 
 ## How to play
@@ -137,6 +143,44 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 - Realistic lighting with shadows is heavier on old phones. If it runs slowly, set Lighting > PrioritizeLightingQuality to off.
 - Known limits: one duel table, so only one player per server should play a bot at a time. No sound yet. Playing friends, building your own decks, opening packs and saving progress come in step 3.
 
+
+## Pack Brawl: the pack-opening cinematic
+Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
+
+It lives in its own place for now, so it can be tried (and compared) without touching the main game:
+
+```
+rojo build pullcinematic.project.json -o DeckWars_PullCinematic.rbxlx
+```
+
+Open it in Studio and press Play. The panel at the bottom has "Open 1 pack", "Open 10 packs" and one button per tier to preview that tier's cinematic. During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP.
+
+Rarity tiers are now Common, Rare, Epic, Mythic, Legendary, Secret (low to high), in the main game too. The old tiers moved up one name each (Uncommon became Rare, Rare became Epic, Legendary became Mythic, Mythic became Legendary), so no card got stronger or weaker.
+
+| File (in `src/packbrawl/`) | Job |
+| --- | --- |
+| `PullRates` | Odds (Common 55%, Rare 27%, Epic 12%, Mythic 4.5%, Legendary 1.2%, Secret 0.3%) and the 10-pull Epic guarantee |
+| `Casting` | Who fights: 2 Common starters, crashers by tier, the "It's Not Over" fake ending (30% on Mythic and up) |
+| `Scripts` | The choreography of each tier as a list of timed cues |
+| `Director` | Plays the cues on one clock; skip, fast-forward and cleanup |
+| `Arena`, `Fighters`, `CamRig`, `Fx`, `Poses` | The Brawl Box, moving the creature models, the camera, effects, victory poses and ultimates |
+| `Sfx`, `Reveal` | Sound and the card reveal / 10-card fan |
+
+### Sounds
+All sounds were made from scratch for this project by `tools/make_sounds.py` (no samples), so you own them. The place has a Sound for each one in SoundService > PackBrawlSounds, with an empty SoundId, so the cinematic is silent until you add them:
+
+1. In Studio open View > Asset Manager, click Bulk Import, and pick every file in `assets/sounds/`.
+2. For each Sound in SoundService > PackBrawlSounds, click its SoundId in Properties and pick the upload with the same name.
+
+You can also paste a Creator Store sound id into any of them instead.
+
+### Where to tweak it
+- Lengths, who crashes in and when: `Scripts.luau` (one function per tier).
+- Odds: `PullRates.luau`. Fake ending chance: `Casting.FakeOutChance`.
+- Colors, bloom and camera shake per tier: `Kit.luau` (`TierColor`, `TierGrade`, `TierCamera`).
+- Turn off the tier preview buttons for a live game: set the `AllowTierPreview` attribute on ServerScriptService > PullServer to false.
+
+`preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
 ## Latest update: combos and a calmer, heavier table
 

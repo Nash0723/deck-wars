@@ -1,0 +1,535 @@
+{
+  "name": "DeckWars_PullCinematic",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "DeckWars": {
+        "$path": "src/shared"
+      },
+      "PackBrawl": {
+        "$path": "src/packbrawl"
+      },
+      "PullRemotes": {
+        "$className": "Folder",
+        "PullRequest": {
+          "$className": "RemoteEvent"
+        },
+        "PullResult": {
+          "$className": "RemoteEvent"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "PullServer": {
+        "$path": "src/pullserver/PullServer.server.luau",
+        "$attributes": {
+          "AllowTierPreview": true
+        }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "PackBrawlClient": {
+          "$path": "src/pullclient/PackBrawlClient.client.luau"
+        }
+      }
+    },
+    "SoundService": {
+      "PackBrawlSounds": {
+        "$className": "Folder",
+        "rip": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "pop": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "bonk": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "slap": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "thud": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "heavy": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "land": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "burrow": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "twang": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "whoosh": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "whistle": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.35,
+            "Looped": false
+          }
+        },
+        "crater": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "beam": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "tick": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.9,
+            "Looped": false
+          }
+        },
+        "boom": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "wind": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "choir": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "charge": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.4,
+            "Looped": false
+          }
+        },
+        "glass": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "heartbeat": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "fakesting": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "brawl": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.35,
+            "Looped": true
+          }
+        },
+        "theme": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "sting_Common": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Rare": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Epic": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Mythic": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Legendary": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Secret": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        }
+      }
+    },
+    "Workspace": {
+      "TestStage": {
+        "$className": "Folder",
+        "Floor": {
+          "$className": "Part",
+          "$properties": {
+            "Anchored": true,
+            "Size": [
+              120,
+              1,
+              120
+            ],
+            "CFrame": {
+              "CFrame": {
+                "position": [
+                  0,
+                  -0.5,
+                  0
+                ],
+                "orientation": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    1
+                  ]
+                ]
+              }
+            },
+            "Color": [
+              0.13,
+              0.12,
+              0.18
+            ],
+            "Material": "SmoothPlastic",
+            "TopSurface": "Smooth",
+            "BottomSurface": "Smooth"
+          }
+        },
+        "Spawn": {
+          "$className": "SpawnLocation",
+          "$properties": {
+            "Anchored": true,
+            "Size": [
+              6,
+              1,
+              6
+            ],
+            "CFrame": {
+              "CFrame": {
+                "position": [
+                  0,
+                  0.1,
+                  14
+                ],
+                "orientation": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    1
+                  ]
+                ]
+              }
+            },
+            "Color": [
+              0.95,
+              0.76,
+              0.1
+            ],
+            "Material": "Neon",
+            "TopSurface": "Smooth",
+            "BottomSurface": "Smooth",
+            "Neutral": true,
+            "Transparency": 0.4,
+            "CanCollide": false
+          }
+        },
+        "Pedestal": {
+          "$className": "Part",
+          "$properties": {
+            "Anchored": true,
+            "Size": [
+              6,
+              3,
+              6
+            ],
+            "CFrame": {
+              "CFrame": {
+                "position": [
+                  0,
+                  1.5,
+                  0
+                ],
+                "orientation": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    1
+                  ]
+                ]
+              }
+            },
+            "Color": [
+              0.47,
+              0.27,
+              0.86
+            ],
+            "Material": "SmoothPlastic",
+            "TopSurface": "Smooth",
+            "BottomSurface": "Smooth"
+          }
+        },
+        "BigPack": {
+          "$className": "Part",
+          "$properties": {
+            "Anchored": true,
+            "Size": [
+              3.5,
+              4.5,
+              0.6
+            ],
+            "CFrame": {
+              "CFrame": {
+                "position": [
+                  0,
+                  5.4,
+                  0
+                ],
+                "orientation": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    1
+                  ]
+                ]
+              }
+            },
+            "Color": [
+              0.6,
+              0.4,
+              0.95
+            ],
+            "Material": "Foil",
+            "TopSurface": "Smooth",
+            "BottomSurface": "Smooth",
+            "Reflectance": 0.15
+          }
+        },
+        "Glow": {
+          "$className": "Part",
+          "$properties": {
+            "Anchored": true,
+            "CanCollide": false,
+            "Transparency": 1,
+            "Size": [
+              1,
+              1,
+              1
+            ],
+            "CFrame": {
+              "CFrame": {
+                "position": [
+                  0,
+                  12,
+                  4
+                ],
+                "orientation": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ],
+                  [
+                    0,
+                    0,
+                    1
+                  ]
+                ]
+              }
+            }
+          },
+          "Light": {
+            "$className": "SpotLight",
+            "$properties": {
+              "Face": "Bottom",
+              "Angle": 60,
+              "Brightness": 4,
+              "Range": 30,
+              "Color": [
+                1,
+                0.92,
+                0.8
+              ]
+            }
+          }
+        }
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "ClockTime": 20,
+        "Brightness": 1,
+        "Ambient": [
+          0.25,
+          0.22,
+          0.3
+        ],
+        "OutdoorAmbient": [
+          0.2,
+          0.2,
+          0.28
+        ],
+        "GlobalShadows": true
+      }
+    }
+  }
+}
