@@ -1088,6 +1088,14 @@ function methods.Create(self, inst, info, goals)
 	return tween
 end
 function methods.Play(self)
+	if rec(self).className == "Sound" then
+		assert(rec(self).props.SoundId ~= nil and rec(self).props.SoundId ~= "", "Play on a Sound with no SoundId")
+		rec(self).props.IsPlaying = true
+		M.soundsPlayed = (M.soundsPlayed or 0) + 1
+		M.soundLog = M.soundLog or {}
+		table.insert(M.soundLog, rec(self).name)
+		return
+	end
 	local t = rec(self).tween
 	assert(t, "Play on non-tween")
 	task.delay(t.info.Time, function()
@@ -1101,6 +1109,10 @@ function methods.Play(self)
 	end)
 end
 function methods.Cancel() end
+function methods.Stop(self)
+	assert(rec(self).className == "Sound", "Stop on " .. rec(self).className)
+	rec(self).props.IsPlaying = false
+end
 function methods.AddItem(self, inst, t)
 	assert(rec(self).className == "Debris", "AddItem is a Debris method")
 	task.delay(t or 10, function()
@@ -1133,6 +1145,36 @@ function Instance.new(className, parent)
 		i.Parent = parent
 	end
 	return i
+end
+
+-- What a real click needs. Roblox only fires Activated on a button that is Active, inside
+-- GuiObjects that are all Visible and Interactable, in an enabled ScreenGui. The harnesses
+-- click through this so a button players can't use fails the test.
+function M.clickable(b)
+	if not b:IsA("GuiButton") then
+		return false, b.ClassName .. " is not a button"
+	end
+	if not b.Active then
+		return false, "Active is false, so Roblox never fires Activated"
+	end
+	local node = b
+	while node do
+		if node:IsA("GuiObject") then
+			if not node.Visible then
+				return false, node:GetFullName() .. " is hidden"
+			end
+			if node.Interactable == false then
+				return false, node:GetFullName() .. " is not Interactable"
+			end
+		elseif node:IsA("LayerCollector") then
+			if not node.Enabled then
+				return false, node:GetFullName() .. " is disabled"
+			end
+			return true
+		end
+		node = node.Parent
+	end
+	return false, "not inside a ScreenGui"
 end
 
 -- Build from a description table (used for the room)
@@ -1200,6 +1242,27 @@ M.env = {
 	NumberRange = NumberRange, NumberSequence = NumberSequence, NumberSequenceKeypoint = NumberSequenceKeypoint,
 	ColorSequence = ColorSequence, ColorSequenceKeypoint = ColorSequenceKeypoint, TweenInfo = TweenInfo,
 	RaycastParams = RaycastParams, Enum = Enum, Instance = Instance, task = task, typeof = typeof,
+	Random = {
+		new = function(seed)
+			local st = math.floor(seed or 12345) % 2147483647
+			if st <= 0 then
+				st = 1
+			end
+			local function nxt()
+				st = (st * 48271) % 2147483647
+				return st / 2147483647
+			end
+			return {
+				NextNumber = function(_, lo, hi)
+					lo, hi = lo or 0, hi or 1
+					return lo + (hi - lo) * nxt()
+				end,
+				NextInteger = function(_, lo, hi)
+					return lo + math.floor(nxt() * (hi - lo + 1))
+				end,
+			}
+		end,
+	},
 	warn = function(...)
 		local parts = {}
 		for _, v in ipairs({ ... }) do

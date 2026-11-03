@@ -509,7 +509,7 @@ end
 ---------------------------------------------------------------------------
 
 -- Card life: the little 3D creature on a card sways and turns, rare cards get a shine that sweeps
--- across them, Legendary and up glow softly, and spell icons bob. Only cards that are "awake"
+-- across them, Mythic and up glow softly, and spell icons bob. Only cards that are "awake"
 -- (in your hand, the big preview and pop-ups) move their creature, to keep phones fast.
 local cardLife = {
 	arts = setmetatable({}, { __mode = "k" }), -- [ViewportFrame] = { model, base, phase, yaw, alive, hover, spin }
@@ -634,7 +634,7 @@ local function makeCard(parent, cardId, size, costOverride)
 	}, parent)
 	corner(card, 10)
 	local stroke = make("UIStroke", { Thickness = 4, Color = rgb(CardData.RarityColors[def.rarity]) }, card)
-	local rank = ({ Rare = 1, Legendary = 2, Mythic = 3, Secret = 4 })[def.rarity]
+	local rank = ({ Epic = 1, Mythic = 2, Legendary = 3, Secret = 4 })[def.rarity]
 	if rank and rank >= 2 then
 		cardLife.glows[stroke] = math.random() * 6.28
 	end
@@ -877,7 +877,7 @@ do
 			key = "PackParty",
 			name = "Pack Party",
 			show = function()
-				showComingSoon("Pack Party", "Drop a pack in the prize machine, watch it shake, and flip your cards one by one. Mythic and Secret pulls turn the whole room gold.\n\nComing in the next update.")
+				showComingSoon("Pack Party", "Drop a pack in the prize machine, watch it shake, and flip your cards one by one. Legendary and Secret pulls turn the whole room gold.\n\nComing in the next update.")
 			end,
 		},
 		{
@@ -3541,7 +3541,7 @@ do
 			local def = CardData.get(e.card)
 			local color = familyColor(def.family)
 			local token = def.token == true
-			local rare = def.rarity == "Rare" or def.rarity == "Legendary" or def.rarity == "Mythic" or def.rarity == "Secret"
+			local rare = def.rarity == "Epic" or def.rarity == "Mythic" or def.rarity == "Legendary" or def.rarity == "Secret"
 			local big = not token and ((def.cost or 0) >= 4 or rare)
 			if big then
 				actionCam.focus(entry.home.Position, { facing = 1, up = 1.8, dist = 4.0, lookUp = 0.9, fov = 42, seconds = 0.55 })
