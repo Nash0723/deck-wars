@@ -19,6 +19,7 @@ local CamRig = require(here:WaitForChild("CamRig"))
 local Fx = require(here:WaitForChild("Fx"))
 local Sfx = require(here:WaitForChild("Sfx"))
 local Poses = require(here:WaitForChild("Poses"))
+local Moves = require(here:WaitForChild("Moves"))
 
 local rgb, make = Kit.rgb, Kit.make
 
@@ -444,7 +445,7 @@ H.move = function(d, c)
 	local from = f.renderPos or f.pos
 	local m = { t0 = d.now, t1 = d.now + c.dur, from = from, to = W(c.to), faceTravel = c.style ~= "drag" }
 	if c.style == "hop" then
-		m.arc = 1
+		m.arc = f.rig and 0.5 or 1
 	elseif c.style == "dash" then
 		m.arc = 0.2
 		m.ease = Kit.outQuad
@@ -474,15 +475,18 @@ H.lunge = function(d, c)
 	local reach = math.max(dist - 1.6, 0)
 	local mid = dist > 0.01 and from + dir.Unit * reach * 0.85 or from
 	local half = (c.dur or 0.24) / 2
-	a:poke(0.85, 0.9, 1.3, d.now, half)
+	if not a.rig then
+		-- spell cards have no arms: they still squash into the hit
+		a:poke(0.85, 0.9, 1.3, d.now, half)
+	end
 	a:setMotion({
 		t0 = d.now,
 		t1 = d.now + half,
 		from = from,
 		to = mid,
-		arc = 0.3,
+		arc = a.rig and 0.05 or 0.3,
 		ease = Kit.outQuad,
-		lean = 18,
+		lean = a.rig and 0 or 18,
 		onLand = function(fi)
 			fi:setMotion({ t0 = d.now, t1 = d.now + half, from = mid, to = from, ease = Kit.inOutQuad })
 			fi.lookAt = tp
@@ -490,6 +494,54 @@ H.lunge = function(d, c)
 	})
 	a.lookAt = tp
 	a.yaw = math.atan2(-dir.X, -dir.Z)
+end
+
+-- The attacker's punch / kick / headbutt / signature move, timed to land on its hit.
+H.swing = function(d, c)
+	local a = d:fighter(c.who)
+	if not a.rig then
+		return
+	end
+	if c.dive or a.state == "entering" then
+		a:play("dive", d.now)
+		return
+	end
+	local b = c.target and d:fighter(c.target)
+	if b and b.pos then
+		local dir = (b.renderPos or b.pos) - (a.renderPos or a.pos)
+		if dir.Magnitude > 0.1 then
+			a.lookAt = b.renderPos or b.pos
+		end
+	end
+	if c.blocked and b and b.rig and c.contact then
+		-- the target sees it coming and gets its guard up just in time
+		b:play("block", c.contact - 0.1, { queue = true })
+	end
+	local name = a:swing(c.power or 1, d.now, c.sig, c.contact)
+	if c.sig and name then
+		local m = Moves.get(name)
+		if m and m.name then
+			-- a signature move gets its name shouted
+			d.fx:word(a:center() + Vector3.new(0, 2.2, 0), string.upper(m.name) .. "!", Kit.tierColor(a.info.tier, d.now))
+		end
+		d.sfx:play("whoosh")
+	elseif (c.power or 1) >= 2 then
+		d.sfx:play("whoosh", 0.4)
+	end
+end
+
+-- The target of a missed punch gets out of the way.
+H.dodge = function(d, c)
+	local f = d:fighter(c.who)
+	if not f.rig then
+		return
+	end
+	f.dodges = (f.dodges or 0) + 1
+	f:play(Moves.pickDodge(f.dodges + f.index), d.now)
+	d.fx:anim(math.max((c.contact or d.now) - d.now, 0), function() end, function()
+		d.fx:word(f:center() + Vector3.new(0, 1.6, 0), "MISS!", rgb(255, 255, 255))
+		d.sfx:play("whoosh", 0.5)
+	end)
 end
 
 -- A knocked-out creature disappears in a puff once it lands, so the winner has the ring to itself.
@@ -538,13 +590,32 @@ H.hit = function(d, c)
 	end
 	f.state = "hit"
 	f:setMotion(m)
-	f:poke(1.25, 0.75, 1.25, d.now, 0.2)
+	if c.blocked and f.rig then
+		-- guard held: arms took it
+		if not (f.anim and f.anim.name == "block") and not (f.nextAnim and f.nextAnim.name == "block") then
+			f:play("block", d.now - 0.08)
+		end
+	elseif f.rig then
+		f:stopLoop()
+		local react = c.ko and "launch" or (c.power >= 2 and "stagger" or "flinch")
+		f:play(react, d.now)
+		f:poke(1.08, 0.94, 1.08, d.now, 0.15)
+	else
+		f:poke(1.25, 0.75, 1.25, d.now, 0.2)
+	end
 	local tierForColor = by and by.info.tier or d.tier
 	local color = Kit.tierColor(tierForColor, d.now)
 	if c.power >= 2 or not (d.tier == "Common") then
 		color = color:Lerp(Kit.tierColor(d.arena.hype, d.now), 0.5)
 	end
 	local point = from + Vector3.new(0, f.height * 0.55, 0)
+	if c.blocked then
+		d.fx:sparks(point, rgb(255, 255, 255), 6)
+		d.fx:word(point + Vector3.new(0, 1.5, 0), "BLOCK!", rgb(200, 230, 255))
+		d.cam:addTrauma(0.12)
+		d.sfx:play("thud")
+		return
+	end
 	d.fx:sparks(point, color, ({ 10, 20, 36 })[c.power] or 12)
 	if c.power >= 3 then
 		d.fx:shock(Vector3.new(point.X, Kit.ORIGIN.Y + 0.15, point.Z), color, 9)
@@ -562,6 +633,8 @@ end
 
 H.shove = function(d, c)
 	local a, b = d:fighter(c.a), d:fighter(c.b)
+	a:play("grapple", d.now)
+	b:play("grapple", d.now + 0.08)
 	d.fx:anim(c.dur, function(x)
 		local push = math.sin(x * math.pi * 6) * 0.35
 		a.extraYaw = push * 0.2
@@ -570,6 +643,8 @@ H.shove = function(d, c)
 		b.lean = 20 - push * 10
 	end, function()
 		a.extraYaw, b.extraYaw, a.lean, b.lean = 0, 0, 0, 0
+		a:stopLoop()
+		b:stopLoop()
 	end)
 	d.fx:word(a:center():Lerp(b:center(), 0.5) + Vector3.new(0, 2, 0), "GRRR!", rgb(255, 255, 255))
 end
@@ -629,6 +704,8 @@ H.beam = function(d, c)
 	d.beamA, d.beamB, d.beamEnd = c.a, c.b, d.now + c.dur
 	a.posing, b.posing = true, true
 	a.lookAt, b.lookAt = W(c.at), W(c.at)
+	a:play("push", d.now)
+	b:play("push", d.now)
 end
 
 H.timestop = function(d)
@@ -667,6 +744,7 @@ H.detonate = function(d, c)
 	end
 	for _, f in ipairs(d.fighters) do
 		f.posing = false
+		f:stopLoop()
 	end
 	d.fx:detonate(W(c.at, 2.6), Kit.tierColor(c.tier, d.now))
 	d.arena:popTiles(c.at, d.now)
@@ -701,6 +779,7 @@ H.brawlball = function(d, c)
 		local f = d:fighter(i)
 		f.motion = nil
 		f.state = "brawl"
+		f:play("flail", d.now + k * 0.03)
 		list[k] = f
 	end
 	local lastDust = 0
@@ -730,6 +809,7 @@ H.brawlballend = function(d, c)
 	for _, i in ipairs(c.who) do
 		local f = d:fighter(i)
 		local p = c.to[i]
+		f:stopLoop()
 		if p then
 			f:setMotion({ t0 = d.now, t1 = d.now + 0.25, from = f.pos, to = W(p), arc = 1.5, endState = "in" })
 			f.spin = { t0 = d.now, t1 = d.now + 0.25, turns = 1, axis = "tumble" }
@@ -748,6 +828,7 @@ H.tornado = function(d, c)
 			local f = d:fighter(i)
 			f.motion = nil
 			f.state = "brawl"
+			f:play("flail", d.now)
 			table.insert(list, { f = f, home = f.pos })
 		end
 	end
@@ -762,6 +843,7 @@ H.tornado = function(d, c)
 		for _, e in ipairs(list) do
 			e.f.pos = Vector3.new(e.f.pos.X, Kit.ORIGIN.Y, e.f.pos.Z)
 			e.f.state = "in"
+			e.f:stopLoop()
 		end
 	end)
 	m:poke(0.8, 1.3, 0.8, d.now, 0.4)
@@ -804,6 +886,7 @@ H.charge = function(d, c)
 	end)
 	f.posing = true
 	f:poke(0.8, 1.25, 0.8, d.now, 0.4)
+	f:play("powerUp", d.now)
 end
 
 H.crack = function(d, c)
@@ -840,6 +923,7 @@ H.unshear = function(d)
 	d.cc.Saturation = d.grade[4]
 	for _, f in ipairs(d.fighters) do
 		f.posing = false
+		f:stopLoop()
 	end
 end
 
@@ -896,6 +980,7 @@ H.fakepose = function(d, c)
 	f.posing = true
 	f.lookAt = f.pos + Vector3.new(0, 0, 10)
 	f:poke(0.85, 1.25, 0.85, d.now, 0.3)
+	f:play("cheer", d.now)
 	d.fx:word(f:center() + Vector3.new(0, 2, 0), "WINNER?!", Kit.TierColor.Rare)
 	d.fx:confetti(f:center() + Vector3.new(0, 3, 0), 30, ColorSequence.new(Kit.TierColor.Rare))
 end
@@ -909,6 +994,7 @@ H.fakecrack = function(d, c)
 	d.cam:addTrauma(0.6)
 	for _, f in ipairs(d.fighters) do
 		f.posing = false
+		f:stopLoop()
 	end
 end
 
@@ -925,6 +1011,8 @@ H.pose = function(d, c)
 	local w = d:fighter(c.who)
 	w.posing = true
 	w.lookAt = w.pos + Vector3.new(0, 0, 10)
+	-- arms up! (bigger pulls flex instead)
+	w:play((c.tier == "Common" or c.tier == "Rare") and "cheer" or "flex", d.now)
 	Poses.play(d, c, dur)
 end
 
