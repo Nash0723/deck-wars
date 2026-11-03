@@ -1,0 +1,108 @@
+{
+  "name": "DeckWars",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "DeckWars": {
+        "$path": "src/shared"
+      },
+      "Remotes": {
+        "$className": "Folder",
+        "MatchEvent": {
+          "$className": "RemoteEvent"
+        },
+        "MatchAction": {
+          "$className": "RemoteEvent"
+        },
+        "MenuAction": {
+          "$className": "RemoteEvent"
+        }
+      },
+      "CreatureModels": {
+        "$className": "Folder"
+      }
+    },
+    "ServerScriptService": {
+      "MatchServer": {
+        "$path": "src/server/MatchServer.server.luau"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "DeckWarsClient": {
+          "$path": "src/client/DeckWarsClient.client.luau"
+        }
+      }
+    },
+    "Workspace": {
+      "MenuRoom": {
+        "$path": "src/world/MenuRoom.model.json"
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "LightingStyle": "Realistic",
+        "PrioritizeLightingQuality": true,
+        "Technology": "Future",
+        "ClockTime": 21,
+        "Brightness": 0.8,
+        "Ambient": [
+          0.14,
+          0.11,
+          0.1
+        ],
+        "OutdoorAmbient": [
+          0.07,
+          0.075,
+          0.11
+        ],
+        "ColorShift_Top": [
+          1.0,
+          0.86,
+          0.7
+        ],
+        "ColorShift_Bottom": [
+          0.2,
+          0.16,
+          0.14
+        ],
+        "EnvironmentDiffuseScale": 0.15,
+        "EnvironmentSpecularScale": 0.5,
+        "GlobalShadows": true,
+        "ShadowSoftness": 0.16,
+        "ExposureCompensation": -0.2,
+        "FogEnd": 100000
+      },
+      "Bloom": {
+        "$className": "BloomEffect",
+        "$properties": {
+          "Intensity": 0.16,
+          "Size": 18,
+          "Threshold": 2.4
+        }
+      },
+      "ColorCorrection": {
+        "$className": "ColorCorrectionEffect",
+        "$properties": {
+          "Brightness": -0.02,
+          "Contrast": 0.16,
+          "Saturation": -0.06,
+          "TintColor": [
+            1.0,
+            0.95,
+            0.88
+          ]
+        }
+      },
+      "DepthOfField": {
+        "$className": "DepthOfFieldEffect",
+        "$properties": {
+          "FarIntensity": 0.24,
+          "FocusDistance": 18,
+          "InFocusRadius": 16,
+          "NearIntensity": 0
+        }
+      }
+    }
+  }
+}
