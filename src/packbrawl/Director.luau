@@ -492,6 +492,16 @@ H.lunge = function(d, c)
 	a.yaw = math.atan2(-dir.X, -dir.Z)
 end
 
+-- A knocked-out creature disappears in a puff once it lands, so the winner has the ring to itself.
+local function vanish(d, f, delay)
+	d.fx:anim(delay, function() end, function()
+		if f.state ~= "gone" or f.pos.Y > Kit.ORIGIN.Y - 2 then
+			d.fx:dust(f:center(), 10)
+		end
+		f:hide()
+	end)
+end
+
 H.hit = function(d, c)
 	local f = d:fighter(c.who)
 	local by = c.by and d:fighter(c.by)
@@ -520,6 +530,11 @@ H.hit = function(d, c)
 	end
 	if c.spin then
 		f.spin = { t0 = d.now, t1 = d.now + c.dur, turns = c.ko == "sky" and 3 or 1, axis = c.ko and "tumble" or "yaw" }
+	end
+	if c.ko then
+		m.onLand = function(fi)
+			vanish(d, fi, c.ko == "ropes" and 0.5 or 0.05)
+		end
 	end
 	f.state = "hit"
 	f:setMotion(m)
@@ -870,21 +885,7 @@ end
 
 H.reassemble = function(d, c)
 	local w = d:fighter(c.who)
-	local height = 0
-	for k, i in ipairs(c.pile) do
-		local f = d:fighter(i)
-		f.motion = nil
-		f.spin = nil
-		f.state = "down"
-		local ang = k * 2.1
-		f.pos = w.pos + Vector3.new(math.cos(ang) * 1.2, 0, math.sin(ang) * 1.2)
-		f.extraY = math.floor((k - 1) / 3) * f.depth * 0.7
-		f.yaw = ang
-		height = math.max(height, f.extraY + f.depth)
-	end
-	d.fx:anim(0.35, function(a)
-		w.extraY = height * Kit.outBack(a)
-	end)
+	w.extraY = 0
 	d.arena:unshear()
 	d.fx:sparks(w:center(), Kit.prism(d.now), 40)
 	d.fx:shock(w.pos + Vector3.new(0, 0.15, 0), Kit.prism(d.now), 30)
@@ -912,6 +913,13 @@ H.fakecrack = function(d, c)
 end
 
 H.pose = function(d, c)
+	-- nobody but the winner stays for the showcase
+	for i, f in ipairs(d.fighters) do
+		if i ~= c.who and f.state ~= "gone" then
+			d.fx:dust(f:center(), 10)
+			f:hide()
+		end
+	end
 	local finishT = d.script.length
 	local dur = math.max(finishT - c.t - 0.45, 0.6)
 	local w = d:fighter(c.who)

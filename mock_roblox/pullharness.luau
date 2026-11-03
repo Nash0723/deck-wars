@@ -181,7 +181,12 @@ local function button(name)
 end
 local function click(b, what)
 	assert(b, "button not found: " .. tostring(what))
-	b.Activated:Fire()
+	local ok, why = M.clickable(b)
+	if ok then
+		b.Activated:Fire()
+	else
+		M.report("error", "can't click " .. tostring(what) .. ": " .. why)
+	end
 	M.advance(0.05)
 end
 
@@ -315,6 +320,7 @@ local function playThrough(label, startFn, opts)
 		M.advance(1)
 		click(reveal:FindFirstChild("Tap"), "Tap")
 		M.advance(1)
+		check(playerGui:FindFirstChild("PackBrawlReveal") == nil, label .. ": tapping closes the card reveal")
 		if opts.fan then
 			local fan = playerGui:FindFirstChild("PackBrawlFan")
 			check(fan ~= nil, label .. ": the 10-card fan appears")
@@ -439,32 +445,74 @@ for round = 1, extra do
 end
 
 -- 7) every pullable card plays its full cinematic (all poses, ultimates, buildings and spells)
-if rawget(_G, "ALLCARDS") == 1 then
-	local env = makeEnv(clientScript, clientCache)
+-- Plays one card's brawl straight through the Director. Also checks that once the
+-- winner's victory pose starts, every knocked-out creature is gone from the ring.
+local function playDirect(env, id, seed)
 	local Director = env.require(pb:WaitForChild("Director"))
 	local CScripts = env.require(pb:WaitForChild("Scripts"))
 	local CCasting = env.require(pb:WaitForChild("Casting"))
+	local errors0 = M.errors
+	local brawl = CScripts.build(CCasting.build(id, seed))
+	local poseT
+	for _, c in ipairs(brawl.cues) do
+		if c.k == "pose" then
+			poseT = c.t
+		end
+	end
+	local done = false
+	local d = Director.play(brawl, function()
+		done = true
+	end)
+	local clear = nil
+	if poseT then
+		waitFor(function()
+			return done or d.t >= poseT + 0.1
+		end, brawl.length + 3)
+		if not done then
+			clear = true
+			for i, f in ipairs(d.fighters) do
+				if i ~= brawl.winner and f.state ~= "gone" then
+					clear = false
+				end
+			end
+		end
+	end
+	local ok = waitFor(function()
+		return done
+	end, brawl.length + 3)
+	local clean = ok and M.errors == errors0 and scene() == nil and camera.CameraType == Enum.CameraType.Custom
+	return clean, clear
+end
+
+do
+	local env = makeEnv(clientScript, clientCache)
 	local PullRates = env.require(pb:WaitForChild("PullRates"))
-	local count, bad = 0, {}
+	for _, tier in ipairs(TIERS) do
+		local id = PullRates.Pool[tier][1]
+		local clean, clear = playDirect(env, id, 77)
+		check(clean, tier .. " (" .. id .. "): plays cleanly through the Director")
+		check(clear == true, tier .. " (" .. id .. "): only the winner is left in the ring for the victory pose")
+	end
+end
+
+if rawget(_G, "ALLCARDS") == 1 then
+	local env = makeEnv(clientScript, clientCache)
+	local PullRates = env.require(pb:WaitForChild("PullRates"))
+	local count, bad, crowded = 0, {}, {}
 	for _, tier in ipairs(TIERS) do
 		for k, id in ipairs(PullRates.Pool[tier]) do
-			local errors0 = M.errors
-			local cast = CCasting.build(id, 1000 + k * 37)
-			local brawl = CScripts.build(cast)
-			local done = false
-			Director.play(brawl, function()
-				done = true
-			end)
-			local ok = waitFor(function()
-				return done
-			end, brawl.length + 3)
-			if not ok or M.errors ~= errors0 or scene() ~= nil or camera.CameraType ~= Enum.CameraType.Custom then
+			local clean, clear = playDirect(env, id, 1000 + k * 37)
+			if not clean then
 				table.insert(bad, id)
+			end
+			if clear ~= true then
+				table.insert(crowded, id)
 			end
 			count += 1
 		end
 	end
 	check(#bad == 0, string.format("every pullable card plays its whole brawl cleanly (%d cards; problems: %s)", count, table.concat(bad, ", ")))
+	check(#crowded == 0, string.format("every pullable card's victory pose has the ring to itself (%d cards; crowded: %s)", count, table.concat(crowded, ", ")))
 end
 
 local played = {}
