@@ -877,7 +877,32 @@ do
 			key = "PackParty",
 			name = "Pack Party",
 			show = function()
-				showComingSoon("Pack Party", "Drop a pack in the prize machine, watch it shake, and flip your cards one by one. Legendary and Secret pulls turn the whole room gold.\n\nComing in the next update.")
+				-- Pack Brawl: every pack is a fight in the Brawl Box, and the card you pulled wins it
+				clearBody()
+				ui.stationTitle.Text = "Pack Party"
+				label(ui.stationBody, "Every pack is a brawl! Creatures crash the ring and fight it out, and the card you pulled walks in last and wins. Rarer pulls bring bigger fights.", { Size = UDim2.new(1, 0, 0, 96), Font = BODY_FONT, TextWrapped = true, TextScaled = false, TextSize = 18, TextYAlignment = Enum.TextYAlignment.Top })
+				local status = label(ui.stationBody, "Hold the screen to fast-forward a fight.", { Name = "PackStatus", Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 100), Font = BODY_FONT, TextWrapped = true, TextScaled = false, TextSize = 15, TextColor3 = Color3.fromRGB(200, 200, 220), TextYAlignment = Enum.TextYAlignment.Top })
+				local area = make("Frame", { Name = "PackArea", Size = UDim2.new(1, 0, 0, 160), Position = UDim2.fromOffset(0, 150), BackgroundTransparency = 1 }, ui.stationBody)
+				local PackParty = require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackParty"))
+				PackParty.mount(area, {
+					onStart = function()
+						-- the cinematic takes over the camera and the screen until the reveal closes
+						mode = "pack"
+						gui.Enabled = false
+					end,
+					onEnd = function(result)
+						if mode == "pack" then
+							mode = "menu"
+						end
+						gui.Enabled = true
+						lockPlayer()
+					end,
+					onStatus = function(text)
+						if status.Parent then
+							status.Text = text
+						end
+					end,
+				})
 			end,
 		},
 		{
@@ -4626,7 +4651,10 @@ do
 	local hideTimer = 0
 	RunService.RenderStepped:Connect(function(dt)
 		clock += dt
-		updateCamera(dt)
+		if mode ~= "pack" then
+			-- (during a Pack Brawl the cinematic drives the camera)
+			updateCamera(dt)
+		end
 		cardLife.update(dt)
 		if mode == "match" then
 			cardLife.updateHand(dt)

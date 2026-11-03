@@ -12,10 +12,12 @@ local PullRequest = remotes:WaitForChild("PullRequest")
 local PullResult = remotes:WaitForChild("PullResult")
 
 local COOLDOWN = 1.5
--- The tier preview buttons only work when this is on (the test place). Turn it off in a live game.
+-- The tier preview buttons only work when this is on. The test place turns it on with the
+-- AllowTierPreview attribute; without the attribute it is on only while testing in Studio,
+-- so players in a live game can't force a Secret.
 local ALLOW_TIER_PREVIEW = script:GetAttribute("AllowTierPreview")
 if ALLOW_TIER_PREVIEW == nil then
-	ALLOW_TIER_PREVIEW = true
+	ALLOW_TIER_PREVIEW = game:GetService("RunService"):IsStudio()
 end
 
 local rng = Random.new()

@@ -1138,6 +1138,10 @@ end
 function methods.IsClient()
 	return true
 end
+-- the simulated game counts as Studio (tier preview buttons show up)
+function methods.IsStudio()
+	return true
+end
 
 function Instance.new(className, parent)
 	local i = new(className)
