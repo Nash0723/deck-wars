@@ -52,7 +52,9 @@ jobs:
         run: tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared
 
       - name: Pack Brawl in the simulated Studio (every tier, skip, fast-forward, 10-pull)
-        run: tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl | tee pullharness.log && grep -q "MOCK RESULT: 0 errors, 0 warnings" pullharness.log
+        run: |
+          tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl | tee pullharness.log
+          grep -q "MOCK RESULT: 0 errors, 0 warnings" pullharness.log
 
       - name: Upload the place files
         uses: actions/upload-artifact@v4
