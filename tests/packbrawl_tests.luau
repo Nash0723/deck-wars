@@ -5,6 +5,9 @@ local PullRates = require("PullRates")
 local Casting = require("Casting")
 local Scripts = require("Scripts")
 local Rng = require("Rng")
+local Rig = require("Rig")
+local Moves = require("Moves")
+local ModelData = require("CreatureModelData")
 
 local passed, failed = 0, 0
 local function check(cond, msg)
@@ -73,7 +76,7 @@ local KNOWN = {
 	brawlball = true, brawlballend = true, lines = true, tornado = true, bigcard = true, ultimate = true,
 	dutchflip = true, stars = true, charge = true, crack = true, musicstop = true, shear = true, blackout = true,
 	eyes = true, unshear = true, whiteflash = true, theme = true, freeze = true, unfreeze = true,
-	reassemble = true, fakepose = true, fakeframe = true, fakecrack = true,
+	reassemble = true, fakepose = true, fakeframe = true, fakecrack = true, swing = true, dodge = true,
 }
 local fakeSeen = { Mythic = 0, Legendary = 0, Secret = 0 }
 local scriptsBuilt = 0
@@ -147,6 +150,47 @@ for _, id in ipairs(ids) do
 				end
 			end
 		end
+		-- every hit and dodge has its attacker's swing, started so the blow lands on time
+		local swingAt = {}
+		for _, c in ipairs(s.cues) do
+			if c.k == "swing" then
+				swingAt[c.who .. "@" .. string.format("%.4f", c.contact)] = c
+				if not c.dive and math.abs((c.contact - c.t) - (c.sig and Scripts.SignatureContact or Scripts.Contact[c.power])) > 1e-6 and c.t > 1e-9 then
+					table.insert(problems, "swing lead time off at t=" .. c.t)
+				end
+				if enterT[c.who] == nil or c.t < enterT[c.who] - 1e-9 then
+					table.insert(problems, "swing before fighter " .. c.who .. " entered")
+				end
+				if c.sig and fs[c.who].kind ~= "creature" then
+					table.insert(problems, "signature for a non-creature")
+				end
+			end
+		end
+		for _, c in ipairs(s.cues) do
+			if (c.k == "hit" or c.k == "dodge") and c.by then
+				local key = c.by .. "@" .. string.format("%.4f", c.k == "dodge" and c.contact or c.t)
+				if not swingAt[key] then
+					-- a sweep hitting several at once shares one swing
+					local shared = false
+					for _, w in ipairs(s.cues) do
+						if w.k == "swing" and w.who == c.by and math.abs(w.contact - (c.k == "dodge" and c.contact or c.t)) <= 0.021 then
+							shared = true
+						end
+					end
+					if not shared then
+						-- or the attacker is still mid-swing from just before
+						for _, w in ipairs(s.cues) do
+							if w.k == "swing" and w.who == c.by and w.contact < c.t and w.contact > c.t - 0.5 then
+								shared = true
+							end
+						end
+					end
+					if not shared then
+						table.insert(problems, c.k .. " at t=" .. c.t .. " has no swing")
+					end
+				end
+			end
+		end
 		for i = 1, #fs do
 			if not entered[i] then
 				table.insert(problems, "fighter " .. i .. " never enters")
@@ -168,6 +212,100 @@ for _, id in ipairs(ids) do
 		end
 	end
 end
+-- Rigs and moves: every creature model splits into moving parts, and every move keeps the
+-- parts together (nothing flies off, nothing goes NaN)
+check(Moves.Contact[1] == Scripts.Contact[1] and Moves.Contact[2] == Scripts.Contact[2] and Moves.Contact[3] == Scripts.Contact[3], "move and script contact times agree")
+check(Moves.SignatureContact == Scripts.SignatureContact, "signature contact times agree")
+local moveNames = {}
+for name in pairs(Moves.list) do
+	table.insert(moveNames, name)
+end
+table.sort(moveNames)
+local rigged, kinds = 0, {}
+for id in pairs(ModelData) do
+	local rig = Rig.get(id)
+	check(rig ~= nil and rig.bones.body ~= nil, id .. " rigs")
+	rigged += 1
+	kinds[rig.kind] = (kinds[rig.kind] or 0) + 1
+	local h = rig.height
+	local list = table.clone(moveNames)
+	if Moves.Signatures[id] then
+		table.insert(list, id)
+	end
+	local worst, worstWhere = 0, ""
+	local okFinite = true
+	for _, name in ipairs(list) do
+		local m = Moves.get(name)
+		for step = 0, 20 do
+			local t = m.dur * step / 20
+			for _, lead in ipairs({ "L", "R" }) do
+				local pose = table.clone(Moves.sample(m, t))
+				pose.leadSide = lead
+				local solved = Rig.solve(rig, pose)
+				-- the root (spins, sidesteps) moves everything together; measure against it
+				local rootless = table.clone(pose)
+				rootless.root = nil
+				local solved2 = Rig.solve(rig, rootless)
+				for i, p in ipairs(rig.parts) do
+					local x, y, z = Rig.partPos(rig, solved2, i)
+					local x2, y2, z2 = Rig.partPos(rig, solved, i)
+					if x ~= x or y ~= y or z ~= z or x2 ~= x2 or y2 ~= y2 or z2 ~= z2 then
+						okFinite = false
+					end
+					local d = math.sqrt((x - p.pos[1]) ^ 2 + (y - p.pos[2]) ^ 2 + (z - p.pos[3]) ^ 2)
+					if d > worst then
+						worst, worstWhere = d, name .. "@" .. t .. " " .. p.name
+					end
+				end
+			end
+		end
+	end
+	check(okFinite, id .. ": every move stays finite")
+	-- a hand can swing over the head (about 2 heights for a tall arm); more means it came off
+	check(worst < h * 2.2 + 1.5, string.format("%s: parts stay attached (moved %.2f of height %.2f at %s)", id, worst, h, worstWhere))
+end
+check(rigged >= 60, "all creature models rigged (" .. rigged .. ")")
+check((kinds.biped or 0) >= 10 and (kinds.quad or 0) >= 3, "rigs found bipeds and four-legged creatures")
+-- every Epic+ creature has a signature move with the shared contact time
+for id, def in pairs(CardData.Cards) do
+	if def.type == "Creature" and not def.token and PullRates.Rank[def.rarity] >= PullRates.Rank.Epic then
+		local sig = Moves.Signatures[id]
+		check(sig ~= nil and sig.name ~= nil and math.abs(sig.contact - Moves.SignatureContact) < 1e-9, id .. " has a signature move")
+	end
+end
+-- every creature can pick an attack of every power
+for id in pairs(ModelData) do
+	local rig = Rig.get(id)
+	for power = 1, 3 do
+		for k = 0, 3 do
+			local name = Moves.pickAttack(rig, power, k, id, false)
+			check(Moves.get(name) ~= nil and Moves.get(name).contact ~= nil, id .. " picks a real attack for power " .. power)
+		end
+	end
+end
+-- important rigs look right
+local function bonesOf(id)
+	local r = Rig.get(id)
+	return r.bones, r
+end
+do
+	local b, r = bonesOf("toaster_knight")
+	check(r.kind == "biped" and r.has.weapon and b.armR and b.armL and b.legL and b.legR, "toaster knight: two arms, two legs, a weapon")
+	local knife = false
+	for _, p in ipairs(b.armR.parts) do
+		knife = knife or p.name == "KnifeBlade"
+	end
+	check(knife, "toaster knight's knife moves with its arm")
+	b, r = bonesOf("lightning_llama")
+	check(r.kind == "quad" and b.legFL and b.legBR and b.head and b.tail, "llama: four legs, head and tail")
+	b, r = bonesOf("spaghetti_hydra")
+	check(r.has.heads == 3, "hydra has three heads")
+	b, r = bonesOf("the_mannequin_duke")
+	check(b.base ~= nil, "the duke's stand stays on the floor when he leans")
+	b, r = bonesOf("captain_confetti")
+	check(b.wingL and b.wingR and r.has.weapon, "captain confetti swings the spyglass with a wing")
+end
+
 for t, nFake in pairs(fakeSeen) do
 	check(nFake > 0, "the fake ending shows up for " .. t)
 end

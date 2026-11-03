@@ -52,7 +52,7 @@ cargo build --release --manifest-path tools/luaurun/Cargo.toml
 tools/luaurun/target/release/luaurun tests/run_tests.luau src/shared                   # rules: 211 checks + 120 bot games, about 1 minute
 tools/luaurun/target/release/luaurun -D BAL_GAMES=60 bal/balance.luau src/shared         # deck balance, bot vs bot
 tools/luaurun/target/release/luaurun mock_roblox/harness.luau mock_roblox                # plays matches in a simulated Studio, about 8 minutes
-tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script
+tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every rig and move
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 ```
 
@@ -72,7 +72,8 @@ GitHub runs the rules tests and the Pack Brawl tests and builds both place files
 | `tests/`, `bal/`, `mock_roblox/`, `tools/luaurun/` | Tests, balance check, the simulated Studio and the Luau runner |
 | `pullcinematic.project.json` | The separate Pack Brawl test place (`DeckWars_PullCinematic.rbxlx`) |
 | `src/packbrawl/` | ReplicatedStorage > PackBrawl: the pull cinematic (see "Pack Brawl" below) |
-| `src/pullserver/`, `src/pullclient/` | The test place's PullServer and its Pack Party test panel |
+| `src/pullserver/` | ServerScriptService > PullServer: rolls every pull (main game and test place) |
+| `src/pullclient/` | The test place's Pack Party test panel |
 | `assets/sounds/` | Our own Pack Brawl sounds (made by `tools/make_sounds.py`), ready to upload |
 | `docs/` | Pictures for this README |
 
@@ -147,18 +148,28 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 ## Pack Brawl: the pack-opening cinematic
 Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
 
-It lives in its own place for now, so it can be tried (and compared) without touching the main game:
+It is part of the main game: walk to the Pack Party corner (click the prize machine, or the Pack Party button) and press "Open 1 pack" or "Open 10 packs". While you test in Studio there is also one button per tier to preview that tier's cinematic (those only work in Studio, so live players can't force a Secret). During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP. Pulls are free and the collection is not saved yet (prices, currency and saving come with step 3).
+
+The separate test place still builds, for trying the cinematic on its own:
 
 ```
 rojo build pullcinematic.project.json -o DeckWars_PullCinematic.rbxlx
 ```
 
-Open it in Studio and press Play. The panel at the bottom has "Open 1 pack", "Open 10 packs" and one button per tier to preview that tier's cinematic. During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP.
+### Real fights
+The creatures fight with moving parts: arms, legs, heads, tails and wings move on their own. They jab, cross, hook, uppercut and throw haymakers, swing whatever they hold (spears, wands, plungers, canes...), kick, stomp, headbutt and tail-whip. Some punches get blocked ("BLOCK!") or dodged with a duck, sway or sidestep ("MISS!"). A hit creature flinches or staggers; a knocked-out one flies off flailing and lands flat on its back. Every Epic, Mythic, Legendary and Secret creature has a named signature move (Rocket Punch, Cane Riposte, Antler Toss, Omega Rush...) for its big hits, and the winner cheers or flexes at the end.
+
+- `Rig.luau` splits each creature model into moving parts by its part names and where they sit, and works out shoulders, hips and necks. `Rig.Overrides` fixes odd shapes by hand.
+- `Moves.luau` has every move as keyframed poses, the signature moves (`Moves.Signatures`, keyed by card id), and which creature uses which move (`Moves.pickAttack`).
+- `Scripts.luau` adds a `swing` cue before every hit, timed so the blow lands exactly on the hit, plus `dodge` cues.
+- `luaurun -D IDS="toaster_knight,lightning_llama" preview/rig_poses.luau src/packbrawl src/shared > poses.log` then `python3 preview/brawl.py poses.log out/` draws creatures frozen mid-move, to check a rig without Studio.
 
 Rarity tiers are now Common, Rare, Epic, Mythic, Legendary, Secret (low to high), in the main game too. The old tiers moved up one name each (Uncommon became Rare, Rare became Epic, Legendary became Mythic, Mythic became Legendary), so no card got stronger or weaker.
 
 | File (in `src/packbrawl/`) | Job |
 | --- | --- |
+| `PackParty` | The Open 1 / Open 10 (and Studio-only tier preview) buttons; used by the main game's Pack Party corner and the test place |
+| `Rig`, `Moves` | Moving parts and fighting moves (see "Real fights") |
 | `PullRates` | Odds (Common 55%, Rare 27%, Epic 12%, Mythic 4.5%, Legendary 1.2%, Secret 0.3%) and the 10-pull Epic guarantee |
 | `Casting` | Who fights: 2 Common starters, crashers by tier, the "It's Not Over" fake ending (30% on Mythic and up) |
 | `Scripts` | The choreography of each tier as a list of timed cues |
@@ -178,7 +189,8 @@ You can also paste a Creator Store sound id into any of them instead.
 - Lengths, who crashes in and when: `Scripts.luau` (one function per tier).
 - Odds: `PullRates.luau`. Fake ending chance: `Casting.FakeOutChance`.
 - Colors, bloom and camera shake per tier: `Kit.luau` (`TierColor`, `TierGrade`, `TierCamera`).
-- Turn off the tier preview buttons for a live game: set the `AllowTierPreview` attribute on ServerScriptService > PullServer to false.
+- Tier preview buttons: on only in Studio. The test place forces them on with the `AllowTierPreview` attribute on ServerScriptService > PullServer.
+- A move looks wrong on one creature: tweak its keyframes in `Moves.luau`, or its rig in `Rig.Overrides`.
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 

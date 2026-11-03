@@ -26,7 +26,8 @@ local Debris = M.service("Debris")
 local StarterGui = M.service("StarterGui")
 local Lighting = M.service("Lighting")
 local StarterPlayer = M.service("StarterPlayer")
-for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer }) do
+local SoundService = M.service("SoundService")
+for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService }) do
 	s.Parent = game
 end
 
@@ -51,6 +52,21 @@ shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
 for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
+end
+-- Pack Brawl (the Pack Party corner's pull cinematic)
+local pb = Instance.new("Folder")
+pb.Name = "PackBrawl"
+pb.Parent = ReplicatedStorage
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackParty" }) do
+	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
+end
+local pullRemotes = Instance.new("Folder")
+pullRemotes.Name = "PullRemotes"
+pullRemotes.Parent = ReplicatedStorage
+for _, n in ipairs({ "PullRequest", "PullResult" }) do
+	local r = Instance.new("RemoteEvent")
+	r.Name = n
+	r.Parent = pullRemotes
 end
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
@@ -146,6 +162,10 @@ M.onFrame = function()
 end
 
 runScript(SRC .. "server/MatchServer.server.luau", serverScript, serverCache)
+local pullServerScript = Instance.new("Script")
+pullServerScript.Name = "PullServer"
+pullServerScript.Parent = ServerScriptService
+runScript(SRC .. "pullserver/PullServer.server.luau", pullServerScript, serverCache)
 runScript(SRC .. "client/DeckWarsClient.client.luau", clientScript, clientCache)
 M.advance(2)
 
@@ -283,6 +303,54 @@ UserInputService.InputBegan:Fire({ UserInputType = Enum.UserInputType.MouseButto
 M.advance(1.2)
 check(labelWithText("Pack Party") ~= nil, "clicking the prize machine opens Pack Party")
 M.raycastHook = nil
+
+---------------------------------------------------------------------------
+-- Scenario 1b: open a pack in the Pack Party corner (Pack Brawl plays, then the reveal)
+---------------------------------------------------------------------------
+do
+	local errors0 = M.errors
+	local mainGui = nil
+	for _, g in ipairs(playerGui:GetChildren()) do
+		if g:IsA("ScreenGui") and g:FindFirstChild("PackArea", true) then
+			mainGui = g
+		end
+	end
+	check(mainGui ~= nil, "Pack Party shows the pack buttons")
+	check(buttonWithText("Open 1 pack") ~= nil and buttonWithText("Open 10 packs") ~= nil, "Open 1 / Open 10 buttons show")
+	click(buttonWithText("Open 1 pack"), "Open 1 pack")
+	M.advance(1)
+	local scene = Workspace:FindFirstChild("PackBrawlScene")
+	check(scene ~= nil, "opening a pack starts the Pack Brawl")
+	check(mainGui and mainGui.Enabled == false, "the menu hides during the brawl")
+	-- the room camera must not fight the cinematic's camera
+	local camBefore = camera.CFrame
+	M.advance(0.5)
+	check((camera.CFrame.Position - Vector3.new(9.5, 9.5, -9.5)).Magnitude > 50, "the cinematic has the camera (not the room camera)")
+	local t = 0
+	while not playerGui:FindFirstChild("PackBrawlReveal") and t < 30 do
+		M.advance(0.5)
+		t += 0.5
+	end
+	local reveal = playerGui:FindFirstChild("PackBrawlReveal")
+	check(reveal ~= nil, string.format("the brawl reaches the card reveal (%.1f s)", t))
+	if reveal then
+		M.advance(1.5)
+		click(reveal:FindFirstChild("Tap"), "Tap")
+		M.advance(1)
+	end
+	check(playerGui:FindFirstChild("PackBrawlReveal") == nil, "the reveal closes")
+	check(Workspace:FindFirstChild("PackBrawlScene") == nil, "the Brawl Box is cleaned up")
+	check(mainGui and mainGui.Enabled == true, "the menu comes back after the reveal")
+	M.advance(2)
+	check((camera.CFrame.Position - Vector3.new(9.5, 9.5, -9.5)).Magnitude < 3, "the camera is back at the Pack Party corner")
+	check(find(function(d)
+		return d.ClassName == "TextLabel" and string.sub(d.Text, 1, 10) == "Last pull:"
+	end) ~= nil, "the status line names the pulled card")
+	check(M.errors == errors0, "Pack Party: no script errors")
+	-- back to the overview for the match scenarios
+	click(buttonWithText("Back"), "Back")
+	M.advance(1.5)
+end
 
 ---------------------------------------------------------------------------
 -- Scenario 2: full matches

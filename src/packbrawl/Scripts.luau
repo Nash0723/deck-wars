@@ -109,6 +109,10 @@ function B:hit(t, a, b, power, opts)
 	elseif opts.ko == "sky" then
 		to = v(pb.x + dx * 6, pb.z + dz * 6)
 		dur = 1.1
+	elseif opts.blocked then
+		-- guard up: barely pushed back
+		to = clampIn(v(pb.x + dx * 0.25, pb.z + dz * 0.25), FIGHT)
+		dur = 0.15
 	else
 		local d = opts.dist or ({ 0.7, 1.8, 3.2 })[power] or 1
 		to = clampIn(v(pb.x + dx * d, pb.z + dz * d), FIGHT)
@@ -126,7 +130,9 @@ function B:hit(t, a, b, power, opts)
 		dur = dur,
 		ko = opts.ko,
 		word = opts.word,
-		spin = opts.ko ~= nil or power >= 3,
+		blocked = opts.blocked,
+		-- only creatures sent flying out of the ring tumble; everyone else reels and falls
+		spin = opts.ko == "out" or opts.ko == "sky",
 	})
 	self.pos[b] = to
 	if opts.ko then
@@ -134,13 +140,27 @@ function B:hit(t, a, b, power, opts)
 	end
 end
 
+-- a swings at b and misses: b ducks, sways or sidesteps.
+function B:whiff(t, a, b)
+	self:cue(t, "lunge", { who = a, target = b, dur = 0.24 })
+	self:cue(t + 0.02, "dodge", { who = b, by = a, contact = t + 0.12 + self.shift, power = 1 })
+end
+
 -- n alternating light hits between a and b, starting at t, gap seconds apart.
+-- After the first punch, some get blocked and some dodged, so it reads as a real fight.
 function B:exchange(t, a, b, n, gap, power)
 	for k = 0, n - 1 do
-		if k % 2 == 0 then
-			self:hit(t + k * gap, a, b, power or 1, { dist = 0.5 })
+		local x, y = a, b
+		if k % 2 == 1 then
+			x, y = b, a
+		end
+		local r = self:rand()
+		if k > 0 and r < 0.22 then
+			self:hit(t + k * gap, x, y, power or 1, { dist = 0.5, blocked = true })
+		elseif k > 0 and r < 0.38 then
+			self:whiff(t + k * gap, x, y)
 		else
-			self:hit(t + k * gap, b, a, power or 1, { dist = 0.5 })
+			self:hit(t + k * gap, x, y, power or 1, { dist = 0.5 })
 		end
 	end
 	return t + n * gap
@@ -562,6 +582,7 @@ function Scripts.build(cast)
 	local b = newBuilder(cast)
 	local fn = assert(tierScripts[cast.tier], "no script for tier " .. tostring(cast.tier))
 	fn(b)
+	Scripts.addSwings(b.cues, cast)
 	local length = 0
 	for _, c in ipairs(b.cues) do
 		if c.k == "finish" then
@@ -579,6 +600,55 @@ function Scripts.build(cast)
 		return x.t < y.t
 	end)
 	return { tier = cast.tier, length = length, cues = b.cues, fighters = cast.fighters, winner = cast.winner, fakeOut = cast.fakeOut }
+end
+
+-- Swings: every hit (and every dodged punch) gets a "swing" cue for the attacker, started early
+-- enough that the punch, kick or headbutt lands exactly on the hit. Epic and better creatures
+-- use their signature move for their big (power 3) hits, which winds up longer.
+local RANK = { Common = 1, Rare = 2, Epic = 3, Mythic = 4, Legendary = 5, Secret = 6 }
+Scripts.Contact = { 0.12, 0.2, 0.3 }
+Scripts.SignatureContact = 0.45
+
+function Scripts.addSwings(cues, cast)
+	local enters = {}
+	for _, c in ipairs(cues) do
+		if c.k == "enter" then
+			enters[c.who] = c
+		end
+	end
+	local want = {}
+	for _, c in ipairs(cues) do
+		if (c.k == "hit" or c.k == "dodge") and c.by then
+			local f = cast.fighters[c.by]
+			local power = c.power or 1
+			local sig = power >= 3 and f and f.kind == "creature" and (RANK[f.tier] or 1) >= RANK.Epic
+			local contactT = c.k == "dodge" and c.contact or c.t
+			local lead = sig and Scripts.SignatureContact or Scripts.Contact[power] or 0.2
+			table.insert(want, { who = c.by, target = c.who, power = power, sig = sig or nil, contact = contactT, t = contactT - lead, blocked = c.blocked, dodged = c.k == "dodge" or nil })
+		end
+	end
+	table.sort(want, function(x, y)
+		if x.contact == y.contact then
+			return x.who < y.who
+		end
+		return x.contact < y.contact
+	end)
+	local lastContact = {}
+	for _, w in ipairs(want) do
+		local prev = lastContact[w.who]
+		-- one swing per blow: a sweep that hits several fighters at once is one move
+		if not prev or w.t > prev + 0.02 then
+			local e = enters[w.who]
+			if e and w.t < e.t + (e.dur or 0) then
+				-- still flying in: crash in fists first
+				w.dive = true
+				w.t = math.max(w.t, e.t)
+			end
+			w.t = math.max(w.t, 0)
+			lastContact[w.who] = w.contact
+			table.insert(cues, { t = w.t, k = "swing", who = w.who, target = w.target, power = w.power, sig = w.sig, contact = w.contact, dive = w.dive, blocked = w.blocked, dodged = w.dodged })
+		end
+	end
 end
 
 -- Where to jump when the player skips: the reveal, except Secret jumps to the blinding flash

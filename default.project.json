@@ -20,17 +20,269 @@
       },
       "CreatureModels": {
         "$className": "Folder"
+      },
+      "PackBrawl": {
+        "$path": "src/packbrawl"
+      },
+      "PullRemotes": {
+        "$className": "Folder",
+        "PullRequest": {
+          "$className": "RemoteEvent"
+        },
+        "PullResult": {
+          "$className": "RemoteEvent"
+        }
       }
     },
     "ServerScriptService": {
       "MatchServer": {
         "$path": "src/server/MatchServer.server.luau"
+      },
+      "PullServer": {
+        "$path": "src/pullserver/PullServer.server.luau"
       }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "DeckWarsClient": {
           "$path": "src/client/DeckWarsClient.client.luau"
+        }
+      }
+    },
+    "SoundService": {
+      "PackBrawlSounds": {
+        "$className": "Folder",
+        "rip": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "pop": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "bonk": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "slap": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "thud": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "heavy": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "land": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "burrow": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "twang": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "whoosh": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "whistle": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.35,
+            "Looped": false
+          }
+        },
+        "crater": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "beam": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "tick": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.9,
+            "Looped": false
+          }
+        },
+        "boom": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "wind": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "choir": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "charge": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.4,
+            "Looped": false
+          }
+        },
+        "glass": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "heartbeat": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "fakesting": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "brawl": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.35,
+            "Looped": true
+          }
+        },
+        "theme": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "sting_Common": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Rare": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Epic": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Mythic": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Legendary": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Secret": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "",
+            "Volume": 0.7,
+            "Looped": false
+          }
         }
       }
     },
