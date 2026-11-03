@@ -195,7 +195,12 @@ local function labelWithText(text)
 end
 local function click(b, what)
 	assert(b, "button not found: " .. tostring(what))
-	b.Activated:Fire()
+	local ok, why = M.clickable(b)
+	if ok then
+		b.Activated:Fire()
+	else
+		M.report("error", "can't click " .. tostring(what) .. ": " .. why)
+	end
 	M.advance(0.1)
 end
 

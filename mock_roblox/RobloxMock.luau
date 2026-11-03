@@ -1147,6 +1147,36 @@ function Instance.new(className, parent)
 	return i
 end
 
+-- What a real click needs. Roblox only fires Activated on a button that is Active, inside
+-- GuiObjects that are all Visible and Interactable, in an enabled ScreenGui. The harnesses
+-- click through this so a button players can't use fails the test.
+function M.clickable(b)
+	if not b:IsA("GuiButton") then
+		return false, b.ClassName .. " is not a button"
+	end
+	if not b.Active then
+		return false, "Active is false, so Roblox never fires Activated"
+	end
+	local node = b
+	while node do
+		if node:IsA("GuiObject") then
+			if not node.Visible then
+				return false, node:GetFullName() .. " is hidden"
+			end
+			if node.Interactable == false then
+				return false, node:GetFullName() .. " is not Interactable"
+			end
+		elseif node:IsA("LayerCollector") then
+			if not node.Enabled then
+				return false, node:GetFullName() .. " is disabled"
+			end
+			return true
+		end
+		node = node.Parent
+	end
+	return false, "not inside a ScreenGui"
+end
+
 -- Build from a description table (used for the room)
 function M.build(desc, parent)
 	local inst = new(desc.ClassName, true)

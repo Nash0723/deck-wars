@@ -233,7 +233,7 @@ function Reveal.single(opts)
 	make("UIStroke", { Thickness = 3, Color = INK }, title)
 	tween(title, 0.4, { TextTransparency = 0 })
 	local hint = label(gui, "Tap to continue", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.92), Size = UDim2.fromOffset(300, 26), TextColor3 = rgb(230, 225, 240), Font = BODY, TextTransparency = 1 })
-	local tap = make("TextButton", { Name = "Tap", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 10, Active = false }, gui)
+	local tap = make("TextButton", { Name = "Tap", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 10 }, gui)
 	local conn = RunService.RenderStepped:Connect(function(dt)
 		animate(dt)
 		rays.Rotation = (rays.Rotation + dt * 8) % 360
