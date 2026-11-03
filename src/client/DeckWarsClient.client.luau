@@ -2282,9 +2282,11 @@ do
 		Snack = { Enum.Material.Marble, Color3.fromRGB(150, 84, 50) }, -- Soda Swamp: amber
 		Junk = { Enum.Material.CorrodedMetal, Color3.fromRGB(104, 94, 80) }, -- Glitter Junkyard: rusty plate
 		Weather = { Enum.Material.Glacier, Color3.fromRGB(78, 112, 150) }, -- Static Snowfield: deep ice
-		Critter = { Enum.Material.Fabric, Color3.fromRGB(84, 120, 64) }, -- Pillow Peaks: moss quilt
+		-- Critter and Robo used Fabric and CrackedLava, which rendered almost black under the dim
+		-- table lamps in Studio, so they use brighter-reading materials (Sand, DiamondPlate) instead.
+		Critter = { Enum.Material.Sand, Color3.fromRGB(84, 120, 64) }, -- Pillow Peaks: moss green felt
 		Spooky = { Enum.Material.CeramicTiles, Color3.fromRGB(96, 70, 128) }, -- Mushroom Mall: dusk tiles
-		Robo = { Enum.Material.CrackedLava, Color3.fromRGB(70, 72, 84) }, -- Lava Laundromat: dark steel
+		Robo = { Enum.Material.DiamondPlate, Color3.fromRGB(118, 124, 142) }, -- Lava Laundromat: grey steel plate
 	}
 
 	function setTileTerrain(col, row, fam, animated)
@@ -3903,7 +3905,7 @@ do
 			end
 			step(0.5)
 		elseif t == "burn" then
-			log(who(e.player) .. "'s hand was full, a card burned", Color3.fromRGB(255, 180, 120))
+			log((e.player == view.you and "Your" or "Opponent's") .. " hand was full, a card burned", Color3.fromRGB(255, 180, 120))
 			local deck = deckPiles[sideOf(e.player)]
 			burst(Vector3.new(deck.Position.X, topY(deck) + 0.5, deck.Position.Z), Color3.fromRGB(255, 140, 40), 25, { speed = 4, gravity = 6 })
 			step(0.4)
