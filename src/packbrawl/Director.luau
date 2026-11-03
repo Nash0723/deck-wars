@@ -27,6 +27,23 @@ local Director = {}
 Director.__index = Director
 
 local FAST_FORWARD = 3
+
+-- The player's settings (Pack fights: Quick, camera shake, graphics); defaults if missing.
+local Settings = nil
+pcall(function()
+	local shared = game:GetService("ReplicatedStorage"):FindFirstChild("DeckWars")
+	local m = shared and shared:FindFirstChild("Settings")
+	if m then
+		Settings = require(m)
+	end
+end)
+local function setting(key, default)
+	local v = Settings and Settings.get(key)
+	if v == nil then
+		return default
+	end
+	return v
+end
 local LIGHTING_PROPS = { "ClockTime", "Brightness", "Ambient", "OutdoorAmbient", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "FogEnd", "GlobalShadows" }
 
 local function controls(on)
@@ -59,6 +76,8 @@ function Director.play(script_, onDone)
 	self.realClock = 0
 	self.conns = {}
 	self.stopped = false
+	-- "Quick" pack fights play fast-forwarded the whole way (holding the screen does the same)
+	self.quick = setting("packFights", "Full") == "Quick"
 
 	local camera = workspace.CurrentCamera
 	self.camera = camera
@@ -85,7 +104,7 @@ function Director.play(script_, onDone)
 	Lighting.EnvironmentDiffuseScale = 0.3
 	Lighting.EnvironmentSpecularScale = 0.6
 	Lighting.FogEnd = 100000
-	Lighting.GlobalShadows = true
+	Lighting.GlobalShadows = setting("graphics", "High") ~= "Low"
 
 	-- post effects live on the camera, so only this cinematic uses them
 	local grade = Kit.TierGrade[self.tier] or Kit.TierGrade.Common
@@ -107,6 +126,7 @@ function Director.play(script_, onDone)
 	self.cam = CamRig.new(camera, self.tier, function(i)
 		return self.fighters[i]
 	end)
+	self.cam.shakeScale = Settings and Settings.ShakeScale[setting("shake", "Full")] or 1
 	controls(false)
 
 	-- skip button (appears after 0.5 s) and hold-to-fast-forward
@@ -152,7 +172,7 @@ function Director:timeScale()
 	if self.realClock < self.slowUntil then
 		s = self.slowScale or 0.25
 	end
-	if self.holding and not self.finishing then
+	if (self.holding or self.quick) and not self.finishing then
 		s *= FAST_FORWARD
 	end
 	return s

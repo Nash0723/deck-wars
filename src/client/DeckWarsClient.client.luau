@@ -15,6 +15,7 @@ local Shared = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(Shared:WaitForChild("CardData"))
 local StarterDecks = require(Shared:WaitForChild("StarterDecks"))
 local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
+local Settings = require(Shared:WaitForChild("Settings")) -- the player's settings (the Settings station)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MatchEvent = Remotes:WaitForChild("MatchEvent")
@@ -126,7 +127,7 @@ local function moveCamera(name, instant, seconds)
 end
 
 local function shakeCamera(strength)
-	cam.shake = math.max(cam.shake, strength)
+	cam.shake = math.max(cam.shake, strength * (cam.shakeScale or 1))
 end
 
 -- Lean the camera a little toward a point on the table (a fight), or back again with nil.
@@ -738,8 +739,9 @@ label(ui.menuUI, "DECK WARS", {
 	TextStrokeTransparency = 0,
 	TextXAlignment = Enum.TextXAlignment.Left,
 })
-label(ui.menuUI, "Click a part of the room, or use the buttons below", {
-	Size = UDim2.fromOffset(420, 24),
+label(ui.menuUI, "Click a part of the room or the buttons below. A / D or ← / → look around, S goes back", {
+	Name = "MenuHint",
+	Size = UDim2.fromOffset(620, 24),
 	Position = UDim2.fromOffset(26, 126),
 	Font = BODY_FONT,
 	TextStrokeTransparency = 0.4,
@@ -755,6 +757,130 @@ ui.stationTitle = label(ui.stationPanel, "", { Size = UDim2.new(1, -24, 0, 44), 
 ui.stationBody = make("Frame", { Size = UDim2.new(1, -24, 1, -70), Position = UDim2.fromOffset(12, 60), BackgroundTransparency = 1 }, ui.stationPanel)
 
 
+-- The Settings panel: built into the Settings station and into the in-match settings window.
+-- Every change goes through Settings.set, which applies it at once (see "Applying settings").
+ui.settingsLive = {} -- { scroll = ScrollingFrame, refresh = { fn, ... } } for every open settings panel
+do
+	local GOLD = Color3.fromRGB(255, 220, 90)
+	local IDLE = Color3.fromRGB(80, 80, 110)
+	local PICKED = Color3.fromRGB(240, 160, 50)
+	local TIP = Color3.fromRGB(190, 185, 205)
+	local ROWS = {
+		{ head = "Sound" },
+		{ key = "sfx", kind = "volume", name = "Sound effects" },
+		{ key = "music", kind = "volume", name = "Music" },
+		{ head = "Camera" },
+		{ key = "actionCam", kind = "toggle", name = "Action camera", tip = "Swoops in close for attacks, chants and spells." },
+		{ key = "lean", kind = "toggle", name = "Camera lean", tip = "With the action camera off, lean a little toward fights." },
+		{ key = "shake", kind = "choice", name = "Screen shake" },
+		{ head = "Game" },
+		{ key = "speed", kind = "choice", name = "Table speed", tip = "How fast moves play out on the table." },
+		{ key = "packFights", kind = "choice", name = "Pack fights", tip = "Quick plays every Pack Brawl fast-forwarded." },
+		{ head = "Graphics" },
+		{ key = "graphics", kind = "choice", name = "Quality", tip = "Low turns off shadows and glow for slower devices." },
+		{ key = "blur", kind = "toggle", name = "Background blur", tip = "Softly blurs the room far behind the table." },
+	}
+
+	function ui.buildSettings(parent)
+		local refresh = {}
+		local scroll = make("ScrollingFrame", {
+			Name = "SettingsList",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			CanvasSize = UDim2.new(),
+			ScrollBarThickness = 6,
+		}, parent)
+		make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
+		local order = 0
+		local function nextOrder()
+			order += 1
+			return order
+		end
+		for _, row in ipairs(ROWS) do
+			if row.head then
+				label(scroll, row.head, { Size = UDim2.new(1, -10, 0, 26), TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder() })
+			else
+				local key = row.key
+				local f = make("Frame", { Name = "Row_" .. key, Size = UDim2.new(1, -10, 0, row.tip and 58 or 40), BackgroundTransparency = 1, LayoutOrder = nextOrder() }, scroll)
+				label(f, row.name, { Size = UDim2.new(0.4, 0, 0, 34), Position = UDim2.fromOffset(0, 3), Font = BODY_FONT, TextScaled = false, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left })
+				if row.tip then
+					label(f, row.tip, { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 39), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = TIP, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true })
+				end
+				local area = make("Frame", { Size = UDim2.new(0.6, 0, 0, 34), Position = UDim2.new(0.4, 0, 0, 3), BackgroundTransparency = 1 }, f)
+				if row.kind == "toggle" then
+					local b = button(area, "", nil, function()
+						Settings.set(key, not Settings.get(key))
+					end, { Name = "Toggle_" .. key, Size = UDim2.fromScale(1, 1) })
+					table.insert(refresh, function()
+						local on = Settings.get(key)
+						b.Text = on and "On" or "Off"
+						b.BackgroundColor3 = on and PICKED or IDLE
+					end)
+				elseif row.kind == "choice" then
+					local choices = Settings.Choices[key]
+					local n = #choices
+					make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, area)
+					for i, c in ipairs(choices) do
+						local b = button(area, c, nil, function()
+							Settings.set(key, c)
+						end, { Name = key .. "_" .. c, Size = UDim2.new(1 / n, -4 * (n - 1) / n, 1, 0), LayoutOrder = i })
+						table.insert(refresh, function()
+							b.BackgroundColor3 = Settings.get(key) == c and PICKED or IDLE
+						end)
+					end
+				else -- volume: - [bar] +
+					button(area, "-", IDLE, function()
+						Settings.set(key, math.max(0, Settings.get(key) - 1))
+					end, { Name = key .. "_Down", Size = UDim2.new(0, 34, 1, 0) })
+					button(area, "+", IDLE, function()
+						Settings.set(key, math.min(Settings.VolumeMax, Settings.get(key) + 1))
+					end, { Name = key .. "_Up", Size = UDim2.new(0, 34, 1, 0), Position = UDim2.new(1, -34, 0, 0) })
+					local bar = make("Frame", { Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 40, 0.5, -10), BackgroundColor3 = Color3.fromRGB(25, 22, 35) }, area)
+					corner(bar, 8)
+					local fill = make("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = PICKED }, bar)
+					corner(fill, 8)
+					local value = label(bar, "", { Name = "Value_" .. key, ZIndex = 2, Font = BODY_FONT, TextScaled = false, TextSize = 14, TextStrokeTransparency = 0.3 })
+					table.insert(refresh, function()
+						local v = Settings.get(key)
+						fill.Size = UDim2.fromScale(v / Settings.VolumeMax, 1)
+						fill.Visible = v > 0
+						value.Text = v == 0 and "Off" or (math.floor(v / Settings.VolumeMax * 100 + 0.5) .. "%")
+					end)
+				end
+			end
+		end
+		label(scroll, "Keys: A / ← and D / → move between the stations in the room, S / ↓ goes back. On a gamepad: D-pad or bumpers, B goes back.", {
+			Size = UDim2.new(1, -10, 0, 48),
+			Font = BODY_FONT,
+			TextScaled = false,
+			TextSize = 13,
+			TextWrapped = true,
+			TextColor3 = TIP,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = nextOrder(),
+		})
+		button(scroll, "Reset to defaults", Color3.fromRGB(110, 60, 70), function()
+			Settings.reset()
+		end, { Name = "ResetSettings", Size = UDim2.new(1, -10, 0, 40), LayoutOrder = nextOrder() })
+		label(scroll, "Settings are saved to your account and come back next time you play.", {
+			Size = UDim2.new(1, -10, 0, 34),
+			Font = BODY_FONT,
+			TextScaled = false,
+			TextSize = 12,
+			TextWrapped = true,
+			TextColor3 = TIP,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = nextOrder(),
+		})
+		for _, fn in ipairs(refresh) do
+			fn()
+		end
+		table.insert(ui.settingsLive, { scroll = scroll, refresh = refresh })
+		return scroll
+	end
+end
 
 local selectStation
 do
@@ -923,7 +1049,9 @@ do
 			key = "Radio",
 			name = "Settings",
 			show = function()
-				showComingSoon("Settings", "Music and sound settings will live in this radio.\n\nComing in a later update.")
+				clearBody()
+				ui.stationTitle.Text = "Settings"
+				ui.buildSettings(ui.stationBody)
 			end,
 		},
 	}
@@ -932,28 +1060,86 @@ do
 		stationByKey[s.key] = s
 	end
 
+	-- Which station the camera is at (nil = the overview), and its nav button lit up.
+	local current = nil
+	local navButtons = {}
+	local NAV_IDLE = Color3.fromRGB(70, 60, 110)
+	local NAV_HERE = Color3.fromRGB(160, 115, 40)
+	local function markNav()
+		for key, b in pairs(navButtons) do
+			b.BackgroundColor3 = key == current and NAV_HERE or NAV_IDLE
+		end
+	end
+
 	function selectStation(key)
 		local s = stationByKey[key]
 		if not s or mode ~= "menu" then
 			return
 		end
+		current = key
+		markNav()
 		moveCamera(key)
 		ui.stationPanel.Visible = true
 		s.show()
 	end
 
-	for i, s in ipairs(STATIONS) do
-		button(ui.navBar, s.name, Color3.fromRGB(70, 60, 110), function()
-			selectStation(s.key)
-		end, { LayoutOrder = i, Size = UDim2.fromOffset(150, 52) })
-	end
-	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), function()
+	local function goBack()
+		current = nil
+		markNav()
 		ui.stationPanel.Visible = false
 		if ui.collectionUI then
 			ui.collectionUI.Visible = false
 		end
 		moveCamera("Overview")
-	end, { LayoutOrder = 99, Size = UDim2.fromOffset(110, 52) })
+	end
+	ui.resetNav = function() -- (leaving a match puts the camera back at the overview)
+		current = nil
+		markNav()
+	end
+
+	for i, s in ipairs(STATIONS) do
+		navButtons[s.key] = button(ui.navBar, s.name, NAV_IDLE, function()
+			selectStation(s.key)
+		end, { LayoutOrder = i, Size = UDim2.fromOffset(150, 52) })
+	end
+	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), goBack, { LayoutOrder = 99, Size = UDim2.fromOffset(110, 52) })
+
+	-- Keyboard / gamepad: A or Left goes to the station before, D or Right to the next one
+	-- (in the order of the buttons, wrapping around); S, Down or Backspace go back to the overview.
+	local PREV = { [Enum.KeyCode.A] = true, [Enum.KeyCode.Left] = true, [Enum.KeyCode.DPadLeft] = true, [Enum.KeyCode.ButtonL1] = true }
+	local NEXT = { [Enum.KeyCode.D] = true, [Enum.KeyCode.Right] = true, [Enum.KeyCode.DPadRight] = true, [Enum.KeyCode.ButtonR1] = true }
+	local BACK = { [Enum.KeyCode.S] = true, [Enum.KeyCode.Down] = true, [Enum.KeyCode.Backspace] = true, [Enum.KeyCode.ButtonB] = true }
+	local function stepStation(dir)
+		local index = nil
+		for i, s in ipairs(STATIONS) do
+			if s.key == current then
+				index = i
+			end
+		end
+		if not index then
+			index = dir > 0 and 1 or #STATIONS
+		else
+			index = (index - 1 + dir) % #STATIONS + 1
+		end
+		selectStation(STATIONS[index].key)
+	end
+	UserInputService.InputBegan:Connect(function(input)
+		-- (not "processed by GUI": the room has no text boxes, and a focused button must not eat the keys)
+		if mode ~= "menu" or UserInputService:GetFocusedTextBox() then
+			return
+		end
+		local k = input.KeyCode
+		if k == nil then
+			return
+		end
+		if PREV[k] then
+			stepStation(-1)
+		elseif NEXT[k] then
+			stepStation(1)
+		elseif BACK[k] and current then
+			goBack()
+		end
+	end)
 end
 
 -- Clicking and hovering over stations in the 3D room
@@ -1022,12 +1208,116 @@ button(ui.matchUI, "Leave", Color3.fromRGB(110, 60, 70), function()
 end, { Size = UDim2.fromOffset(100, 40), Position = UDim2.new(1, -16, 0, 16), AnchorPoint = Vector2.new(1, 0) })
 -- Turns the action camera on or off (it glides back to your seat when turned off).
 ui.camButton = button(ui.matchUI, actionCam.on and "🎥 Action cam: On" or "🎥 Action cam: Off", Color3.fromRGB(70, 85, 125), function()
-	actionCam.on = not actionCam.on
-	if not actionCam.on then
-		actionCam.release(0)
-	end
-	ui.camButton.Text = actionCam.on and "🎥 Action cam: On" or "🎥 Action cam: Off"
+	Settings.set("actionCam", not actionCam.on) -- (applied below, under "Applying settings")
 end, { Name = "ActionCamButton", Size = UDim2.fromOffset(200, 32), Position = UDim2.new(1, -16, 0, 274), AnchorPoint = Vector2.new(1, 0) })
+
+-- The in-match settings window (the same options as the Settings station in the room).
+ui.matchSettings = panel(ui.matchUI, UDim2.fromOffset(420, 540), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+ui.matchSettings.Name = "MatchSettings"
+ui.matchSettings.Visible = false
+ui.matchSettings.ZIndex = 10
+label(ui.matchSettings, "Settings", { Size = UDim2.new(1, -24, 0, 40), Position = UDim2.fromOffset(12, 8), TextColor3 = Color3.fromRGB(255, 220, 90) })
+button(ui.matchSettings, "Done", Color3.fromRGB(60, 180, 90), function()
+	ui.matchSettings.Visible = false
+end, { Name = "SettingsDone", Size = UDim2.new(1, -24, 0, 42), Position = UDim2.new(0, 12, 1, -52) })
+do
+	local body = make("Frame", { Size = UDim2.new(1, -24, 1, -116), Position = UDim2.fromOffset(12, 54), BackgroundTransparency = 1 }, ui.matchSettings)
+	ui.buildSettings(body)
+end
+button(ui.matchUI, "⚙ Settings", Color3.fromRGB(70, 85, 125), function()
+	ui.matchSettings.Visible = not ui.matchSettings.Visible
+end, { Name = "SettingsButton", Size = UDim2.fromOffset(200, 32), Position = UDim2.new(1, -16, 0, 312), AnchorPoint = Vector2.new(1, 0) })
+
+---------------------------------------------------------------------------
+-- Applying settings: every change takes effect at once and is saved to your account
+---------------------------------------------------------------------------
+do
+	local Lighting = game:GetService("Lighting")
+	local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
+	local baseShadows = Lighting.GlobalShadows
+	local baseBloom = bloom and bloom.Enabled
+	local lampShadows = {} -- [light] = whether it casts shadows on High
+	for _, d in ipairs(room:GetDescendants()) do
+		if d:IsA("Light") then
+			lampShadows[d] = d.Shadows
+		end
+	end
+
+	local function apply(key, value)
+		if key == "speed" then
+			PACE = Settings.Pace[value] or 1
+		elseif key == "actionCam" then
+			actionCam.on = value
+			if not value then
+				actionCam.release(0)
+			end
+			ui.camButton.Text = value and "🎥 Action cam: On" or "🎥 Action cam: Off"
+		elseif key == "lean" then
+			ATTACK_CAMERA = value
+			if not value then
+				cam.leanTarget = 0
+			end
+		elseif key == "shake" then
+			cam.shakeScale = Settings.ShakeScale[value] or 1
+			if value == "Off" then
+				cam.shake = 0
+			end
+		elseif key == "graphics" then
+			local low = value == "Low"
+			Lighting.GlobalShadows = baseShadows and not low
+			if bloom then
+				bloom.Enabled = baseBloom and not low
+			end
+			for light, shadows in pairs(lampShadows) do
+				if light.Parent then
+					light.Shadows = shadows and not low
+				end
+			end
+		elseif key == "blur" then
+			if depthOfField then
+				depthOfField.Enabled = value
+			end
+		end
+		-- (sfx and music are read by Pack Brawl's sound player each time a brawl starts)
+	end
+	for key, value in pairs(Settings.Values) do
+		apply(key, value)
+	end
+
+	local saveQueued = false
+	local changedHere = false
+	Settings.onChanged(function(key, value, fromLoad)
+		apply(key, value)
+		for i = #ui.settingsLive, 1, -1 do
+			local open = ui.settingsLive[i]
+			if open.scroll.Parent == nil then
+				table.remove(ui.settingsLive, i)
+			else
+				for _, fn in ipairs(open.refresh) do
+					fn()
+				end
+			end
+		end
+		if not fromLoad then
+			changedHere = true
+			if not saveQueued then
+				-- wait a moment so clicking + five times is one save
+				saveQueued = true
+				task.delay(1.5, function()
+					saveQueued = false
+					MenuAction:FireServer("SaveSettings", Settings.Values)
+				end)
+			end
+		end
+	end)
+	MenuAction.OnClientEvent:Connect(function(what, data)
+		-- your saved settings arrive from the server (ignored if you already changed something)
+		if what == "Settings" and not changedHere then
+			Settings.load(data)
+		end
+	end)
+	MenuAction:FireServer("LoadSettings")
+end
 
 -- The hand sits low: cards peek out of the bottom of the screen and lift when you hover them.
 ui.handFrame = make("Frame", { Size = UDim2.new(1, -680, 0, 160), Position = UDim2.new(0.5, 0, 1, 52), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, ui.matchUI)
@@ -4271,6 +4561,8 @@ local function exitMatch()
 	queue = {}
 	turnEndsAt = 0
 	hideCharacter(false)
+	ui.resetNav()
+	ui.matchSettings.Visible = false
 	moveCamera("Overview", false, 1.6)
 end
 

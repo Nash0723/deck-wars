@@ -1129,6 +1129,9 @@ end
 function methods.GetMouseLocation()
 	return Vector2.new(640, 360)
 end
+function methods.GetFocusedTextBox()
+	return nil
+end
 function methods.GetPlayers()
 	return { M.localPlayer }
 end

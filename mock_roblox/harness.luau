@@ -50,7 +50,7 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 -- Pack Brawl (the Pack Party corner's pull cinematic)
@@ -353,6 +353,71 @@ do
 end
 
 ---------------------------------------------------------------------------
+-- Scenario 1c: A / D (and the arrow keys) walk between the stations, and the Settings station
+---------------------------------------------------------------------------
+do
+	local errors0 = M.errors
+	local SettingsMod = makeEnv(clientScript, clientCache).require(ReplicatedStorage.DeckWars.Settings)
+	local saves = {}
+	remotes.MenuAction.OnServerEvent:Connect(function(_, what, data)
+		if what == "SaveSettings" then
+			table.insert(saves, data)
+		end
+	end)
+	local function key(k)
+		UserInputService.InputBegan:Fire({ UserInputType = Enum.UserInputType.Keyboard, KeyCode = k }, false)
+		M.advance(1.4)
+	end
+	local function camNear(x, y, z)
+		return (camera.CFrame.Position - Vector3.new(x, y, z)).Magnitude < 1.5
+	end
+	local function named(name)
+		return find(function(d)
+			return d.Name == name
+		end)
+	end
+	check(SettingsMod.get("sfx") == 8, "settings start at the defaults (no saved settings in the mock)")
+	key(Enum.KeyCode.D)
+	check(labelWithText("Pick your deck") ~= nil and camNear(0, 16, 23), "D from the overview goes to the Duel Table")
+	key(Enum.KeyCode.Right)
+	check(camNear(-9, 8, 0) and labelWithText("Deck Shelf") ~= nil, "Right goes on to the Deck Shelf")
+	key(Enum.KeyCode.A)
+	check(labelWithText("Pick your deck") ~= nil, "A goes back to the Duel Table")
+	key(Enum.KeyCode.Left)
+	check(camNear(-13, 6.2, -13) and labelWithText("Sound effects") ~= nil, "Left from the Duel Table wraps around to Settings")
+	key(Enum.KeyCode.D)
+	check(labelWithText("Pick your deck") ~= nil, "D from Settings wraps around to the Duel Table")
+	key(Enum.KeyCode.A)
+	-- change a few settings
+	click(named("Toggle_actionCam"), "Action camera toggle")
+	check(SettingsMod.get("actionCam") == false and named("Toggle_actionCam").Text == "Off", "Action camera turns off")
+	click(named("shake_Off"), "Screen shake Off")
+	click(named("speed_Fast"), "Table speed Fast")
+	click(named("sfx_Down"), "Sound effects -")
+	click(named("music_Up"), "Music +")
+	check(SettingsMod.get("shake") == "Off" and SettingsMod.get("speed") == "Fast", "choice buttons change the settings")
+	check(named("Value_sfx").Text == "70%" and SettingsMod.get("music") == 7, "volume buttons step by 10%")
+	M.advance(2)
+	local last = saves[#saves]
+	check(#saves == 1 and last and last.actionCam == false and last.sfx == 7, "changes are sent to the server once, a moment later (" .. #saves .. " saves)")
+	-- the menu hides the in-match copy, but it follows along
+	local matchCopy = nil
+	for _, d in ipairs(playerGui:GetDescendants()) do
+		if d.Name == "Toggle_actionCam" and d ~= named("Toggle_actionCam") then
+			matchCopy = d
+		end
+	end
+	check(matchCopy ~= nil and matchCopy.Text == "Off", "the in-match settings window shows the same values")
+	click(named("ResetSettings"), "Reset to defaults")
+	check(SettingsMod.get("actionCam") == true and SettingsMod.get("speed") == "Normal" and named("Toggle_actionCam").Text == "On", "Reset puts the defaults back")
+	key(Enum.KeyCode.S)
+	check(camNear(0, 15, 22) and labelWithText("Pick your deck") == nil and labelWithText("Sound effects") == nil, "S goes back to the overview")
+	key(Enum.KeyCode.Down)
+	check(camNear(0, 15, 22), "Down at the overview stays put")
+	check(M.errors == errors0, "keyboard + settings: no script errors")
+end
+
+---------------------------------------------------------------------------
 -- Scenario 2: full matches
 ---------------------------------------------------------------------------
 local function myTurn()
@@ -606,6 +671,12 @@ check(camStats.closeSamples > 0 and camStats.minY < 11, "the action camera moved
 -- never happened to use them.
 ---------------------------------------------------------------------------
 startMatch("Haunted Mall", "Easy")
+do
+	click(buttonWithText("⚙ Settings"), "⚙ Settings")
+	check(labelWithText("Table speed") ~= nil, "the settings window opens in a match")
+	click(buttonWithText("Done"), "Done")
+	check(labelWithText("Table speed") == nil, "Done closes the settings window")
+end
 do
 	local mine, theirs, view = nil, nil, nil
 	local t = 0

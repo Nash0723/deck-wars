@@ -6,6 +6,22 @@
 local SoundService = game:GetService("SoundService")
 local Kit = require(script.Parent:WaitForChild("Kit"))
 
+-- The player's volume settings (ReplicatedStorage.DeckWars.Settings); full volume if it is missing.
+local Settings = nil
+pcall(function()
+	local shared = game:GetService("ReplicatedStorage"):FindFirstChild("DeckWars")
+	local m = shared and shared:FindFirstChild("Settings")
+	if m then
+		Settings = require(m)
+	end
+end)
+local function volumeOf(key)
+	return Settings and Settings.volume(key) or 1
+end
+
+local MUSIC = { brawl = true, theme = true }
+local SFX_VOLUME, MUSIC_VOLUME = 0.8, 0.8
+
 local Sfx = {}
 Sfx.__index = Sfx
 
@@ -20,7 +36,8 @@ Sfx.Names = {
 function Sfx.new(parentForGroup)
 	local self = setmetatable({}, Sfx)
 	self.templates = SoundService:FindFirstChild("PackBrawlSounds")
-	self.group = Kit.make("SoundGroup", { Name = "PackBrawl", Volume = 0.8 }, parentForGroup or SoundService)
+	self.group = Kit.make("SoundGroup", { Name = "PackBrawl", Volume = SFX_VOLUME * volumeOf("sfx") }, parentForGroup or SoundService)
+	self.musicGroup = Kit.make("SoundGroup", { Name = "PackBrawlMusic", Volume = MUSIC_VOLUME * volumeOf("music") }, parentForGroup or SoundService)
 	self.playing = {}
 	self.music = nil
 	self.speed = 1
@@ -37,7 +54,7 @@ function Sfx:play(name, volume, startAt)
 		return nil
 	end
 	local s = tpl:Clone()
-	s.SoundGroup = self.group
+	s.SoundGroup = MUSIC[name] and self.musicGroup or self.group
 	if volume then
 		s.Volume = volume
 	end
@@ -94,10 +111,11 @@ end
 -- Fades everything out (skip) and cleans up.
 function Sfx:fadeOut(dur, fx)
 	self.muted = true
-	local g = self.group
-	local start = g.Volume
+	local g, m = self.group, self.musicGroup
+	local start, startMusic = g.Volume, m.Volume
 	fx:anim(dur, function(a)
 		g.Volume = start * (1 - a)
+		m.Volume = startMusic * (1 - a)
 	end, function()
 		self:cut()
 	end)
@@ -106,6 +124,7 @@ end
 function Sfx:destroy()
 	self:cut()
 	self.group:Destroy()
+	self.musicGroup:Destroy()
 end
 
 return Sfx

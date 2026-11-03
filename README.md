@@ -78,7 +78,9 @@ GitHub runs the rules tests and the Pack Brawl tests and builds both place files
 | `docs/` | Pictures for this README |
 
 ## How to play
-- In the menu room, click the Duel Table (or the button at the bottom). Pick a deck and a bot difficulty, then press "Sit down and play!".
+- In the menu room, click a station or a button at the bottom, or press **A / ←** and **D / →** to go to the station before or after (it wraps around; on a gamepad the D-pad or bumpers). **S / ↓** (or Backspace, gamepad B) goes back to the room view. The station you're at has its button lit up.
+- The **Settings** station (the radio) has: Sound effects and Music volume, Action camera, Camera lean, Screen shake (Off, Low, Full), Table speed (Slow, Normal, Fast), Pack fights (Full, or Quick = always fast-forwarded), Quality (High, or Low = no shadows or glow, for slower devices) and Background blur, plus Reset to defaults. In a match the **⚙ Settings** button opens the same options. Changes apply at once and are saved to your Roblox account.
+- Click the Duel Table (or its button). Pick a deck and a bot difficulty, then press "Sit down and play!".
 - Each turn you get 1 more energy (up to 8) and draw a card. The first player starts with 4 cards and skips the draw on their very first turn; the second player starts with 5.
 - **Play a card:** click it in your hand. Gold tiles show where it can go: creatures go on your back two rows (or next to your Bunny Burrow), and buildings go anywhere in your half. Spells that need a target light up what they can hit.
 - **Command a creature:** your creatures that can still act glow green. Click one: blue tiles are where it can walk (1 tile, or 2 if it's Fast), green tiles are friends it can swap places with, and red ones are what it can hit (on the 8 tiles around it, or 2 tiles away if it's Ranged). The buttons under the message are its other commands: **🛡 Defend** (until your next turn it takes 1 less damage and hits back 1 harder) and its family chant (like **✨ Picnic · 2⚡**). A grey chant button tells you why it can't be used right now. When the creature stands in the enemy's half, the enemy hero's pedestal glows red, so click the hero to hit it. New creatures sleep (zZ) for a turn unless they have Zoom.
@@ -103,9 +105,8 @@ GitHub runs the rules tests and the Pack Brawl tests and builds both place files
 | Turn length | ServerScriptService > MatchServer, `TURN_SECONDS` | 90 |
 | Bot's pause before its turn | MatchServer, `BOT_TURN_START_PAUSE` | 1.5 |
 | Bot's pause before each action | MatchServer, `BOT_THINK_SECONDS` | play 2.0, move 1.2, attack 1.4, defend 1.0, chant 1.6 |
-| Speed of all table animations | StarterPlayer > StarterPlayerScripts > DeckWarsClient, `PACE` | 1.0 (1.5 = slower, 0.7 = faster) |
-| Action camera on or off at the start of a match | DeckWarsClient, `ACTION_CAMERA` | true (players can still switch it with the 🎥 button) |
-| Small lean toward fights when the action camera is off | DeckWarsClient, `ATTACK_CAMERA` | true |
+| Speed of all table animations | players pick Slow / Normal / Fast in Settings; the numbers are `Settings.Pace` in ReplicatedStorage > DeckWars > Settings | Normal = 1.0 (Slow 1.3, Fast 0.75) |
+| Default settings for new players (volumes, action camera, shake, speed...) | ReplicatedStorage > DeckWars > Settings, `Settings.Defaults` | see the file |
 | Where the camera sits on your turn and on the bot's turn | DeckWarsClient, `SeatYou` and `SeatOpp` in the `CAMS` list near the top | position, the point it looks at, and the zoom (field of view) |
 
 ## Change cards and rules
@@ -142,7 +143,8 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 - **Simulated Studio:** the Studio scripts ran in a simulated Roblox that checks every property, enum and method name against Roblox's API list. It played 6 full matches through the real menus, buttons and table clicks, plus an idle match ended by the turn timer, leaving mid-match and junk data from a cheating client, and replayed every animation on a real board. New checks for this update: every combo animation (Power, Soak, Zap, Scrap, Upload, Sandwich, Combo, spell cast and heal) plays without errors, Scrap heaps show on their tile, the line under a creature shows ⚡ Power and 💧 Soaked, the log calls out a Combo, creatures stand on round bases, and the dark screen edges are on during a match. All 79 checks passed with 0 errors and 0 warnings.
 - It has **not** been opened in real Roblox Studio yet (that can't be done from here). The new lighting was judged with a rough preview render (`docs/table_preview.png`: the last version on top, this one below), not Roblox's own renderer, so brightness is the thing most likely to need a tweak. If the board looks too dark on your screen, raise Lighting > ExposureCompensation a little (see "Change the lighting"); if it's still too bright, lower it. If you see a red error in Studio's Output window, copy it to me.
 - Realistic lighting with shadows is heavier on old phones. If it runs slowly, set Lighting > PrioritizeLightingQuality to off.
-- Known limits: one duel table, so only one player per server should play a bot at a time. No sound yet. Playing friends, building your own decks, opening packs and saving progress come in step 3.
+- **Settings update:** a new 12-step check in the simulated Studio walks the stations with A, D and the arrow keys (including wrapping around both ways), changes settings through the real buttons, checks they reach the server once (not on every click) and that the in-match window shows the same values, then Reset and S back to the room. The rules tests check that the server throws away bad saved settings. Saving to a DataStore can't run in the simulator, so test it in Studio: turn on Game Settings > Security > "Enable Studio Access to API Services", change a setting, stop, play again. Without that switch settings simply reset every time you play; nothing breaks.
+- Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends, building your own decks, opening packs and saving progress come in step 3.
 
 
 ## Pack Brawl: the pack-opening cinematic
@@ -178,12 +180,9 @@ Rarity tiers are now Common, Rare, Epic, Mythic, Legendary, Secret (low to high)
 | `Sfx`, `Reveal` | Sound and the card reveal / 10-card fan |
 
 ### Sounds
-All sounds were made from scratch for this project by `tools/make_sounds.py` (no samples), so you own them. The place has a Sound for each one in SoundService > PackBrawlSounds, with an empty SoundId, so the cinematic is silent until you add them:
+All sounds were made from scratch for this project by `tools/make_sounds.py` (no samples), so you own them. Nash uploaded them to Roblox, and their ids are in the project files (SoundService > PackBrawlSounds in `default.project.json` and `pullcinematic.project.json`), so every build has sound. Music (`brawl`, `theme`) plays through its own SoundGroup so the Music and Sound effects settings work separately.
 
-1. In Studio open View > Asset Manager, click Bulk Import, and pick every file in `assets/sounds/`.
-2. For each Sound in SoundService > PackBrawlSounds, click its SoundId in Properties and pick the upload with the same name.
-
-You can also paste a Creator Store sound id into any of them instead.
+To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pick a Creator Store sound, and paste its id into the matching `SoundId` in both project files (or in Studio, SoundService > PackBrawlSounds).
 
 ### Where to tweak it
 - Lengths, who crashes in and when: `Scripts.luau` (one function per tier).

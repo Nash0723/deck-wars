@@ -12,6 +12,7 @@ local StarterDecks = require(Shared:WaitForChild("StarterDecks"))
 local CardData = require(Shared:WaitForChild("CardData"))
 local Rng = require(Shared:WaitForChild("Rng"))
 local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
+local Settings = require(Shared:WaitForChild("Settings"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MatchEvent = Remotes:WaitForChild("MatchEvent") -- server -> client: board updates
@@ -417,8 +418,85 @@ MatchAction.OnServerEvent:Connect(function(player, raw)
 	end
 end)
 
+---------------------------------------------------------------------------
+-- Player settings: kept in a DataStore so they are the same next visit.
+-- In Studio this only works with Game Settings > Security > "Enable Studio Access to API
+-- Services" turned on; without it (or if Roblox's DataStores are down) settings just
+-- last until the player leaves, and nothing breaks.
+---------------------------------------------------------------------------
+local SETTINGS_SAVE_GAP = 15 -- seconds between DataStore writes per player (Roblox limits writes)
+local settingsStore = nil
+pcall(function()
+	settingsStore = game:GetService("DataStoreService"):GetDataStore("DeckWarsSettings_v1")
+end)
+local playerSettings = {} -- [player] = { values = {...}, dirty = bool, lastSave = time }
+
+local function settingsKey(player)
+	return "u" .. player.UserId
+end
+
+local function loadSettings(player)
+	local entry = playerSettings[player]
+	if entry then
+		return entry
+	end
+	entry = { values = Settings.sanitize(nil), dirty = false, lastSave = 0, loaded = false }
+	playerSettings[player] = entry
+	if settingsStore then
+		local ok, data = pcall(function()
+			return settingsStore:GetAsync(settingsKey(player))
+		end)
+		if ok and type(data) == "table" and not entry.dirty then -- (a save that came in meanwhile wins)
+			entry.values = Settings.sanitize(data)
+		end
+	end
+	entry.loaded = true
+	return entry
+end
+
+local function saveSettings(player, entry)
+	if not settingsStore or not entry.dirty then
+		return
+	end
+	entry.dirty = false
+	entry.lastSave = os.clock()
+	local values = entry.values
+	local ok, err = pcall(function()
+		settingsStore:SetAsync(settingsKey(player), values)
+	end)
+	if not ok then
+		warn("Deck Wars: could not save settings for " .. player.Name .. ": " .. tostring(err))
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(5)
+		for player, entry in pairs(playerSettings) do
+			if entry.dirty and os.clock() - entry.lastSave >= SETTINGS_SAVE_GAP then
+				task.spawn(saveSettings, player, entry)
+			end
+		end
+	end
+end)
+
+pcall(function()
+	game:BindToClose(function()
+		for player, entry in pairs(playerSettings) do
+			saveSettings(player, entry)
+		end
+	end)
+end)
+
 MenuAction.OnServerEvent:Connect(function(player, what, options)
-	if what == "StartBotMatch" and type(options) == "table" then
+	if what == "LoadSettings" then
+		local entry = loadSettings(player)
+		MenuAction:FireClient(player, "Settings", entry.values)
+	elseif what == "SaveSettings" and type(options) == "table" then
+		local entry = loadSettings(player)
+		entry.values = Settings.sanitize(options)
+		entry.dirty = true
+	elseif what == "StartBotMatch" and type(options) == "table" then
 		startBotMatch(player, options.deck, options.difficulty)
 	elseif what == "LeaveMatch" then
 		local info = matches[player]
@@ -432,5 +510,10 @@ Players.PlayerRemoving:Connect(function(player)
 	local info = matches[player]
 	if info then
 		endMatch(info, "left")
+	end
+	local entry = playerSettings[player]
+	if entry then
+		playerSettings[player] = nil
+		saveSettings(player, entry)
 	end
 end)
