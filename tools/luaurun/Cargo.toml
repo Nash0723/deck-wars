@@ -1,0 +1,11 @@
+[package]
+name = "luaurun"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny Luau runner for the Deck Wars tests, balance runs and the mock Roblox harness"
+
+[dependencies]
+mlua = { version = "0.10", features = ["luau", "vendored"] }
+
+[profile.release]
+opt-level = 3

@@ -1,0 +1,112 @@
+import re
+from cards import C
+# Cards that pick a target. Spells in REQUIRED must have one; creatures can be played without one.
+TARGET = {
+ "pillow_bunny":"otherFriendlyCreature","escalator_wraith":"enemyCreatureCost3","laundry_bot_3000":"enemyCreature",
+ "wrong_turn":"enemyCreature","coin_flip_fury":"enemyCreature","bubble_wrap":"anyCreature","pep_talk":"anyCreature",
+ "terrain_shift":"tileAndTerrain","pothole":"enemyCreatureAtk3","water_balloon":"enemyCreature",
+}
+REQUIRED = {"wrong_turn","coin_flip_fury","bubble_wrap","pep_talk","terrain_shift","pothole","water_balloon"}
+KEYWORDS = ("Zoom","Fast","Ranged","Sturdy","Splash","Haunt","Pack","Zap","Grudge")
+CHANTS = """-- Creature commands. On its turn a creature can walk (or swap places with one of your
+-- creatures next to it), then do ONE of these: Attack, Defend or Chant.
+-- Defend: until your next turn it takes DefendArmor less damage and hits back DefendCounter harder.
+CardData.DefendArmor = 1
+CardData.DefendCounter = 1
+-- A creature brought back by Raise only fades away when it pops again: no Ghost, no "when a creature pops" effects.
+-- (In 1,080 bot games Haunted Mall won about 63% without this rule.)
+CardData.RaisedFades = true
+-- Every family has its own chant: a bit of magic that costs energy and is used instead of attacking.
+-- cost = energy, amount = how much it heals, hurts or gives, range = how many tiles away it reaches.
+-- If you change a number, change the text too.
+CardData.ChantOrder = { "Snack", "Junk", "Weather", "Critter", "Spooky", "Robo" }
+CardData.Chants = {
+\tSnack = { id = "picnic", name = "Picnic", cost = 2, amount = 2, text = "Heals itself and your creatures next to it 2 (Snacks get Power, even at full health)" },
+\tJunk = { id = "scrap_toss", name = "Scrap Toss", cost = 1, amount = 1, range = 2, target = "enemy", text = "Throws scrap: 1 damage to an enemy up to 2 tiles away" },
+\tWeather = { id = "gust", name = "Gust", cost = 1, amount = 1, range = 2, target = "enemyCreature", text = "Blows an enemy creature up to 2 tiles away 1 tile back and Soaks it. If something is in the way, it takes 1 damage instead" },
+\tCritter = { id = "call_a_friend", name = "Call a Friend", cost = 2, text = "A 1/1 Pigeon flies in next to it" },
+\tSpooky = { id = "raise", name = "Raise", cost = 2, amount = 1, text = "Brings back your last creature that popped, next to it, with 1 health. Once per turn. If it pops again, it just fades away (no Ghost, no pop effects)" },
+\tRobo = { id = "power_up", name = "Power Up", cost = 1, amount = 1, text = "Gets 1 Power (+1 attack, up to 3)" },
+}
+
+-- Combos and build-up (see the design doc's "Combos and strategy").
+-- Power: counters on a creature, +1 attack each, up to PowerMax.
+CardData.PowerMax = 3
+-- Sandwich: an attack on an enemy with another of your creatures right behind it deals this much more.
+CardData.SandwichBonus = 1
+-- Soak: a Soaked creature takes SoakBonus more damage from the next hit, then dries off.
+-- Zap creatures deal ZapBonus more on top of that to Soaked creatures.
+CardData.SoakBonus = 1
+CardData.ZapBonus = 2
+-- Pack: +1 attack for each friendly Critter next to it, up to PackMax.
+CardData.PackMax = 2
+-- Scrap: Junk creatures and buildings leave Scrap when they pop, up to ScrapMax on one tile.
+-- A Junk creature that steps on Scrap picks it up: +ScrapGain/+ScrapGain for each one.
+CardData.ScrapMax = 3
+CardData.ScrapGain = 1
+-- Each family's own way to build up strength (shown in the deck picker and card previews).
+CardData.FamilyRules = {
+	Snack = { name = "Sweet Tooth", text = "Snacks get 1 Power whenever they're healed, even at full health" },
+	Junk = { name = "Scrap", text = "Junk creatures and buildings leave Scrap when they pop. A Junk creature that steps on Scrap picks it up: +1/+1 each" },
+	Weather = { name = "Soak", text = "Weather cards Soak enemies. A Soaked creature takes +1 damage from the next hit, then dries off" },
+	Critter = { name = "Pack", text = "Every Critter gets +1 attack for each friendly Critter next to it (up to +2)" },
+	Spooky = { name = "Grudge", text = "Grudge creatures get 1 Power whenever another friendly creature pops" },
+	Robo = { name = "Upload", text = "When a Robo pops, its Power jumps to a friendly Robo next to it" },
+}
+-- Rules every deck uses, for help screens.
+CardData.RuleText = {
+	Sandwich = "Attack an enemy that has another of your creatures right behind it: +1 damage",
+	Combo = "The Combo bonus happens if you already played another card of the same family this turn",
+	Power = "+1 attack for each Power, up to 3",
+	Charge = "Gets 1 Power at the start of each of your next turns, this many times",
+	Soak = "A Soaked creature takes +1 damage from the next hit, then dries off",
+	Scrap = "Left by popped Junk and buildings. Junk creatures that step on it get +1/+1 each",
+}
+"""
+def lua_str(s): return '"' + s.replace('\\','\\\\').replace('"','\\"') + '"'
+out=["-- Deck Wars card list. Generated by gen_carddata.py from cards.py (the design doc's card table).","-- Edit numbers here; abilities live in MatchEngine (onPlay, castSpell, startTurn and the aura helpers).","","local CardData = {}",""]
+out.append('CardData.Rarities = { "Common", "Uncommon", "Rare", "Legendary", "Mythic", "Secret" }')
+out.append('CardData.RarityColors = { Common = {150,150,150}, Uncommon = {80,190,90}, Rare = {60,130,230}, Legendary = {240,190,40}, Mythic = {220,50,60}, Secret = {255,255,255} }')
+out.append('CardData.Families = { "Snack", "Junk", "Weather", "Critter", "Spooky", "Robo" }')
+out.append('CardData.FamilyColors = { Snack = {255,150,90}, Junk = {140,130,110}, Weather = {120,190,255}, Critter = {150,220,110}, Spooky = {170,110,220}, Robo = {200,200,215}, Any = {240,240,240} }')
+out.append('CardData.Terrains = { Snack = "Soda Swamp", Junk = "Glitter Junkyard", Weather = "Static Snowfield", Critter = "Pillow Peaks", Spooky = "Mushroom Mall", Robo = "Lava Laundromat" }')
+out.append('CardData.Keywords = { "Zoom", "Fast", "Ranged", "Sturdy", "Splash", "Haunt", "Pack", "Zap", "Grudge" }')
+out.append('CardData.KeywordText = {\n\tZoom = "Can move and attack the turn it\'s played",\n\tFast = "Walks up to 2 tiles",\n\tRanged = "Attacks up to 2 tiles away",\n\tSturdy = "Takes 1 less damage",\n\tSplash = "Its attacks also hit enemies next to the target for 1",\n\tHaunt = "Leaves a 1/1 Ghost when it pops",\n\tPack = "+1 attack for each friendly Critter next to it (up to +2)",\n\tZap = "Deals 2 more damage to Soaked creatures",\n\tGrudge = "Gets 1 Power whenever another friendly creature pops",\n}')
+out.append('CardData.Heroes = {\n\tbonk = { id = "bonk", name = "Bonk", bigMove = "Hat Trick", text = "Pull a random spell from the hat. It costs 0.", target = nil },\n\tgranny_bolt = { id = "granny_bolt", name = "Granny Bolt", bigMove = "Strike", text = "Roll a bowling ball down a column: 4 damage to the first enemy in its way, leftover damage hits the hero.", target = "column" },\n}')
+out.append("CardData.HeroMaxHp = 20\nCardData.BigMoveCharge = 10\nCardData.MaxEnergy = 8\nCardData.MaxHand = 8\nCardData.DeckSize = 30\nCardData.MaxCopies = 3")
+out.append("-- The tile board: 5 columns wide, 6 rows deep. Each player owns the 3 rows nearest them\n-- and summons creatures on their back 2 rows.\nCardData.Cols = 5\nCardData.Rows = 6\nCardData.HomeRows = 3\nCardData.SummonRows = 2\n-- A creature standing anywhere in the enemy's half (their 3 rows) can attack the enemy hero.\nCardData.HeroAttackRows = 3\n-- Going first or second. The first player starts with 4 cards and the second with 5.\n-- Everyone draws a card at the start of every turn, except the first player on their very\n-- first turn. In bot-vs-bot games (Hard) the first player won about 61% when they also drew\n-- on turn one, and 45-50% without it (45% in the last 1,080 games). Giving the second\n-- player a Spare Battery instead didn't help (still 61%).\nCardData.FirstTurnDraw = false -- true: the first player also draws on their very first turn\nCardData.SecondPlayerCard = nil -- put a card id here (like \"spare_battery\") to give the second player a bonus card\n")
+out.append(CHANTS)
+out.append("CardData.Cards = {")
+def entry(cid,name,typ,fam,cost,atk,hp,text,rar,token=False):
+    kw=[]; snack=0; charge=0
+    for part in [p.strip() for p in text.split(".")]:
+        if part in KEYWORDS: kw.append(part)
+        m=re.fullmatch(r"Snack Time (\d+)",part)
+        if m: snack=int(m.group(1))
+        m=re.fullmatch(r"Charge (\d+)",part)
+        if m: charge=int(m.group(1))
+    fields=[f"id = {lua_str(cid)}", f"name = {lua_str(name)}", f"type = {lua_str(typ)}", f"family = {lua_str(fam)}", f"cost = {cost}"]
+    if atk is not None: fields += [f"atk = {atk}", f"hp = {hp}"]
+    fields += [f"text = {lua_str(text if text!='None' else '')}", f"rarity = {lua_str(rar)}"]
+    fields.append("keywords = {" + ", ".join(f"{k} = true" for k in kw) + "}")
+    if snack: fields.append(f"snackTime = {snack}")
+    if charge: fields.append(f"charge = {charge}")
+    if "Combo:" in text: fields.append("combo = true")
+    if "Its attacks Soak" in text: fields.append("soaks = true")
+    if cid in TARGET: fields.append(f"target = {lua_str(TARGET[cid])}")
+    if cid in REQUIRED: fields.append("targetRequired = true")
+    if token: fields.append("token = true")
+    return "\t" + cid + " = { " + ", ".join(fields) + " },"
+for c in C:
+    assert c[2] in ("Creature","Spell","Building"), c
+    out.append(entry(*c))
+out.append("\t-- Tokens (made by other cards, not in packs)")
+out.append(entry("ghost","Ghost","Creature","Spooky",0,1,1,"None","Common",True))
+out.append(entry("pigeon","Pigeon","Creature","Critter",0,1,1,"None","Common",True))
+out.append(entry("scrap","Scrap","Spell","Any",0,None,None,"Gain 1 energy this turn","Common",True))
+out.append("}\n")
+out.append("CardData.List = {}\nfor _, id in ipairs({" + ", ".join(lua_str(c[0]) for c in C) + "}) do\n\ttable.insert(CardData.List, id)\nend\n")
+out.append("function CardData.get(id)\n\tlocal c = CardData.Cards[id]\n\tassert(c, \"Unknown card: \" .. tostring(id))\n\treturn c\nend\n")
+out.append("return CardData")
+open("src/shared/CardData.luau","w").write("\n".join(out)+"\n")
+print("ok", len(C), "cards")
