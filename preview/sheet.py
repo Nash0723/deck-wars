@@ -1,6 +1,6 @@
-# Renders a contact sheet of models: python3 preview/sheet.py <module> [<module> ...] [--out file.png] [--back]
+# Renders a contact sheet of models: python3 preview/sheet.py <module> [<module> ...] [--out=file.png] [--back] [--only=id,id] [--size=260] [--cols=5]
 import sys, os, math, importlib
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lb"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 from PIL import Image
 import rt
@@ -27,6 +27,12 @@ for modname in args:
 
 tiles = []
 S = 260
+cols = 5
+for a in sys.argv[1:]:
+    if a.startswith("--size="):
+        S = int(a[7:])
+    if a.startswith("--cols="):
+        cols = int(a[7:])
 for m in models:
     lo, hi = m.bounds()
     h = hi[1]
@@ -39,7 +45,6 @@ for m in models:
     im = rt.render(prims, cam, look, S, S, fov=38, label=f"{m.id} ({len(m.parts)})", floor=0)
     tiles.append(im)
 
-cols = 5
 rows = max(1, math.ceil(len(tiles) / cols))
 sheet = Image.new("RGB", (cols * S, rows * S), (20, 20, 25))
 for i, im in enumerate(tiles):

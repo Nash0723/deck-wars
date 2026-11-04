@@ -499,9 +499,14 @@ local function stripEffects(model)
 	end
 end
 
+-- Board fights with arms and legs (filled in further down). scale: [Model] = the scale setScale gave it.
+local limbs = { scale = setmetatable({}, { __mode = "k" }) }
+
 local function setScale(model, s)
+	s = math.max(0.05, s)
+	limbs.scale[model] = s
 	pcall(function()
-		model:ScaleTo(math.max(0.05, s))
+		model:ScaleTo(s)
 	end)
 end
 
@@ -1750,20 +1755,272 @@ end
 
 -- Like runTween, but for a creature or hero: a newer animation on the same model takes over,
 -- and the idle bobbing pauses until the animation is done.
+-- It eases in from wherever the creature was (mid-breath, glancing aside, crouched behind its
+-- guard...) instead of snapping to the animation's first frame, which used to make creatures
+-- twitch when two of them clashed.
 local function animateEntry(entry, seconds, style, direction, fn)
 	entry.animId = (entry.animId or 0) + 1
 	local id = entry.animId
 	entry.busy = true
+	entry.idleFrom = nil
 	entry.curLook, entry.lookYaw, entry.hopStart = 0, 0, nil
+	local model = entry.model
+	local from = model.Parent and model:GetPivot() or nil
+	local t0 = clock
+	local settle = math.min(0.14, math.max(0.01, seconds * PACE * 0.35))
+	local checked = false
 	return runTween(seconds, style, direction, function(a)
-		if entry.animId == id and entry.model.Parent then
+		if entry.animId == id and model.Parent then
 			fn(a)
+			if from then
+				local now = model:GetPivot()
+				if not checked then
+					-- only smooth over a real jump; a move that starts where the creature is runs as is
+					checked = true
+					local jump = (now.Position - from.Position).Magnitude + (now.LookVector - from.LookVector).Magnitude + (now.UpVector - from.UpVector).Magnitude
+					if jump < 0.03 then
+						from = nil
+						return
+					end
+				end
+				local k = (clock - t0) / settle
+				if k >= 1 then
+					from = nil
+				else
+					k = math.max(k, 0)
+					model:PivotTo(from:Lerp(now, k * k * (3 - 2 * k)))
+				end
+			end
 		end
 	end, function()
 		if entry.animId == id then
 			entry.busy = false
+			if model.Parent then
+				-- the idle breathing picks up from here instead of popping to its own pose
+				entry.idleFrom, entry.idleSince = model:GetPivot(), clock
+			end
 		end
 	end)
+end
+
+---------------------------------------------------------------------------
+-- Board fights with arms and legs: creatures on the table raise their guard, punch, kick,
+-- block and flinch, using the same rig and moves as the Pack Brawl fighters (Rig + Moves),
+-- instead of bumping into each other as one solid block.
+---------------------------------------------------------------------------
+do
+	local PackBrawlModules = ReplicatedStorage:WaitForChild("PackBrawl")
+	local Rig = require(PackBrawlModules:WaitForChild("Rig"))
+	local Moves = require(PackBrawlModules:WaitForChild("Moves"))
+	local modelScale = limbs.scale
+	local EMPTY = {}
+
+	-- The hit reaction for a hit of this power (1 to 3), or "block" when it was guarded.
+	function limbs.reaction(power, guarded)
+		return guarded and "block" or Moves.pickReaction(power, false)
+	end
+	local function smooth(a)
+		return a * a * (3 - 2 * a)
+	end
+
+	-- Ties every part of a freshly built creature (still at the origin and not scaled yet) to the
+	-- bone that moves it. Creatures without model data (your own models in CreatureModels) stay
+	-- in one piece and keep the old whole-body moves.
+	function limbs.bind(entry, model)
+		local id = entry.cardId
+		local custom = ReplicatedStorage:FindFirstChild("CreatureModels")
+		if not CreatureBuilder.has(id) or (custom and custom:FindFirstChild(id)) then
+			return
+		end
+		local ok, rig = pcall(Rig.get, id)
+		if not ok or not rig then
+			return
+		end
+		local base = model:GetPivot()
+		local root = model.PrimaryPart
+		local list, used = {}, {}
+		for _, d in ipairs(model:GetChildren()) do
+			if d:IsA("BasePart") and d ~= root then
+				local off = base:ToObjectSpace(d.CFrame)
+				local pos = off.Position
+				local best, bd = nil, math.huge
+				for i, rp in ipairs(rig.parts) do
+					if not used[i] and rp.name == d.Name then
+						local dd = (pos.X - rp.pos[1]) ^ 2 + (pos.Y - rp.pos[2]) ^ 2 + (pos.Z - rp.pos[3]) ^ 2
+						if dd < bd then
+							best, bd = i, dd
+						end
+					end
+				end
+				if best then
+					used[best] = true
+				end
+				table.insert(list, { part = d, offset = off, bone = best and rig.partBone[best] or "body" })
+			end
+		end
+		entry.limbs = {
+			rig = rig,
+			parts = list,
+			swings = 0,
+			lead = rig.weaponSide == -1 and "L" or "R",
+			front = -(rig.zMin or -0.4) + 0.15, -- how far its front sticks out, in model units
+		}
+	end
+
+	-- How far in front of its tile a creature's front is (studs).
+	function limbs.front(entry)
+		local L = entry.limbs
+		local s = modelScale[entry.model] or entry.scale or 0.5
+		return (L and L.front or 0.9) * s
+	end
+
+	-- How far its punch (or kick, or headbutt) reaches past its front (studs).
+	function limbs.reach(entry)
+		local L = entry.limbs
+		if not L then
+			return 0
+		end
+		local has = L.rig.has
+		return (has.arms and 0.22 or has.legs and 0.15 or 0.04) * (entry.height or 1.5)
+	end
+
+	-- Keep the fighting guard up for the next `seconds` (it rises and lowers smoothly).
+	function limbs.guard(entry, seconds)
+		local L = entry and entry.limbs
+		if L then
+			L.guardUntil = math.max(L.guardUntil or 0, clock + seconds * PACE)
+			L.active = true
+		end
+	end
+
+	-- Plays a move. opts.contactIn: board seconds from now until its hit lands (it starts early
+	-- enough for that); opts.delay: board seconds before it starts; opts.lead: "L" / "R".
+	function limbs.play(entry, name, opts)
+		local L = entry and entry.limbs
+		local m = L and Moves.get(name)
+		if not m then
+			return false
+		end
+		opts = opts or {}
+		local speed = (opts.speed or 1) / PACE
+		local t0 = clock + (opts.delay or 0) * PACE
+		if opts.contactIn and m.contact then
+			t0 = clock + opts.contactIn * PACE - m.contact / speed
+		end
+		L.queued = { move = m, t0 = t0, speed = speed, lead = opts.lead or L.lead }
+		L.active = true
+		return true
+	end
+
+	-- Which attack it throws for a hit of this size (jab, hook, uppercut, kick, haymaker, a tail
+	-- whip or a headbutt for creatures without arms...), mixed up from swing to swing.
+	function limbs.attackFor(entry, amount)
+		local L = entry and entry.limbs
+		if not L then
+			return nil
+		end
+		L.swings += 1
+		amount = amount or 1
+		local power = amount >= 5 and 3 or amount >= 3 and 2 or 1
+		local name = Moves.pickAttack(L.rig, power, L.swings, entry.cardId, false)
+		local lead = L.lead
+		if power == 1 and (name == "jab" or name == "cross") and L.rig.has.bothArms and not L.rig.has.weapon then
+			lead = (L.swings % 2 == 0) and "L" or "R"
+		end
+		return name, lead
+	end
+
+	local function restParts(L, pivot, s)
+		for _, p in ipairs(L.parts) do
+			local part = p.part
+			if part.Parent then
+				local o = p.offset
+				part.CFrame = pivot * CFrame.new(o.Position * s) * o.Rotation
+			end
+		end
+	end
+
+	local function applyPose(entry, L, pose, lead)
+		local model = entry.model
+		local pivot = model:GetPivot()
+		local s = modelScale[model] or entry.scale or 1
+		local full = table.clone(pose)
+		full.leadSide = lead
+		local solved = Rig.solve(L.rig, full)
+		local bones = {}
+		for name, tf in pairs(solved) do
+			local m, t = tf.m, tf.t
+			bones[name] = CFrame.new(t[1] * s, t[2] * s, t[3] * s, m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9])
+		end
+		for _, p in ipairs(L.parts) do
+			local part = p.part
+			if part.Parent then
+				local o = p.offset
+				local cf = CFrame.new(o.Position * s) * o.Rotation
+				local b = bones[p.bone]
+				if b then
+					cf = b * cf
+				end
+				part.CFrame = pivot * cf
+			end
+		end
+	end
+
+	-- Every frame: poses the creatures that are fighting (the others aren't touched at all).
+	function limbs.update(dt)
+		local now = clock
+		for _, entry in pairs(units) do
+			local L = entry.limbs
+			if L and L.active and entry.model.Parent then
+				if L.queued and now >= L.queued.t0 - 0.0001 then
+					-- a new move takes over: blend from the pose it had, so nothing pops
+					L.anim, L.queued = L.queued, nil
+					if L.lastPose then
+						L.blendFrom, L.blendStart = L.lastPose, now
+					end
+				end
+				local up = now < (L.guardUntil or 0) and 1 or 0
+				local gw = L.gw or 0
+				gw = gw + math.clamp(up - gw, -dt / (0.45 * PACE), dt / (0.3 * PACE))
+				L.gw = gw
+				local pose = EMPTY
+				if gw > 0 then
+					-- a calm guard: fists (or wings, or claws) up, breathing, no bouncing about
+					pose = Moves.blend(EMPTY, Moves.stance(now * 0.45, entry.phase or 0, L.rig), smooth(gw))
+				end
+				local lead = L.lastLead or L.lead
+				local a = L.anim
+				if a then
+					local t = (now - a.t0) * a.speed
+					if t >= a.move.dur then
+						L.anim = nil
+					elseif t >= 0 then
+						local p = Moves.sample(a.move, t)
+						local w = math.clamp(math.min(t / 0.05, (a.move.dur - t) / 0.12), 0, 1)
+						pose = Moves.blend(pose, p, w)
+						lead = a.lead
+					end
+				end
+				if L.blendFrom then
+					local k = (now - L.blendStart) / (0.12 * PACE)
+					if k >= 1 then
+						L.blendFrom = nil
+					else
+						pose = Moves.lerp(L.blendFrom, pose, smooth(math.max(k, 0)), true)
+					end
+				end
+				L.lastLead = lead
+				if gw <= 0 and not L.anim and not L.queued and not L.blendFrom then
+					-- done: every part back exactly where it was built
+					L.active, L.lastPose = false, nil
+					restParts(L, entry.model:GetPivot(), modelScale[entry.model] or entry.scale or 1)
+				else
+					L.lastPose = pose
+					applyPose(entry, L, pose, lead)
+				end
+			end
+		end
+	end
 end
 
 -- Waits during the match playback. Stops the playback if the match ended meanwhile.
@@ -1941,7 +2198,8 @@ do
 	local function findLids(model)
 		local lids = {}
 		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("BasePart") and d.Name == "Lid" then
+			-- eyelids are the see-through "Lid" parts (a bin or jar lid is not an eyelid)
+			if d:IsA("BasePart") and d.Name == "Lid" and d.Transparency > 0.99 then
 				table.insert(lids, d)
 			end
 		end
@@ -2111,6 +2369,11 @@ local function spawnUnit(u)
 		return units[u.uid]
 	end
 	local model = buildModel(u.id)
+	local bindTo = {}
+	if (u.kind or "creature") == "creature" then
+		bindTo.cardId = u.id
+		limbs.bind(bindTo, model)
+	end
 	local ok, size = pcall(function()
 		return model:GetExtentsSize()
 	end)
@@ -2146,6 +2409,7 @@ local function spawnUnit(u)
 	local entry = newEntry(model, u.id, home)
 	entry.uid, entry.kind, entry.owner, entry.col, entry.row = u.uid, u.kind or "creature", u.owner, u.col, u.row
 	entry.scale = s
+	entry.limbs = bindTo.limbs
 	entry.height = size.Y * s
 	entry.hp = CardData.Cards[u.id] and CardData.Cards[u.id].hp
 	model:PivotTo(home)
@@ -3441,11 +3705,12 @@ do
 			axis = Vector3.new(1, 0, 0)
 		end
 		local push = 0.32 * (strength or 1)
+		local tip = entry.limbs and 0.12 or 0.3
 		entry.noRecoilUntil = clock + 1.2 * PACE
 		animateEntry(entry, 0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, function(a)
 			a = math.min(a, 1)
 			local k = math.sin(a * math.pi) * (1 - 0.35 * a)
-			model:PivotTo(CFrame.new(home.Position + away * push * k) * CFrame.fromAxisAngle(axis, 0.3 * k) * rest)
+			model:PivotTo(CFrame.new(home.Position + away * push * k) * CFrame.fromAxisAngle(axis, tip * k) * rest)
 		end)
 	end
 
@@ -3476,7 +3741,13 @@ do
 		local unit, dist = flatDir(home.Position, targetPos, home.LookVector)
 		local turn = facing(unit)
 		local r0 = model:GetPivot().Rotation
-		local reach = math.clamp(dist - (stopShort or 1.05), 0.3, maxReach or 99)
+		local reach = math.clamp(dist - (stopShort or 1.05), entry.limbs and 0.1 or 0.3, maxReach or 99)
+		-- with arms and legs it lunges in low and lets the punch (or kick) do the work;
+		-- without, it flies in head first as before
+		local hop, dive = 0.75, 0.52
+		if entry.limbs then
+			hop, dive = 0.28, 0.2
+		end
 		local back = home.Position - unit * 0.3
 		animateEntry(entry, 0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, function(a)
 			a = math.min(a, 1)
@@ -3486,8 +3757,8 @@ do
 		local stop = home.Position + unit * reach
 		animateEntry(entry, 0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In, function(a)
 			a = math.min(a, 1)
-			local pos = back:Lerp(stop, a) + Vector3.new(0, math.sin(a * math.pi) * 0.75 - 0.1 * (1 - a), 0)
-			model:PivotTo(CFrame.new(pos) * turn * CFrame.Angles(0.22 - 0.52 * a, 0, 0))
+			local pos = back:Lerp(stop, a) + Vector3.new(0, math.sin(a * math.pi) * hop - 0.1 * (1 - a), 0)
+			model:PivotTo(CFrame.new(pos) * turn * CFrame.Angles(0.22 - dive * a, 0, 0))
 		end)
 		step(0.22)
 		return stop, turn, unit
@@ -3497,12 +3768,16 @@ do
 	local function hopHome(entry, from, turn, seconds)
 		local model, home = entry.model, entry.home
 		local rest = (home * CFrame.Angles(0, entry.yaw, 0)).Rotation
+		-- starts from exactly how it stands now (the lunge left it leaning), so it doesn't jerk
+		local r0 = model:GetPivot().Rotation
+		local recoil = entry.limbs and 0.12 or 0.3
+		local hop = entry.limbs and 0.25 or 0.45
 		seconds = seconds or 0.5
 		entry.noRecoilUntil = clock + seconds * PACE + 0.3
 		animateEntry(entry, seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, function(a)
 			a = math.min(a, 1)
-			local pos = from:Lerp(home.Position, a) + Vector3.new(0, math.sin(a * math.pi) * 0.45, 0)
-			model:PivotTo(CFrame.new(pos) * turn:Lerp(rest, a) * CFrame.Angles(-0.3 * (1 - a) * (1 - a), 0, 0))
+			local pos = from:Lerp(home.Position, a) + Vector3.new(0, math.sin(a * math.pi) * hop, 0)
+			model:PivotTo(CFrame.new(pos) * r0:Lerp(rest, a) * CFrame.Angles(-recoil * math.sin(a * math.pi) * (1 - a), 0, 0))
 		end)
 	end
 
@@ -3561,6 +3836,11 @@ do
 				pm:PivotTo(prest * CFrame.new(0, math.sin(math.min(a, 1) * math.pi) * 0.25, 0))
 			end)
 		end
+		-- both square up: the attacker raises its fists (or claws, or wings), and so does the target
+		local swing, swingLead = limbs.attackFor(entry, e.amount)
+		limbs.guard(entry, 1.6)
+		limbs.guard(target, 1.7)
+		local power = (e.amount or 1) >= 5 and 3 or (e.amount or 1) >= 3 and 2 or 1
 		leanCamera((home.Position + targetPos) / 2, e.target == "hero" and 0.6 or 1)
 		local fresh = actionCam.on and not actionCam.active()
 		actionCam.duel(home.Position, targetPos, { seconds = 0.6, lookUp = e.target == "hero" and 0.9 or 0.7 })
@@ -3573,6 +3853,8 @@ do
 			local unit = flatDir(home.Position, targetPos, home.LookVector)
 			local turn = facing(unit)
 			local r0 = model:GetPivot().Rotation
+			-- (with arms it throws: the swing lands just as the shot leaves)
+			limbs.play(entry, swing, { contactIn = 0.3, lead = swingLead })
 			animateEntry(entry, 0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, function(a)
 				a = math.min(a, 1)
 				local k = math.sin(a * math.pi)
@@ -3586,6 +3868,7 @@ do
 				if e.guarded then
 					flashModel(target.model, Color3.fromRGB(150, 200, 255), 0.35)
 				end
+				limbs.play(target, limbs.reaction(power, e.guarded))
 				knockBack(target, unit, 0.8)
 			end
 			shakeCamera(0.06)
@@ -3596,7 +3879,9 @@ do
 			return
 		end
 		if e.target == "hero" then
-			-- A creature charges a step toward the enemy hero and hurls its hit.
+			-- A creature charges a step toward the enemy hero and hurls its hit (with arms, a big
+			-- punch that sends the blow flying).
+			limbs.play(entry, swing, { contactIn = 0.64, lead = swingLead })
 			local stop, turn = leapAt(entry, targetPos, 0, 1.0)
 			impactPuff(stop + Vector3.new(0, 0.2, 0), 1)
 			projectile(stop + Vector3.new(0, 1, 0), targetPos, Color3.fromRGB(255, 210, 120), 0.4)
@@ -3612,7 +3897,14 @@ do
 			actionCam.release(0.5)
 			return
 		end
-		local stop, turn, unit = leapAt(entry, targetPos, 1.05)
+		-- The punch (or kick, or headbutt) is timed to land as the lunge arrives. Creatures with
+		-- arms stop where their fronts nearly meet, so the two bodies don't sink into each other.
+		local gap = 1.05
+		if entry.limbs or (target and target.limbs) then
+			gap = math.clamp(limbs.front(entry) + (target and limbs.front(target) or 0.5) + 0.1 + limbs.reach(entry), 0.95, 2.45)
+		end
+		limbs.play(entry, swing, { contactIn = 0.64, lead = swingLead })
+		local stop, turn, unit = leapAt(entry, targetPos, gap)
 		impactPuff(targetPos - unit * 0.4, e.amount)
 		actionCam.punch(3 + math.min(e.amount or 1, 6) * 0.5)
 		if target then
@@ -3624,11 +3916,19 @@ do
 		step(0.07) -- ...and everything holds for a split second (hit-stop) before the knock-back
 		if target then
 			if e.counter then
+				-- it takes the hit on its guard and punches straight back; the attacker flinches
+				local back, backLead = limbs.attackFor(target, 1)
+				limbs.guard(target, 1.0)
+				if back then
+					limbs.play(target, back, { contactIn = 0.22, lead = backLead })
+				end
+				limbs.play(entry, "flinch", { delay = 0.22 })
 				swingBack(target, stop)
 				if mine then
 					log(cardName(target.cardId) .. " hits back!", Color3.fromRGB(255, 200, 160))
 				end
 			else
+				limbs.play(target, limbs.reaction(power, e.guarded))
 				knockBack(target, unit, 1)
 			end
 		end
@@ -3647,8 +3947,12 @@ do
 			return
 		end
 		local rest = (home * CFrame.Angles(0, entry.yaw or 0, 0)).Rotation
+		local tip = entry.limbs and 0.5 or 1
+		if entry.limbs then
+			limbs.play(entry, (amount or 1) >= 3 and "stagger" or "flinch")
+		end
 		animateEntry(entry, 0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, function(a)
-			local k = math.sin(math.min(a, 1) * math.pi)
+			local k = math.sin(math.min(a, 1) * math.pi) * tip
 			model:PivotTo(CFrame.new(home.Position) * rest * CFrame.new(0, 0, 0.25 * k) * CFrame.Angles(0.22 * k, 0, 0))
 		end)
 		if amount and amount >= 4 then
@@ -3749,18 +4053,19 @@ do
 	end
 
 	-- Events that follow an action keep the action camera there; the rest send it back to the seat.
-	local FOLLOW_UPS = {
-		damage = true, heal = true, buff = true, pop = true, destroyed = true, heroDamage = true, heroHeal = true,
-		push = true, bump = true, blocked = true, guardDown = true, bubble = true, cleanse = true, ability = true, bounce = true,
-		power = true, soak = true, scrap = true, scrapPick = true, upload = true,
+	-- ("follow" = keeps the shot, "own" = the event sets up its own shot)
+	local SHOT_KIND = {
+		damage = "follow", heal = "follow", buff = "follow", pop = "follow", destroyed = "follow", heroDamage = "follow", heroHeal = "follow",
+		push = "follow", bump = "follow", blocked = "follow", guardDown = "follow", bubble = "follow", cleanse = "follow", ability = "follow", bounce = "follow",
+		power = "follow", soak = "follow", scrap = "follow", scrapPick = "follow", upload = "follow",
+		attack = "own", chant = "own", defend = "own", spawn = "own", play = "own", bigMove = "own", shot = "own", turn = "own",
 	}
-	local SETS_OWN_SHOT = { attack = true, chant = true, defend = true, spawn = true, play = true, bigMove = true, shot = true, turn = true }
 
 	function animateEvent(e)
 		local t = e.type
-		if FOLLOW_UPS[t] then
+		if SHOT_KIND[t] == "follow" then
 			actionCam.hold(0.55)
-		elseif not SETS_OWN_SHOT[t] then
+		elseif SHOT_KIND[t] ~= "own" then
 			actionCam.release(0.1)
 		end
 		if t == "start" then
@@ -4069,6 +4374,9 @@ do
 			if source and to then
 				local model = source.model
 				local home = source.home
+				local throw, throwLead = limbs.attackFor(source, 1)
+				limbs.guard(source, 0.6)
+				limbs.play(source, throw, { contactIn = 0.15, lead = throwLead })
 				animateEntry(source, 0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, function(a)
 					setScale(model, source.scale * (1 + 0.12 * math.sin(math.min(a, 1) * math.pi)))
 					model:PivotTo(home)
@@ -4687,28 +4995,38 @@ do
 			return
 		end
 		local t = clock + entry.phase
+		local cf
 		if entry.defending then
 			-- defending: crouched a little behind its guard, breathing slowly
 			local breathe = math.sin(t * 1.5) * 0.015
-			entry.model:PivotTo(entry.home * CFrame.new(0, -0.07 + breathe, 0) * CFrame.Angles(0, entry.yaw, 0) * CFrame.Angles(-0.06, 0, 0))
-			return
-		end
-		if entry.sick then
+			cf = entry.home * CFrame.new(0, -0.07 + breathe, 0) * CFrame.Angles(0, entry.yaw, 0) * CFrame.Angles(-0.06, 0, 0)
+		elseif entry.sick then
 			-- just summoned (zZ): a slow, sleepy nod
 			local nod = math.sin(t * 1.1)
-			entry.model:PivotTo(entry.home * CFrame.new(0, (nod + 1) * 0.025, 0) * CFrame.Angles(0, entry.yaw, 0) * CFrame.Angles(-0.06 - 0.04 * nod, 0, 0))
-			return
+			cf = entry.home * CFrame.new(0, (nod + 1) * 0.025, 0) * CFrame.Angles(0, entry.yaw, 0) * CFrame.Angles(-0.06 - 0.04 * nod, 0, 0)
+		else
+			-- breathing: a slow, small rise and fall (the board stays calm, so actions stand out)
+			local bob = (math.sin(t * 1.3) + 1) * 0.02 * amount
+			local lean = math.sin(t * 1.3 + 0.9) * 0.014 * amount
+			-- once in a while it glances around
+			if clock >= (entry.nextLook or 0) then
+				entry.nextLook = clock + 6 + math.random() * 8
+				entry.lookYaw = (math.random() - 0.5) * 0.5 * amount
+			end
+			entry.curLook = (entry.curLook or 0) + ((entry.lookYaw or 0) - (entry.curLook or 0)) * math.min(1, (dt or 0.03) * 1.5)
+			cf = entry.home * CFrame.new(0, bob, 0) * CFrame.Angles(0, entry.yaw + entry.curLook, 0) * CFrame.Angles(lean, 0, 0)
 		end
-		-- breathing: a slow, small rise and fall (the board stays calm, so actions stand out)
-		local bob = (math.sin(t * 1.3) + 1) * 0.02 * amount
-		local lean = math.sin(t * 1.3 + 0.9) * 0.014 * amount
-		-- once in a while it glances around
-		if clock >= (entry.nextLook or 0) then
-			entry.nextLook = clock + 6 + math.random() * 8
-			entry.lookYaw = (math.random() - 0.5) * 0.5 * amount
+		-- right after an animation it eases into the idle pose from wherever the animation left it
+		if entry.idleFrom then
+			local k = (clock - (entry.idleSince or 0)) / 0.45
+			if k >= 1 then
+				entry.idleFrom = nil
+			else
+				k = math.max(k, 0)
+				cf = entry.idleFrom:Lerp(cf, k * k * (3 - 2 * k))
+			end
 		end
-		entry.curLook = (entry.curLook or 0) + ((entry.lookYaw or 0) - (entry.curLook or 0)) * math.min(1, (dt or 0.03) * 1.5)
-		entry.model:PivotTo(entry.home * CFrame.new(0, bob, 0) * CFrame.Angles(0, entry.yaw + entry.curLook, 0) * CFrame.Angles(lean, 0, 0))
+		entry.model:PivotTo(cf)
 	end
 
 	local function blinkEntry(entry)
@@ -4736,6 +5054,7 @@ do
 			end
 			blinkEntry(entry)
 		end
+		limbs.update(dt or 0.016)
 		guardFx.update()
 		for _, entry in pairs(heroes) do
 			idleEntry(entry, 0.6, dt)

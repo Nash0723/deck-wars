@@ -51,6 +51,79 @@ def frame_from_x(direction):
     return np.column_stack([d, y, z])
 
 
+def frame_normal(n, spin=0.0):
+    """Rotation whose local Z axis points along n (for flat details lying on a surface)."""
+    z = np.array(n, float)
+    z /= np.linalg.norm(z)
+    helper = np.array([0, 1, 0]) if abs(z[1]) < 0.9 else np.array([1, 0, 0])
+    x = np.cross(helper, z)
+    x /= np.linalg.norm(x)
+    y = np.cross(z, x)
+    R = np.column_stack([x, y, z])
+    return R @ Rz(spin)
+
+
+def on_ell(center, size, direction):
+    """Point on the surface of an ellipsoid (center, full size) in a direction, and the surface normal there."""
+    c = np.array(center, float)
+    h = np.array(size, float) / 2
+    d = np.array(direction, float)
+    d /= np.linalg.norm(d)
+    t = 1.0 / math.sqrt(float(((d / h) ** 2).sum()))
+    p = c + d * t
+    nrm = (d * t) / (h * h)
+    return p, nrm / np.linalg.norm(nrm)
+
+
+def ell_front(center, size):
+    """The front (-Z) surface of an ellipsoid as z = f(x, y); far behind where the point misses it."""
+    cx, cy, cz = center
+    hx, hy, hz = size[0] / 2, size[1] / 2, size[2] / 2
+    def f(x, y):
+        q = 1 - ((x - cx) / hx) ** 2 - ((y - cy) / hy) ** 2
+        return cz - hz * math.sqrt(q) if q > 0 else 1e9
+    return f
+
+
+def cyl_front(cx, cz, r):
+    """The front (-Z) surface of an upright cylinder as z = f(x, y)."""
+    def f(x, y):
+        q = r * r - (x - cx) ** 2
+        return cz - math.sqrt(q) if q > 0 else 1e9
+    return f
+
+
+def ell_top(center, size):
+    """The top (+Y) surface of an ellipsoid as y = f(x, z); far below where the point misses it."""
+    cx, cy, cz = center
+    hx, hy, hz = size[0] / 2, size[1] / 2, size[2] / 2
+    def f(x, z):
+        q = 1 - ((x - cx) / hx) ** 2 - ((z - cz) / hz) ** 2
+        return cy + hy * math.sqrt(q) if q > 0 else -1e9
+    return f
+
+
+def top_of(*fs):
+    """The highest of several top surfaces."""
+    return lambda x, z: max(f(x, z) for f in fs)
+
+
+def front_of(*fs):
+    """The frontmost of several surfaces."""
+    return lambda x, y: min(f(x, y) for f in fs)
+
+
+def lerp(a, b, t):
+    return tuple(a[i] + (b[i] - a[i]) * t for i in range(len(a)))
+
+
+def shade(c, f):
+    """Darker (f < 1) or lighter (f > 1) version of a color."""
+    if f <= 1:
+        return tuple(max(0, min(255, int(v * f))) for v in c)
+    return tuple(max(0, min(255, int(v + (255 - v) * (f - 1)))) for v in c)
+
+
 AXIS = {"x": I3, "y": Rz(90), "z": Ry(90)}
 
 # Handy colors
@@ -116,9 +189,13 @@ class Model:
             if joints and i > 0:
                 self.ball(name, d, points[i], color, mat)
 
-    def ring(self, name, center, radius, thickness, color, normal="z", segments=10, mat="SmoothPlastic", R=None, tr=0, refl=0):
-        """A ring (torus-ish) made of short rods. normal is the ring's axis."""
+    def ring(self, name, center, radius, thickness, color, normal="z", segments=10, mat="SmoothPlastic", R=None, tr=0, refl=0, outer=False):
+        """A ring (torus-ish) made of short rods. normal is the ring's axis.
+        outer=True: radius is where the middle of each rod sits (for bands wrapped around a
+        cylinder of that radius, so the straight segments do not sink into it)."""
         c = np.array(center, float)
+        if outer:
+            radius = radius / math.cos(math.pi / segments)
         Rn = {"x": Ry(90), "y": Rx(90), "z": I3}[normal]
         if R is not None:
             Rn = np.array(R, float) @ Rn
@@ -133,23 +210,41 @@ class Model:
             self.rod(name, p1 - v * 0.08, p2 + v * 0.08, thickness, color, mat, tr, refl)
 
     # Faces --------------------------------------------------------------
-    def eyes(self, y, zf, sep, d, lid=None, x=0.0, look=(0.0, 0.0), pupil=PUPIL, white=WHITE, pupil_scale=0.55, tilt=0.0, angry=0.0, sleepy=False):
+    def eyes(self, y, zf, sep, d, lid=None, x=0.0, look=(0.0, 0.0), pupil=PUPIL, white=WHITE, pupil_scale=0.55, tilt=0.0, angry=0.0, sleepy=False,
+             iris=None, lash=0, lash_color=None, rim=None, bulge=0.55, z_back=0.0):
         """Two cartoon eyes on a surface whose front is at z = zf (facing -Z).
-        lid: color of the hidden eyelids used for blinking (None = no blinking)."""
+        lid: color of the hidden eyelids used for blinking (None = no blinking).
+        iris: color ring around the pupil. lash: number of lashes per eye. rim: thin dark outline color.
+        z_back: how far the outer eye sits further back (for eyes on round faces)."""
         for s in (-1, 1):
             ex = x + s * sep / 2
-            Rt = Rz(-s * tilt)
-            self.ell("Eye", (d, d * 1.12, d * 0.55), (ex, y, zf - d * 0.05), white, R=Rt)
+            ez = zf + z_back
+            Rt = Rz(-s * tilt) @ Ry(s * z_back * 40)
+            if rim is not None:
+                self.ell("EyeRim", (d * 1.12, d * 1.24, d * bulge * 0.9), (ex, y, ez - d * 0.02), rim, R=Rt)
+            self.ell("Eye", (d, d * 1.12, d * bulge), (ex, y, ez - d * 0.05), white, R=Rt)
             pd = d * pupil_scale
-            self.ell("Pupil", (pd, pd * 1.1, d * 0.3), (ex + look[0], y + look[1] - (d * 0.08 if sleepy else 0), zf - d * 0.24), pupil, R=Rt)
-            self.ell("Glint", (pd * 0.36, pd * 0.36, d * 0.12), (ex + look[0] + pd * 0.2, y + look[1] + pd * 0.25, zf - d * 0.36), white)
+            px, py = ex + look[0], y + look[1] - (d * 0.08 if sleepy else 0)
+            if iris is not None:
+                self.ell("Iris", (pd * 1.45, pd * 1.55, d * 0.3), (px, py, ez - d * (bulge * 0.42)), iris, R=Rt)
+                self.ell("Pupil", (pd * 0.82, pd * 0.9, d * 0.3), (px, py, ez - d * (bulge * 0.42 + 0.03)), pupil, R=Rt)
+            else:
+                self.ell("Pupil", (pd, pd * 1.1, d * 0.3), (px, py, ez - d * (bulge * 0.42 + 0.02)), pupil, R=Rt)
+            gz = ez - d * (bulge * 0.42 + 0.1)
+            self.ell("Glint", (max(pd * 0.4, 0.035), max(pd * 0.4, 0.035), max(d * 0.12, 0.025)), (px + pd * 0.22, py + pd * 0.28, gz), white)
+            self.ell("Glint", (max(pd * 0.18, 0.025), max(pd * 0.18, 0.025), max(d * 0.08, 0.02)), (px - pd * 0.22, py - pd * 0.25, gz), white)
             if lid is not None:
-                self.ell("Lid", (d * 1.18, d * 1.28, d * 0.95), (ex, y, zf - d * 0.06), lid, R=Rt, tr=1)
+                self.ell("Lid", (d * 1.18, d * 1.28, d * max(bulge, 0.55) * 1.7), (ex, y, ez - d * 0.06), lid, R=Rt, tr=1)
             if angry:
                 # slanted brow
-                self.blk("Brow", (d * 1.05, d * 0.2, d * 0.2), (ex, y + d * 0.68, zf - d * 0.2), pupil, R=Rz(s * angry))
+                self.blk("Brow", (d * 1.05, d * 0.2, d * 0.2), (ex, y + d * 0.68, ez - d * 0.2), pupil, R=Rz(s * angry))
             if sleepy:
-                self.ell("Lidhalf", (d * 1.1, d * 0.62, d * 0.62), (ex, y + d * 0.3, zf - d * 0.08), lid or (200, 200, 200))
+                self.ell("Lidhalf", (d * 1.1, d * 0.62, d * 0.62), (ex, y + d * 0.3, ez - d * 0.08), lid or (200, 200, 200))
+            lc = lash_color or pupil
+            for k in range(lash):
+                a = math.radians(55 + 28 * k)
+                bx, by = ex + s * math.cos(a) * d * 0.5, y + math.sin(a) * d * 0.56
+                self.rod("Lash", (bx, by, ez - d * 0.1), (bx + s * math.cos(a) * d * 0.32, by + math.sin(a) * d * 0.3, ez - d * 0.05), max(d * 0.07, 0.025), lc)
 
     def smile(self, y, zf, w, color=(60, 25, 35), x=0.0, open_=False, tongue=(240, 110, 130)):
         if open_:
@@ -161,6 +256,230 @@ class Model:
     def cheeks(self, y, zf, sep, d, color=PINK_CHEEK):
         for s in (-1, 1):
             self.ell("Cheek", (d, d * 0.6, d * 0.25), (s * sep / 2, y, zf), color, tr=0.25)
+
+    def grin(self, y, zf, w, color=(60, 25, 35), x=0.0, curve=0.22, d=None, bend=0.0, teeth=0, open_=False, tongue=(240, 110, 130), tooth=WHITE, name="Mouth", segments=5, surface=None):
+        """A curved smile line (ends higher than the middle when curve > 0; frown when < 0).
+        bend pushes the ends back into a round face. teeth: number of top teeth (open mouths).
+        surface(x, y) -> z seats the mouth on a curved face (zf and bend are then ignored)."""
+        d = d or w * 0.13
+        pts = []
+        for k in range(segments):
+            u = -1 + 2 * k / (segments - 1)
+            px, py = x + u * w / 2, y + curve * w * u * u
+            pz = surface(px, py) - d * 0.3 if surface else zf + bend * u * u
+            pts.append((px, py, pz))
+        if surface:
+            zf = surface(x, y) - d * 0.3
+            bend = 0.0
+        if open_:
+            # open mouth: dark inside, tongue, teeth on top
+            self.ell(name, (w * 0.9, w * 0.5, w * 0.22), (x, y + curve * w * 0.25 - w * 0.12, zf + bend * 0.2 + w * 0.02), color)
+            self.ell("Tongue", (w * 0.5, w * 0.2, w * 0.14), (x, y + curve * w * 0.25 - w * 0.25, zf + bend * 0.2 - w * 0.06), tongue)
+            for k in range(teeth):
+                tx = x + (k - (teeth - 1) / 2) * w * 0.17
+                u = (tx - x) / (w / 2)
+                self.blk("Tooth", (w * 0.14, w * 0.13, w * 0.08), (tx, y + curve * w * u * u - w * 0.03, zf + bend * u * u - w * 0.08), tooth)
+        self.chain(name, pts, d, color)
+        # little dimples at the corners
+        for e in (pts[0], pts[-1]):
+            self.ball(name, d * 1.15, e, color)
+
+    def brow(self, cx, y, zf, w, color, side, tilt=12, d=None, arch=0.08, name="Brow"):
+        """A curved eyebrow over an eye at cx (side -1 left / 1 right)."""
+        d = d or w * 0.2
+        a = math.radians(side * tilt)
+        pts = []
+        for k in range(3):
+            u = -1 + k
+            px = cx + u * w / 2 * math.cos(a)
+            py = y + u * w / 2 * math.sin(a) + arch * (1 - u * u)
+            pts.append((px, py, zf))
+        self.chain(name, pts, d, color)
+
+    def mitt(self, pos, d, color, side, name="Hand", thumb=True, fingers=0, mat="SmoothPlastic", tname="Thumb"):
+        """A round cartoon hand with a thumb (and optional finger bumps)."""
+        x, y, z = pos
+        self.ball(name, d, pos, color, mat)
+        if thumb:
+            self.ell(tname, (d * 0.42, d * 0.55, d * 0.42), (x - side * d * 0.3, y + d * 0.22, z - d * 0.28), color, mat, R=Rz(side * 30))
+        for k in range(fingers):
+            fx = x + side * d * 0.12 + (k - (fingers - 1) / 2) * d * 0.26
+            self.ell("Finger", (d * 0.26, d * 0.3, d * 0.34), (fx, y - d * 0.3, z - d * 0.2), color, mat)
+
+    def shoe(self, x, z, w, l, color, sole=(40, 35, 40), y=0.0, h=None, name="Foot", toe=None, lace=None, mat="SmoothPlastic"):
+        """A cartoon shoe: rounded upper, a flat sole and an optional toe cap and laces."""
+        h = h or w * 0.55
+        self.ell(name, (w, h * 1.6, l), (x, y + h * 0.55, z), color, mat)
+        self.blk("Sole", (w * 0.92, h * 0.28, l * 0.88), (x, y + h * 0.14, z), sole, "Rubber")
+        if toe is not None:
+            self.ell("Toe", (w * 0.8, h * 1.0, l * 0.42), (x, y + h * 0.5, z - l * 0.3), toe, mat)
+        if lace is not None:
+            # two lace bars lying on the instep (on the upper's surface, not buried in it)
+            for k in range(2):
+                t = -(0.3 + k * 0.25)
+                q = math.sqrt(1 - t * t)
+                top = y + h * 0.55 + h * 0.8 * q
+                slope = math.degrees(math.atan2(h * 0.8 * t / q, l / 2))
+                self.blk("Laces", (w * 0.5, h * 0.12, h * 0.14), (x, top - h * 0.015, z + t * l / 2), lace, R=rot(x=slope))
+
+    def rbox(self, name, size, pos, color, r, mat="SmoothPlastic", R=None, tr=0, refl=0, edge_name=None, axis="y"):
+        """A box with rounded edges along one axis (2 blocks + 4 cylinders)."""
+        sx, sy, sz = size
+        R0 = I3 if R is None else np.array(R, float)
+        en = edge_name or name
+        c = np.array(pos, float)
+        if axis == "y":
+            first = self.blk(name, (sx - 2 * r, sy, sz), pos, color, mat, R0, tr, refl)
+            self.blk(en, (sx, sy, sz - 2 * r), pos, color, mat, R0, tr, refl)
+            for ix in (-1, 1):
+                for iz in (-1, 1):
+                    off = R0 @ np.array([ix * (sx / 2 - r), 0, iz * (sz / 2 - r)])
+                    self.cyl(en, sy, 2 * r, c + off, color, "y", mat, R0, tr, refl)
+        elif axis == "z":
+            first = self.blk(name, (sx - 2 * r, sy, sz), pos, color, mat, R0, tr, refl)
+            self.blk(en, (sx, sy - 2 * r, sz), pos, color, mat, R0, tr, refl)
+            for ix in (-1, 1):
+                for iy in (-1, 1):
+                    off = R0 @ np.array([ix * (sx / 2 - r), iy * (sy / 2 - r), 0])
+                    self.cyl(en, sz, 2 * r, c + off, color, "z", mat, R0, tr, refl)
+        else:
+            first = self.blk(name, (sx, sy - 2 * r, sz), pos, color, mat, R0, tr, refl)
+            self.blk(en, (sx, sy, sz - 2 * r), pos, color, mat, R0, tr, refl)
+            for iy in (-1, 1):
+                for iz in (-1, 1):
+                    off = R0 @ np.array([0, iy * (sy / 2 - r), iz * (sz / 2 - r)])
+                    self.cyl(en, sx, 2 * r, c + off, color, "x", mat, R0, tr, refl)
+        return first
+
+    # strokes for simple block letters on a 2 x 4 grid (x across, y up)
+    FONT = {
+        "S": [(0, 4, 2, 4), (0, 2, 2, 2), (0, 0, 2, 0), (0, 2, 0, 4), (2, 0, 2, 2)],
+        "E": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 2, 1.6, 2), (0, 0, 2, 0)],
+        "C": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 0, 2, 0)],
+        "U": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 0, 2, 0)],
+        "R": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 2, 2, 2), (2, 2, 2, 4), (0.8, 2, 2, 0)],
+        "I": [(1, 0, 1, 4), (0.3, 4, 1.7, 4), (0.3, 0, 1.7, 0)],
+        "T": [(0, 4, 2, 4), (1, 0, 1, 4)],
+        "Y": [(0, 4, 1, 2), (2, 4, 1, 2), (1, 0, 1, 2)],
+        "O": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 4, 2, 4), (0, 0, 2, 0)],
+        "B": [(0, 0, 0, 4), (0, 4, 1.6, 4), (0, 2, 2, 2), (0, 0, 2, 0), (2, 0, 2, 2), (1.6, 2.4, 1.6, 4)],
+        "N": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 4, 2, 0)],
+        "A": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 4, 2, 4), (0, 2, 2, 2)],
+        "K": [(0, 0, 0, 4), (0, 2, 2, 4), (0.6, 2.6, 2, 0)],
+        "J": [(2, 0, 2, 4), (0, 0, 2, 0), (0, 0, 0, 1.4)],
+        "G": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 0, 2, 0), (2, 0, 2, 2), (1, 2, 2, 2)],
+        "L": [(0, 0, 0, 4), (0, 0, 2, 0)],
+        "P": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 2, 2, 2), (2, 2, 2, 4)],
+        "!": [(1, 1.3, 1, 4), (1, 0, 1, 0.35)],
+    }
+
+    def text(self, name, string, center, height, color, facing="back", d=None, mat="SmoothPlastic", depth=0.03, wrap=None):
+        """Block letters on a surface. facing="back" reads from behind the model (+Z side),
+        "front" reads from the front (-Z side). wrap(x) gives the surface z at x, for curved bodies."""
+        cw = height / 4.0
+        adv = cw * 2.9
+        d = d or cw * 0.8
+        total = adv * len(string) - cw * 0.9
+        cx, cy, cz = center
+        sgn = 1 if facing == "back" else -1
+        for i, ch in enumerate(string):
+            strokes = self.FONT.get(ch.upper())
+            if not strokes:
+                continue
+            x0 = -total / 2 + i * adv
+            for (ax, ay, bx, by) in strokes:
+                x1, x2 = cx + sgn * (x0 + ax * cw), cx + sgn * (x0 + bx * cw)
+                p1 = (x1, cy - height / 2 + ay * cw, wrap(x1) if wrap else cz)
+                p2 = (x2, cy - height / 2 + by * cw, wrap(x2) if wrap else cz)
+                v = np.array(p2) - np.array(p1)
+                L = float(np.linalg.norm(v))
+                if L < 1e-6:
+                    continue
+                e = v / L * d / 2  # stretch each stroke a little so the corners meet
+                self.rod(name, tuple(np.array(p1) - e), tuple(np.array(p2) + e), d, color, mat=mat, shape="B")
+
+    def band(self, name, pts, width, thick, color, surface=None, lift=0.0, mat="SmoothPlastic", R=None):
+        """A flat strap (sash, stripe, belt) through points given as (x, y); z comes from the
+        front surface z = surface(x, y) so the strap lies on it instead of sinking in."""
+        P = []
+        for (x, y) in pts:
+            z = surface(x, y) - lift
+            P.append(np.array([x, y, z], float))
+        for i in range(len(P) - 1):
+            p1, p2 = P[i], P[i + 1]
+            v = p2 - p1
+            L = float(np.linalg.norm(v))
+            xa = v / L
+            # surface normal from the slope of z = f(x, y), pointing out of the front
+            mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+            e = 0.02
+            dzdx = (surface(mx + e, my) - surface(mx - e, my)) / (2 * e)
+            dzdy = (surface(mx, my + e) - surface(mx, my - e)) / (2 * e)
+            n = np.array([dzdx, dzdy, -1.0])
+            if not np.isfinite(n).all() or np.abs(n).max() > 50:
+                n = np.array([0.0, 0.0, -1.0])
+            n = n - xa * float(n @ xa)
+            n /= np.linalg.norm(n)
+            wa = np.cross(n, xa)
+            Rf = np.column_stack([xa, wa, n])
+            self.add("B", name, (L * 1.08, width, thick), (p1 + p2) / 2, color, mat, Rf)
+        return P
+
+    def rivets(self, name, pts, d, color, normal="z", mat="Metal"):
+        for p in pts:
+            self.cyl(name, d * 0.45, d, p, color, normal, mat)
+
+    def scatter(self, name, center, size, n, colors, seed=1, d=0.12, ymin=0.0, shape="sprinkle", front_only=False, mat="SmoothPlastic", length=2.6, inset=0.0):
+        """Scatters little details (sprinkles, seeds, salt, studs) over the upper surface of an ellipsoid."""
+        import random
+        rnd = random.Random(seed)
+        c = np.array(center, float)
+        h = np.array(size, float) / 2
+        placed = 0
+        tries = 0
+        while placed < n and tries < n * 60:
+            tries += 1
+            v = np.array([rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-1, 1)])
+            if np.linalg.norm(v) < 1e-3:
+                continue
+            v /= np.linalg.norm(v)
+            if v[1] < ymin:
+                continue
+            if front_only and v[2] > 0.2:
+                continue
+            p = c + v * h * (1 - inset)
+            nrm = v / h
+            nrm /= np.linalg.norm(nrm)
+            col = colors[placed % len(colors)]
+            Rn = frame_normal(nrm, rnd.uniform(0, 360))
+            if shape == "sprinkle":
+                self.ell(name, (d * length, d, d), p + nrm * d * 0.2, col, mat, R=Rn)
+            elif shape == "dot":
+                self.ell(name, (d, d, d * 0.5), p, col, mat, R=Rn)
+            elif shape == "cube":
+                self.blk(name, (d, d, d), p, col, mat, R=Rn @ rot(30, 20, 10))
+            elif shape == "stud":
+                self.cyl(name, d * 0.5, d, p, col, "z", mat, R=Rn)
+            placed += 1
+
+    def drip(self, name, top, length, d, color, mat="SmoothPlastic", refl=0.0):
+        """A hanging drip: a stretched blob ending in a round drop."""
+        x, y, z = top
+        self.ell(name, (d * 0.8, length, d * 0.8), (x, y - length / 2, z), color, mat, refl=refl)
+        self.ball(name, d, (x, y - length + d * 0.15, z), color, mat, refl=refl)
+
+    def stitches(self, name, p1, p2, n, d, color, R=None):
+        p1 = np.array(p1, float); p2 = np.array(p2, float)
+        for k in range(n):
+            t = (k + 0.5) / n
+            p = p1 + (p2 - p1) * t
+            self.blk(name, (d * 2.2, d * 0.7, d * 0.7), p, color, R=Rz(45 if k % 2 else -45) if R is None else R)
+
+    def gem(self, name, pos, d, color, glow=False):
+        """A faceted-looking gem: a ball with a bright highlight."""
+        self.ball(name, d, pos, color, "Neon" if glow else "Glass", refl=0.3)
+        x, y, z = pos
+        self.ball(name + "Shine", d * 0.3, (x + d * 0.18, y + d * 0.18, z - d * 0.3), (255, 255, 255), "Neon")
 
     # Effects ------------------------------------------------------------
     def fire(self, idx, size=2, heat=6, color=(255, 120, 30), color2=(255, 220, 80)):

@@ -393,6 +393,14 @@ CFMT.__index = function(cf, k)
 		return function(c, v)
 			return cfApply(c, v)
 		end
+	elseif k == "ToObjectSpace" then
+		return function(c, other)
+			return c:Inverse() * other
+		end
+	elseif k == "ToWorldSpace" then
+		return function(c, other)
+			return c * other
+		end
 	end
 	error(tostring(k) .. " is not a valid member of CFrame", 2)
 end
@@ -980,14 +988,37 @@ function methods.GetPivot(self)
 	end
 	return r.props.WorldPivot or CFrame.new()
 end
+-- Roblox keeps part rotations orthonormal. Without this, the tiny rounding error of
+-- delta = cf * cur:Inverse() doubles on every PivotTo, and a model that is moved every frame
+-- (idle breathing) flies apart to infinity within a second of simulated frames.
+local function orthonormal(cf)
+	local r = cf._r
+	local x1, x2, x3 = r[1], r[4], r[7]
+	local lx = math.sqrt(x1 * x1 + x2 * x2 + x3 * x3)
+	if lx < 1e-12 then
+		return cf
+	end
+	x1, x2, x3 = x1 / lx, x2 / lx, x3 / lx
+	local y1, y2, y3 = r[2], r[5], r[8]
+	local d = x1 * y1 + x2 * y2 + x3 * y3
+	y1, y2, y3 = y1 - d * x1, y2 - d * x2, y3 - d * x3
+	local ly = math.sqrt(y1 * y1 + y2 * y2 + y3 * y3)
+	if ly < 1e-12 then
+		return cf
+	end
+	y1, y2, y3 = y1 / ly, y2 / ly, y3 / ly
+	local z1, z2, z3 = x2 * y3 - x3 * y2, x3 * y1 - x1 * y3, x1 * y2 - x2 * y1
+	local p = cf._p
+	return cfRaw(p.X, p.Y, p.Z, x1, y1, z1, x2, y2, z2, x3, y3, z3)
+end
 function methods.PivotTo(self, cf)
 	assert(typeof(cf) == "CFrame", "PivotTo needs a CFrame")
 	local r = rec(self)
-	local cur = methods.GetPivot(self)
-	local delta = cf * cur:Inverse()
+	local cur = orthonormal(methods.GetPivot(self))
+	local delta = orthonormal(cf) * cur:Inverse()
 	for _, p in ipairs(parts(self)) do
 		local pr = rec(p)
-		pr.props.CFrame = delta * (pr.props.CFrame or CFrame.new())
+		pr.props.CFrame = orthonormal(delta * (pr.props.CFrame or CFrame.new()))
 	end
 	if isA(r.className, "Model") then
 		r.props.WorldPivot = cf
