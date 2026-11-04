@@ -890,7 +890,7 @@ do
 		check(M.warnings == warningsBefore and M.errors == errorsBefore, "Raise, Defend, Blocked, Bump, Push, Swap, Guard down, aimed chant and fade-away animations play without errors")
 		check(labelWithText("Skeleton Mascot fades away for good") ~= nil, "the log says the raised creature faded away")
 		local p = camera.CFrame.Position
-		local nearSeat = (p - Vector3.new(0, 16, 12)).Magnitude < 0.8 or (p - Vector3.new(0, 15.6, 13.4)).Magnitude < 0.8
+		local nearSeat = (p - Vector3.new(0, 16, 16)).Magnitude < 0.8 or (p - Vector3.new(0, 16, 16.5)).Magnitude < 0.8
 		check(nearSeat, string.format("the camera glides back to your seat after the action shots (%.1f, %.1f, %.1f)", p.X, p.Y, p.Z))
 		local backsInHand = 0
 		for _, h in ipairs(handHolders()) do

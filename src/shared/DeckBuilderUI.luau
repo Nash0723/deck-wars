@@ -256,8 +256,10 @@ local function canAdd(id)
 end
 
 local function setThemes(deck, themes)
+	-- a new theme gets its share of the lanes (2 and 2); taking one out keeps the lanes that still fit
+	local grew = #themes > #(deck.themes or {})
 	deck.themes = themes
-	deck.lanes = DeckRules.fixLanes(themes, deck.lanes)
+	deck.lanes = DeckRules.fixLanes(themes, (not grew) and deck.lanes or nil)
 end
 
 local function addCard(id)

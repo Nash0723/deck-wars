@@ -204,7 +204,41 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
-## Latest update: Gems, Coins, the Shop and a developer panel
+## Latest update: a 4-lane board with building rows, and decks you build yourself
+
+### The new board
+- Each side has **4 lanes** (columns) and **3 rows**: Frontline (next to the middle), Midline and Backline. Behind each side is a row of **4 building slots**. From your chair, top to bottom: their building slots, their Backline, Midline, Frontline, then your Frontline, Midline, Backline and your building slots.
+- Creatures are summoned on your Backline or Midline. A creature anywhere in the enemy half can hit their hero, and creatures can hit enemy buildings in reach. Buildings don't hit back.
+- **Lanes have terrain.** Your deck picks the terrain of each of your 4 lanes (from its themes). Creatures standing on their own family's terrain get +1 attack, so where you put things matters.
+- **Placing feels smooth:** while you aim a creature or building, a see-through copy of it follows your mouse over the table and glides onto the nearest gold tile, and when you play it the creature steps down onto the terrain. The tiles sit flush with thin seams, and only the tiles you can use glow.
+- **Buildings** go in the slots behind your rows, cost more, and work from there every turn. Lane buildings help or hit along their lane (on both halves), row buildings help one of your rows. A soft line in the building's color outlines the tiles it reaches, and hovering a slot or tile tells you what reaches it. Building on top of your own building replaces it (the old one leaves Scrap in front of the slot).
+
+| Building | Cost | What it does |
+| --- | --- | --- |
+| Spiked Fence | 2 | Start of your turn: 1 damage to the nearest enemy creature in its lane |
+| Bouncy Castle | 2 | Your Frontline creatures have Sturdy (a row building) |
+| Snack Bar | 2 | Start of your turn: heal your creatures in its lane 2 (Snacks get Power from it) |
+| Charging Station | 2 | Your creatures in its lane have +1 attack (Robos +2) |
+| Bunny Burrow | 3 | You can summon anywhere in its lane on your half; a Pigeon hops in when it's built |
+| Wind Turbine | 3 | Your creatures in its lane have Fast; Soaks the nearest enemy in its lane |
+| Lemonade Stand | 3 | +1 energy each turn (doesn't stack, works from any slot) |
+| Spooky Crypt | 3 | Your creatures in its lane have Haunt |
+| Disco Cactus | 3 | Roll: your Midline creatures get +1 attack, or heal 2 (a row building) |
+| Scrap Catapult | 4 | 2 damage to the nearest enemy in its lane (a random enemy if the lane is clear) |
+| Haunted Arcade | 5 | A 1/1 Ghost with Haunt appears in its lane on your half |
+| Rocket Lunchbox | 6 | A rocket flies up its lane: 3 damage to the first enemy creature, the rest hits the hero |
+
+### Your collection and your own decks
+- **New players** get a starter collection the first time they join: the 4 starter characters, Jelly Bean Scout and Pretzel Guard (Snack) and Pocket Mouse and Moth Mailman (Critter), 3 copies each, plus 8 simple neutral cards (2 Spare Battery, 2 Snack Break, 2 Wrong Turn, 2 Spiked Fence). That makes the 20-card **Starter Deck**, ready in deck slot 1. Everything else comes from packs and the Shop.
+- **The Deck Shelf** shows your collection (cards you haven't found are dark) and your deck slots (3 to start; more in the Shop). **+ New** or **Edit** opens the deck builder: name the deck, pick a hero, pick up to 2 themes and the terrain of each lane, then tap cards in your collection to add them and tap them in the list to take them out. **Fill up** adds cards you own until the deck has 20. The builder says what is still wrong ("Add 3 more cards", "You don't own enough of...") and shows ✔ Ready to play when the deck is legal. Unfinished decks can be saved, but only ready ones can be played.
+- **Deck rules:** 20 to 30 cards, cards from up to 2 themes plus any neutral cards, up to 3 copies of a card and 1 of each Legendary and Secret, and only cards you own. The server checks all of it again when you sit down, so a hacked client can't play cards it doesn't have.
+- **The Duel Table** lists your decks first, then the six practice decks. The bot picks a practice deck of another theme.
+- Decks are saved in the same profile as your Gems, Coins and cards (one save, so nothing can fight over it).
+
+### 2 themes or 4? Why 2
+There are 6 themes. With 2 per deck, every deck leans on its families' own rules (Sweet Tooth, Scrap, Soak, Pack, Grudge and Upload), there are 15 different pairs to discover, and the cards of each theme can be balanced against a small set of partners. With 4, a deck could take the best cards of two thirds of the whole game, the family rules would barely matter (you would rarely have enough of one family on the board for Pack, Grudge, Upload or a Combo), most strong decks would end up looking the same, and every new card would have to be balanced against far more combinations. So decks use at most 2 themes. It's one number if you want to try 4: `MaxThemes` in ReplicatedStorage > DeckWars > DeckRules.
+
+## Earlier update: Gems, Coins, the Shop and a developer panel
 
 ### Two currencies
 - **💎 Gems** are the premium currency and open card packs at the Pack Party. You get them from Robux Gem bundles, the daily login, your first win of the day, level ups and a small daily Coin exchange.
