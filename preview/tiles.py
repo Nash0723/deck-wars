@@ -10,11 +10,12 @@ import models_snack, models_junk, models_weather, models_critter, models_spooky,
 
 room = json.load(open("src/world/MenuRoom.model.json"))
 TERRAIN = {"Snack": (80, 150, 142), "Junk": (118, 113, 104), "Weather": (196, 210, 226), "Critter": (222, 176, 194), "Spooky": (138, 116, 174), "Robo": (60, 50, 50)}
-middle = ["Spooky", "Weather", "Junk", "Critter", "Snack"]
+SLOT = (70, 64, 60)
 def terrain_of(wc, wr):
-    if wr <= 2: return "Snack"
-    if wr >= 5: return "Robo"
-    return middle[wc - 1]
+    # each side's lanes: near side Snack Snack Critter Critter, far side Robo Robo Junk Junk
+    if wr in (0, 7): return None
+    if wr <= 3: return "Snack" if wc <= 2 else "Critter"
+    return "Robo" if wc >= 3 else "Junk"
 prims = []
 tiles = {}
 heroes_at = {}
@@ -38,7 +39,8 @@ def walk(n):
             if name.startswith("Tile_"):
                 wc, wr = int(name.split("_")[1]), int(name.split("_")[2])
                 tiles[(wc, wr)] = (cf["position"], p["Size"])
-                base = np.array(TERRAIN[terrain_of(wc, wr)], float) / 255
+                fam = terrain_of(wc, wr)
+                base = np.array(TERRAIN[fam] if fam else SLOT, float) / 255
                 color = base * (1.0 if (wc + wr) % 2 == 0 else 0.9)
             prims.append(dict(shape=shape, size=np.array(p["Size"], float), pos=np.array(cf["position"], float),
                               R=np.array(cf["orientation"], float), color=color, mat=p.get("Material", "Plastic"), tr=tr))
@@ -68,7 +70,7 @@ def place(id, wc, wr, yaw):
     m = allm[id]
     pos, size = tiles[(wc, wr)]
     top = pos[1] + size[1] / 2
-    tile = size[0]
+    tile = min(size[0], size[2])
     if m.kind == "gadget":
         s = min(0.56, tile * 0.96 / footprint(m))
     else:
@@ -76,8 +78,8 @@ def place(id, wc, wr, yaw):
     return scaled(m, (pos[0], top, pos[2]), yaw, s)
 
 extra = []
-mine = [("pretzel_guard", 1, 2), ("snack_bar", 3, 2), ("queen_parfait", 3, 1), ("pancake_paladin", 2, 3), ("hot_sauce_imp", 4, 4), ("bouncy_castle", 5, 1)]
-theirs = [("roomba_rex", 2, 5), ("microwave_mage", 3, 6), ("charging_station", 4, 6), ("toaster_knight", 3, 4), ("mecha_fridge", 5, 5)]
+mine = [("pretzel_guard", 1, 2), ("snack_bar", 3, 0), ("queen_parfait", 3, 1), ("pancake_paladin", 2, 3), ("hot_sauce_imp", 4, 4), ("bouncy_castle", 1, 0)]
+theirs = [("roomba_rex", 2, 5), ("microwave_mage", 3, 6), ("charging_station", 4, 7), ("toaster_knight", 3, 4), ("mecha_fridge", 4, 5)]
 for id, c, r in mine: extra += place(id, c, r, 0)
 for id, c, r in theirs: extra += place(id, c, r, 180)
 def hero_spot(name):
@@ -97,8 +99,8 @@ for a in sys.argv[1:]:
 Hd = Wd * 9 // 16
 CAMS = {
     "seat": ("Seat (match camera)", (0, 14.4, 12.6), (0, 3.6, 0.3), 60),
-    "you": ("Your turn (new)", (0, 16, 12), (0, 4.2, 1.25), 48),
-    "opp": ("Opponent's turn (new)", (0, 15.6, 13.4), (0, 4.0, -0.6), 52),
+    "you": ("SeatYou", (0, 16, 16), (0, 4.2, 3.4), 46),
+    "opp": ("SeatOpp", (0, 16, 16.5), (0, 4.0, 2.2), 50),
     "oldseat": ("Old seat camera", (0, 16.2, 14.5), (0, 3.4, 0.2), 60),
     "top": ("Table from the room", (0, 17, 24), (0, 4, 0), 70),
     "far": ("Far side", (0, 19.5, -15.0), (0, 3.6, -0.8), 58),

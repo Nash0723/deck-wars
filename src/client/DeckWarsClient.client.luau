@@ -72,9 +72,11 @@ local turnState = "opp" -- "you", "opp" or "over": what the turn label says
 local CAMS = {
 	Overview = { Vector3.new(0, 15, 22), Vector3.new(0, 3, -6) },
 	DuelTable = { Vector3.new(0, 16, 23), Vector3.new(0, 4, 0) },
-	Seat = { Vector3.new(0, 15.6, 13.4), Vector3.new(0, 4.0, -0.6), 52 }, -- sitting down: the board and the bot across the table
-	SeatYou = { Vector3.new(0, 16, 12), Vector3.new(0, 4.2, 1.25), 48 }, -- your turn: leaning in, the board fills the screen
-	SeatOpp = { Vector3.new(0, 15.6, 13.4), Vector3.new(0, 4.0, -0.6), 52 }, -- the bot's turn: leaning back to watch it play
+	-- The match cameras keep both building rows in view (yours just above the hand) and stay under
+	-- the ceiling and the lamps over the table.
+	Seat = { Vector3.new(0, 16, 16.5), Vector3.new(0, 4.0, 2.2), 50 }, -- sitting down: the board and the bot across the table
+	SeatYou = { Vector3.new(0, 16, 16), Vector3.new(0, 4.2, 3.4), 46 }, -- your turn: leaning in over your own rows
+	SeatOpp = { Vector3.new(0, 16, 16.5), Vector3.new(0, 4.0, 2.2), 50 }, -- the bot's turn: leaning back to watch it play
 	DeckShelf = { Vector3.new(-9, 8, 0), Vector3.new(-22, 6, 0) },
 	PackParty = { Vector3.new(9.5, 9.5, -9.5), Vector3.new(17, 5.2, -17.5) },
 	ShopCounter = { Vector3.new(9, 8.5, 9), Vector3.new(16, 5.2, 17.5) },
@@ -1613,15 +1615,17 @@ local function tweenBar(fill, fraction)
 end
 
 ---------------------------------------------------------------------------
--- The duel table: 30 tiles, heroes, energy crystals, card piles
+-- The duel table: 4 lanes x 6 rows of tiles, a building row behind each side (world rows 0 and
+-- ROWS + 1), heroes, energy crystals, card piles
 ---------------------------------------------------------------------------
 
 local SIDES = { "Near", "Far" }
 local COLS, ROWS = CardData.Cols, CardData.Rows
-local TILES = {} -- [world column][world row] = tile part. World row 1 is the row nearest your chair.
+local TILES = {} -- [world column][world row] = tile part. World row 1 is the row nearest your chair,
+-- row 0 your building row and row ROWS + 1 the opponent's.
 for wc = 1, COLS do
 	TILES[wc] = {}
-	for wr = 1, ROWS do
+	for wr = 0, ROWS + 1 do
 		TILES[wc][wr] = board:WaitForChild("Tile_" .. wc .. "_" .. wr)
 	end
 end
@@ -1658,7 +1662,7 @@ local function restore(part)
 	end
 end
 for wc = 1, COLS do
-	for wr = 1, ROWS do
+	for wr = 0, ROWS + 1 do
 		remember(TILES[wc][wr])
 	end
 end
@@ -1745,16 +1749,16 @@ do
 	end
 	for wc = 1, COLS do
 		tileGlow[wc] = {}
-		for wr = 1, ROWS do
+		for wr = 0, ROWS + 1 do
 			local tile = TILES[wc][wr]
 			local p = tile.Position
 			local y = topY(tile) + 0.035
-			local half = tile.Size.X / 2 - 0.1
+			local hx, hz = tile.Size.X / 2 - 0.1, tile.Size.Z / 2 - 0.1
 			local bars = {}
-			for _, b in ipairs({ { 0, half, half * 2, 0.1 }, { 0, -half, half * 2, 0.1 }, { half, 0, 0.1, half * 2 }, { -half, 0, 0.1, half * 2 } }) do
+			for _, b in ipairs({ { 0, hz, hx * 2, 0.1 }, { 0, -hz, hx * 2, 0.1 }, { hx, 0, 0.1, hz * 2 }, { -hx, 0, 0.1, hz * 2 } }) do
 				table.insert(bars, glowPart(Vector3.new(b[3], 0.06, b[4]), CFrame.new(p.X + b[1], y, p.Z + b[2])))
 			end
-			local fill = glowPart(Vector3.new(half * 2 - 0.2, 0.03, half * 2 - 0.2), CFrame.new(p.X, y - 0.01, p.Z))
+			local fill = glowPart(Vector3.new(hx * 2 - 0.2, 0.03, hz * 2 - 0.2), CFrame.new(p.X, y - 0.01, p.Z))
 			tileGlow[wc][wr] = { bars = bars, fill = fill, on = false, tr = 1, fillTr = 1 }
 		end
 	end
@@ -1778,7 +1782,7 @@ end
 
 local function clearGlows()
 	for wc = 1, COLS do
-		for wr = 1, ROWS do
+		for wr = 0, ROWS + 1 do
 			tileGlow[wc][wr].on = false
 		end
 	end
@@ -2461,7 +2465,9 @@ local function spawnUnit(u)
 		size = Vector3.new(2.5, 2.5, 2.5)
 	end
 	local widest = math.max(size.X, size.Z, 0.5)
-	local tileSize = TILES[1][1].Size.X
+	-- fit the narrower side of the tile (or building slot) it stands on
+	local tp = tilePart(u.col, u.row) or TILES[1][1]
+	local tileSize = math.min(tp.Size.X, tp.Size.Z)
 	local s = u.kind == "building" and math.min(0.56, tileSize * 0.96 / widest) or math.min(0.52, tileSize * 1.06 / widest)
 	setScale(model, s)
 	if (u.kind or "creature") == "creature" then
@@ -2957,8 +2963,9 @@ do
 		end
 		shownTerrain[k] = fam
 		local tile = TILES[wc][wr]
-		-- every other tile is a little darker, so the grid is easy to read
-		local color = (wc + wr) % 2 == 0 and look[2] or look[2]:Lerp(BLACK, 0.12)
+		-- one even field of ground along a lane (only the hairline seams show the tiles), with a
+		-- barely-there shade change from tile to tile so the surface doesn't look flat
+		local color = (wc + wr) % 2 == 0 and look[2] or look[2]:Lerp(BLACK, 0.035)
 		if not animated then
 			tile.Material = look[1]
 			tile.Color = color
@@ -3038,6 +3045,248 @@ local AIM = {
 	strike = Color3.fromRGB(195, 135, 245),
 }
 
+-- Placing cards without a rigid grid feel: while you aim a creature or building card, a see-through
+-- copy of it follows the mouse over the table and glides (like a magnet, not a jump) onto the
+-- nearest glowing tile. Lane and row buildings draw a soft line in their color along the tiles they
+-- help, so you can see what a building does from across the table.
+ui.place = { ghost = nil, ghostId = nil, pos = nil, auraKey = "", auras = {}, preview = {} }
+do
+	local place = ui.place
+	local function planePoint()
+		local m = UserInputService:GetMouseLocation()
+		local ray = camera:ViewportPointToRay(m.X, m.Y)
+		local y = topY(TILES[1][1])
+		if math.abs(ray.Direction.Y) < 1e-4 then
+			return nil
+		end
+		local t = (y - ray.Origin.Y) / ray.Direction.Y
+		if t <= 0 then
+			return nil
+		end
+		return ray.Origin + ray.Direction * t
+	end
+
+	local function dropGhost()
+		if place.ghost then
+			place.ghost:Destroy()
+		end
+		place.ghost, place.ghostId, place.pos = nil, nil, nil
+	end
+	place.dropGhost = dropGhost
+
+	local function makeGhost(id)
+		local def = CardData.Cards[id]
+		local model = buildModel(id)
+		local ok, size = pcall(function()
+			return model:GetExtentsSize()
+		end)
+		size = ok and size or Vector3.new(2.5, 2.5, 2.5)
+		local widest = math.max(size.X, size.Z, 0.5)
+		local s = def and def.type == "Building" and math.min(0.5, 1.7 / widest) or math.min(0.52, 2.4 / widest)
+		setScale(model, s)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.Transparency = 1 - (1 - d.Transparency) * 0.45
+				d.CanQuery = false
+				d.CanCollide = false
+				d.CanTouch = false
+				d.CastShadow = false
+			elseif d:IsA("ParticleEmitter") or d:IsA("Light") then
+				d:Destroy()
+			end
+		end
+		local ring = Instance.new("Part")
+		ring.Name = "GhostRing"
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Material = Enum.Material.Neon
+		ring.Color = Color3.fromRGB(255, 225, 140)
+		ring.Transparency = 0.55
+		ring.Size = Vector3.new(0.03, 1.5, 1.5)
+		ring.Parent = model
+		model.Name = "PlacementGhost"
+		model.Parent = boardFolder
+		return model
+	end
+
+	-- Tiles a building would help from this slot (match coordinates), for the preview and the auras.
+	local function auraTiles(def, owner, col)
+		local out = {}
+		if def.area == "lane" then
+			for row = 1, ROWS do
+				table.insert(out, { col = col, row = row })
+			end
+		elseif def.area == "Backline" or def.area == "Midline" or def.area == "Frontline" then
+			local line = def.area == "Backline" and 1 or (def.area == "Midline" and 2 or 3)
+			local row = owner == 1 and line or ROWS + 1 - line
+			for c = 1, COLS do
+				table.insert(out, { col = c, row = row })
+			end
+		end
+		return out
+	end
+	place.auraTiles = auraTiles
+
+	-- A thin glowing outline around a set of tiles (one line per outer edge), in `color`.
+	local function outline(tiles, color, transparency, list)
+		local set = {}
+		for _, t in ipairs(tiles) do
+			local wc, wr = flip(t.col, t.row)
+			set[wc * 16 + wr] = true
+		end
+		for _, t in ipairs(tiles) do
+			local wc, wr = flip(t.col, t.row)
+			local tile = TILES[wc] and TILES[wc][wr]
+			if tile then
+				local p, y = tile.Position, topY(tile) + 0.02
+				local hx, hz = tile.Size.X / 2 + 0.02, tile.Size.Z / 2 + 0.02
+				for _, side in ipairs({ { 0, 1, 0, hz, hx * 2, 0.07 }, { 0, -1, 0, -hz, hx * 2, 0.07 }, { 1, 0, hx, 0, 0.07, hz * 2 }, { -1, 0, -hx, 0, 0.07, hz * 2 } }) do
+					-- world rows grow toward the far side (-Z), so a neighbour at +Z is wr - 1
+					local nwc, nwr = wc + side[1], wr - side[2]
+					if not set[nwc * 16 + nwr] then
+						local line = Instance.new("Part")
+						line.Name = "LaneAura"
+						line.Anchored = true
+						line.CanCollide = false
+						line.CanQuery = false
+						line.CanTouch = false
+						line.CastShadow = false
+						line.Material = Enum.Material.Neon
+						line.Color = color
+						line.Transparency = transparency
+						line.Size = Vector3.new(side[5], 0.025, side[6])
+						line.CFrame = CFrame.new(p.X + side[3], y, p.Z + side[4])
+						line.Parent = boardFolder
+						table.insert(list, line)
+					end
+				end
+			end
+		end
+	end
+
+	local function clearList(list)
+		for _, p in ipairs(list) do
+			p:Destroy()
+		end
+		table.clear(list)
+	end
+
+	-- Every frame in a match: the placement ghost, the building auras and the slot preview.
+	function place.update(dt)
+		if mode ~= "match" or not view then
+			dropGhost()
+			clearList(place.preview)
+			return
+		end
+		-- auras of the buildings on the table (rebuilt only when the buildings change)
+		local key = {}
+		for uid, entry in pairs(units) do
+			if entry.kind == "building" then
+				table.insert(key, uid .. "@" .. entry.col)
+			end
+		end
+		table.sort(key)
+		local k = table.concat(key, ",") .. "/" .. tostring(view.you)
+		if k ~= place.auraKey then
+			place.auraKey = k
+			clearList(place.auras)
+			for _, entry in pairs(units) do
+				local def = entry.kind == "building" and CardData.Cards[entry.cardId]
+				if def then
+					local tiles = auraTiles(def, entry.owner, entry.col)
+					if #tiles > 0 then
+						local color = def.family == "Any" and Color3.fromRGB(255, 220, 150) or familyColor(def.family)
+						outline(tiles, color:Lerp(WHITE, 0.15), 0.62, place.auras)
+					end
+				end
+			end
+		end
+		local aiming = pick and pick.kind == "card" and pick.step == "tile" and pick.cardId
+		local def = aiming and CardData.Cards[pick.cardId]
+		if not def or (def.type ~= "Creature" and def.type ~= "Building") then
+			dropGhost()
+			clearList(place.preview)
+			return
+		end
+		if place.ghostId ~= pick.cardId then
+			dropGhost()
+			place.ghost = makeGhost(pick.cardId)
+			place.ghostId = pick.cardId
+		end
+		-- snap toward the nearest glowing tile under the mouse, or follow the mouse freely
+		local point = planePoint()
+		local target, snapped = point, nil
+		if point then
+			local best, bestD = nil, math.huge
+			for _, a in ipairs(pick.cands) do
+				local t = a.tile
+				if t then
+					local tile = tilePart(t.col, t.row)
+					if tile then
+						local d = (Vector3.new(tile.Position.X, 0, tile.Position.Z) - Vector3.new(point.X, 0, point.Z)).Magnitude
+						if d < bestD then
+							best, bestD = { t = t, tile = tile }, d
+						end
+					end
+				end
+			end
+			if best and bestD < 1.9 then
+				snapped = best
+				target = Vector3.new(best.tile.Position.X, topY(best.tile), best.tile.Position.Z)
+			end
+		end
+		if not target then
+			place.ghost.Parent = nil
+			return
+		end
+		place.ghost.Parent = boardFolder
+		local cur = place.pos or target
+		cur = cur:Lerp(target, 1 - math.exp(-(dt or 0.016) * (snapped and 16 or 22)))
+		place.pos = cur
+		local lift = snapped and 0.12 + 0.05 * math.sin(clock * 4) or 0.55
+		-- your own pieces face the enemy (-Z) from your chair
+		local cf = CFrame.new(cur.X, cur.Y + lift, cur.Z)
+		place.ghost:PivotTo(cf)
+		local ring = place.ghost:FindFirstChild("GhostRing")
+		if ring then
+			ring.CFrame = CFrame.new(cur.X, cur.Y + 0.03, cur.Z) * CFrame.Angles(0, 0, math.pi / 2)
+			ring.Transparency = snapped and 0.45 or 0.8
+		end
+		-- a building over a slot shows the tiles it would help
+		clearList(place.preview)
+		if snapped and def.type == "Building" then
+			local tiles = auraTiles(def, view.you, snapped.t.col)
+			if #tiles > 0 then
+				outline(tiles, (def.family == "Any" and Color3.fromRGB(255, 220, 150) or familyColor(def.family)):Lerp(WHITE, 0.3), 0.35, place.preview)
+			end
+		end
+	end
+
+	-- A creature placed from your hand steps down onto the terrain from where the ghost floated,
+	-- with a little squash and a puff of dust, instead of popping out of the tile.
+	function place.land(entry, seconds)
+		local model, home = entry.model, entry.home
+		entry.yaw = 0
+		local yaw = 0
+		local from = model:GetPivot().Position
+		local start = home.Position + Vector3.new(0, 1.0, 0)
+		if (from - home.Position).Magnitude > 3 then
+			from = start
+		end
+		setScale(model, entry.scale * 0.92)
+		animateEntry(entry, seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.In, function(a)
+			a = math.min(a, 1)
+			local pos = from:Lerp(home.Position, a)
+			model:PivotTo(CFrame.new(pos) * home.Rotation * CFrame.Angles(0, yaw, 0))
+			setScale(model, entry.scale * (0.92 + 0.08 * a))
+		end)
+	end
+end
+
 local function cardName(id)
 	return CardData.get(id).name
 end
@@ -3082,6 +3331,7 @@ local function clearPrompt()
 	ui.promptBar.Visible = false
 	clearPromptButtons()
 	pick = nil
+	ui.place.dropGhost()
 	showReadyGlows()
 end
 
@@ -3089,6 +3339,9 @@ local function sendAction(action)
 	ui.promptBar.Visible = false
 	clearPromptButtons()
 	pick = nil
+	-- remember where the placement ghost floated, so the creature steps down from there
+	ui.place.lastDrop = ui.place.pos
+	ui.place.dropGhost()
 	clearGlows()
 	busy = true
 	-- The played card lifts out of your hand while the server answers.
@@ -3233,9 +3486,10 @@ local function showCardStep()
 		end
 		local def = CardData.get(pick.cardId)
 		if def.type == "Creature" then
-			showPrompt("Pick a glowing tile for " .. name .. " (your back two rows)")
+			showPrompt("Pick a glowing tile for " .. name .. " (your Backline or Midline)")
 		elseif def.type == "Building" then
-			showPrompt("Pick a glowing tile for " .. name .. " (your half of the board)")
+			local area = def.area == "lane" and "it helps its lane" or (def.area ~= "any" and ("it helps your " .. def.area) or "it works from any slot")
+			showPrompt("Pick a slot in your building row for " .. name .. " (" .. area .. ")")
 		else
 			showPrompt("Pick a tile for " .. name)
 		end
@@ -4257,11 +4511,21 @@ do
 				entry.label.gui.Enabled = false
 			end
 			entry.busy = true
-			entry.model:PivotTo(entry.home * CFrame.new(0, -(entry.height + 0.4), 0))
-			step(token and 0.15 or 0.35)
 			local facingCamera = e.player == view.you and not token
-			riseUp(entry, token and 0.5 or 0.9, facingCamera)
-			step(token and 0.5 or 0.9)
+			if e.fromHand and e.player == view.you then
+				-- your own card: it steps down onto the terrain from where you aimed it
+				local drop = ui.place.lastDrop
+				ui.place.lastDrop = nil
+				entry.model:PivotTo(CFrame.new(drop and (drop + Vector3.new(0, 0.6, 0)) or (entry.home.Position + Vector3.new(0, 1.0, 0))) * entry.home.Rotation)
+				ui.place.land(entry, 0.45)
+				step(0.45)
+				facingCamera = false
+			else
+				entry.model:PivotTo(entry.home * CFrame.new(0, -(entry.height + 0.4), 0))
+				step(token and 0.15 or 0.35)
+				riseUp(entry, token and 0.5 or 0.9, facingCamera)
+				step(token and 0.5 or 0.9)
+			end
 			burst(entry.home.Position + Vector3.new(0, 0.4, 0), color, token and 8 or 12, { speed = 5, gravity = -4 })
 			shakeCamera((def.cost or 0) >= 5 and 0.3 or 0.1)
 			popLabel(entry)
@@ -5131,6 +5395,7 @@ do
 	end
 
 	local function updateBoardLife(dt)
+		ui.place.update(dt)
 		for _, entry in pairs(units) do
 			if entry.kind ~= "building" then
 				idleEntry(entry, 1, dt)
@@ -5146,7 +5411,7 @@ do
 		-- Pulsing tile frames while you aim; the tile under the mouse glows brighter.
 		local pulse = 0.5 + 0.5 * math.sin(clock * 2.0)
 		for wc = 1, COLS do
-			for wr = 1, ROWS do
+			for wr = 0, ROWS + 1 do
 				local g = tileGlow[wc][wr]
 				local hovered = g.on and aim.hoverWc == wc and aim.hoverWr == wr
 				local tr = g.on and (hovered and 0.2 or (0.4 + 0.1 * pulse)) or 1
@@ -5218,6 +5483,31 @@ do
 				local behind = unitAt(u.col + dc, u.row + dr)
 				if behind and behind ~= me and behind.owner == view.you and behind.kind == "creature" then
 					table.insert(extra, 1, "Sandwich! +1 damage (" .. cardName(behind.cardId) .. " is behind it)")
+				end
+			end
+			-- building rows: what sits in the slot and which tiles it helps
+			if hit.row == 0 or hit.row == ROWS + 1 then
+				local mineRow = (hit.row == 0) == (view.you == 1)
+				local lane = "lane " .. aim.hoverWc
+				local b = u and u.kind == "building" and CardData.Cards[u.cardId]
+				if b then
+					local reach = b.area == "lane" and ("helps " .. lane) or ((b.area == "any" or not b.area) and "works from any slot" or ("helps the " .. b.area))
+					tip = b.name .. " (" .. reach .. "): " .. (b.text or "")
+				else
+					tip = (mineRow and "Your" or "Their") .. " building slot, " .. lane
+				end
+			else
+				-- tiles in reach of a lane or row building say so
+				for _, entry in pairs(units) do
+					local b = entry.kind == "building" and CardData.Cards[entry.cardId]
+					if b then
+						for _, t in ipairs(ui.place.auraTiles(b, entry.owner, entry.col)) do
+							if t.col == hit.col and t.row == hit.row then
+								table.insert(extra, (entry.owner == view.you and "" or "Enemy ") .. b.name .. " reaches here")
+								break
+							end
+						end
+					end
 				end
 			end
 			if #extra > 0 then
