@@ -187,7 +187,7 @@ end)
 ---------------------------------------------------------------------------
 local lastAction = {}
 local function tooFast(player)
-	local t = os.clock()
+	local t = time()
 	if lastAction[player] and t - lastAction[player] < ACTION_GAP then
 		return true
 	end

@@ -51,7 +51,7 @@ local BOLD_FONT = Enum.Font.GothamBold
 local state = {
 	ready = false,
 	snap = nil, -- the newest snapshot from the server
-	snapAt = 0, -- os.clock() when it came
+	snapAt = 0, -- time() when it came
 	makeCard = nil,
 	huds = {}, -- { set = fn(snap) }
 	panels = {}, -- open station panels to refresh
@@ -151,7 +151,7 @@ end
 
 -- Seconds left on a countdown from the snapshot, counted on from when it arrived.
 local function since(seconds)
-	return math.max(0, (seconds or 0) - (os.clock() - state.snapAt))
+	return math.max(0, (seconds or 0) - (time() - state.snapAt))
 end
 
 ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ function ShopUI.toast(message, kind, opts)
 		Size = UDim2.fromOffset(big and 520 or 430, big and 86 or 50),
 		BackgroundColor3 = PANEL,
 		BackgroundTransparency = 0.04,
-		LayoutOrder = math.floor(os.clock() * 100) % 1e7,
+		LayoutOrder = math.floor(time() * 100) % 1e7,
 	}, state.toastHolder)
 	corner(t, 14)
 	stroke(t, TOAST_COLORS[kind or "info"] or GOLD, 3)
@@ -310,11 +310,11 @@ local function priceButton(parent, price, onBuy, props)
 		end
 		if cur == "Gems" then
 			local c = state.confirm
-			if not (c and c.button == b and os.clock() < c.untilT) then
-				state.confirm = { button = b, untilT = os.clock() + 3 }
+			if not (c and c.button == b and time() < c.untilT) then
+				state.confirm = { button = b, untilT = time() + 3 }
 				b.Text = "Tap again: " .. priceText(price)
 				task.delay(3, function()
-					if b.Parent and state.confirm and state.confirm.button == b and os.clock() >= state.confirm.untilT then
+					if b.Parent and state.confirm and state.confirm.button == b and time() >= state.confirm.untilT then
 						b.Text = priceText(price)
 						state.confirm = nil
 					end
@@ -722,10 +722,10 @@ function ShopUI.mountEmotes(matchUI, myHero, theirHero)
 			if c.kind == "emote" and (c.default or (s and s.owned[c.id])) then
 				button(menu, c.icon .. "  " .. c.name, TILE, function()
 					menu.Visible = false
-					if os.clock() - last < 3 then
+					if time() - last < 3 then
 						return
 					end
-					last = os.clock()
+					last = time()
 					send("Emote", c.id)
 				end, { Name = c.id, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = i, TextColor3 = TEXT, TextXAlignment = Enum.TextXAlignment.Left, TextSize = 16 })
 			end
@@ -763,7 +763,7 @@ end
 ---------------------------------------------------------------------------
 local function onSnapshot(s)
 	state.snap = s
-	state.snapAt = os.clock()
+	state.snapAt = time()
 	Cosmetics.setEquipped(s.equipped)
 	for _, h in ipairs(state.huds) do
 		h.set(s)
@@ -798,7 +798,17 @@ local function onEvent(kind, payload)
 		end
 	elseif kind == "daily" and type(payload) == "table" then
 		local msg = string.format("Daily reward! Day %d streak: +%s Coins, +%s Gems", payload.streak, ShopCatalog.format(payload.coins), ShopCatalog.format(payload.gems))
-		ShopUI.toast(msg, "info", { big = true, icon = "🎁" })
+		task.spawn(function()
+			-- wait until the title screen is gone, so the reward isn't missed behind it
+			local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+			local waited = 0
+			while pg and pg:FindFirstChild("DeckWarsTitle") and waited < 120 do
+				task.wait(0.5)
+				waited += 0.5
+			end
+			task.wait(0.8)
+			ShopUI.toast(msg, "info", { big = true, icon = "🎁" })
+		end)
 	elseif kind == "reward" and type(payload) == "table" then
 		if payload.coins > 0 or payload.xp > 0 then
 			local parts = { "+" .. payload.coins .. " Coins", "+" .. payload.xp .. " XP" .. (payload.boosted and " (x2)" or "") }

@@ -28,7 +28,10 @@ local Lighting = M.service("Lighting")
 local StarterPlayer = M.service("StarterPlayer")
 local SoundService = M.service("SoundService")
 local ServerStorage = M.service("ServerStorage")
-for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService, ServerStorage }) do
+local DataStoreService = M.service("DataStoreService")
+local MarketplaceService = M.service("MarketplaceService")
+local PolicyService = M.service("PolicyService")
+for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService, ServerStorage, DataStoreService, MarketplaceService, PolicyService }) do
 	s.Parent = game
 end
 
@@ -51,10 +54,17 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "DeckRules", "DeckBuilderUI", "ShopUI", "ShopCatalog", "Cosmetics" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
--- the deck saving module (no EconomyManager in this harness, so it keeps decks in memory)
+-- The economy (Gems, Coins, Shop): server modules in ServerStorage and its remotes
+local econFolder = Instance.new("Folder")
+econFolder.Name = "DeckWarsServer"
+econFolder.Parent = ServerStorage
+for _, n in ipairs({ "EconomyManager", "DevAccess", "ProfileStore" }) do
+	moduleFrom(SRC .. "econ/" .. n .. ".luau", n, econFolder)
+end
+-- the deck saving module (it keeps decks in the EconomyManager profile)
 moduleFrom(SRC .. "server/PlayerDecks.luau", "PlayerDecks", ServerScriptService)
 local econRemotes = Instance.new("Folder")
 econRemotes.Name = "EconomyRemotes"
@@ -64,6 +74,7 @@ for _, n in ipairs({ "ShopAction", "EconomyEvent", "DevAction" }) do
 	r.Name = n
 	r.Parent = econRemotes
 end
+M.userIds = { DNash2307 = 5550001, donatjalt = 5550002 } -- (the local test player is neither)
 -- Pack Brawl (the Pack Party corner's pull cinematic)
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
@@ -177,6 +188,10 @@ local pullServerScript = Instance.new("Script")
 pullServerScript.Name = "PullServer"
 pullServerScript.Parent = ServerScriptService
 runScript(SRC .. "pullserver/PullServer.server.luau", pullServerScript, serverCache)
+local econServerScript = Instance.new("Script")
+econServerScript.Name = "EconomyServer"
+econServerScript.Parent = ServerScriptService
+runScript(SRC .. "server/EconomyServer.server.luau", econServerScript, serverCache)
 runScript(SRC .. "client/DeckWarsClient.client.luau", clientScript, clientCache)
 M.advance(2)
 
