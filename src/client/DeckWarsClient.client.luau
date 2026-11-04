@@ -769,6 +769,14 @@ ui.stationPanel.Visible = false
 ui.stationTitle = label(ui.stationPanel, "", { Size = UDim2.new(1, -24, 0, 44), Position = UDim2.fromOffset(12, 10), TextColor3 = Color3.fromRGB(255, 220, 90) })
 ui.stationBody = make("Frame", { Size = UDim2.new(1, -24, 1, -70), Position = UDim2.fromOffset(12, 60), BackgroundTransparency = 1 }, ui.stationPanel)
 
+-- Gems / Coins / level counters, the Shop window and reward toasts (ShopUI). The server owns
+-- every number; ShopUI shows its snapshots and repaints the table with the equipped board theme.
+do
+	local ShopUI = require(Shared:WaitForChild("ShopUI"))
+	ShopUI.init({ makeCard = makeCard })
+	ShopUI.hud(ui.menuUI)
+end
+
 
 -- The Settings panel: built into the Settings station and into the in-match settings window.
 -- Every change goes through Settings.set, which applies it at once (see "Applying settings").
@@ -904,6 +912,7 @@ do
 		if ui.collectionUI then
 			ui.collectionUI.Visible = false
 		end
+		require(Shared:WaitForChild("ShopUI")).close()
 	end
 
 	local chosenDeck = "Snack"
@@ -1048,7 +1057,12 @@ do
 			key = "ShopCounter",
 			name = "Shop",
 			show = function()
-				showComingSoon("Shop", "Pickles the shopkeeper will sell packs, Gems and cosmetics here.\n\nComing in a later update.")
+				-- the Shop window opens on the left; this panel shows your wallet, level and boosts
+				clearBody()
+				ui.stationTitle.Text = "Shop"
+				local ShopUI = require(Shared:WaitForChild("ShopUI"))
+				ShopUI.stationPanel(ui.stationBody)
+				ShopUI.open()
 			end,
 		},
 		{
@@ -1125,6 +1139,7 @@ do
 		if ui.collectionUI then
 			ui.collectionUI.Visible = false
 		end
+		require(Shared:WaitForChild("ShopUI")).close()
 		moveCamera("Overview")
 	end
 	ui.resetNav = function() -- (leaving a match puts the camera back at the overview)
@@ -1182,6 +1197,28 @@ do
 			goBack()
 		end
 	end)
+
+	-- A hook for the developer panel (ServerStorage.DevControls, only given to developers):
+	-- "freeRoll" opens the Pack Party and pulls without spending Gems. The server checks
+	-- DevAccess before it honours a free roll, so this hook gives normal players nothing.
+	local hook = Instance.new("BindableFunction")
+	hook.Name = "ClientHook"
+	hook.OnInvoke = function(what, count, tier)
+		if what == "freeRoll" then
+			if mode ~= "menu" then
+				return false, "finish your match (or pack) first"
+			end
+			local PackParty = require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackParty"))
+			if PackParty.isPlaying() then
+				return false, "a pack is already opening"
+			end
+			selectStation("PackParty")
+			PackParty.request(count == 10 and 10 or 1, tier, nil, true)
+			return true
+		end
+		return false, "unknown request"
+	end
+	hook.Parent = script
 end
 
 -- Clicking and hovering over stations in the 3D room
@@ -1593,6 +1630,12 @@ local heroGlows = { Near = board:WaitForChild("HeroGlow_Near"), Far = board:Wait
 local energyGems = { Near = {}, Far = {} }
 local deckPiles = { Near = board:WaitForChild("Deck_Near"), Far = board:WaitForChild("Deck_Far") }
 local discardPiles = { Near = board:WaitForChild("Discard_Near"), Far = board:WaitForChild("Discard_Far") }
+-- The 💬 emote button (emotes come from the Shop); bubbles pop up over the heroes.
+require(Shared:WaitForChild("ShopUI")).mountEmotes(ui.matchUI, function()
+	return heroSpots.Near
+end, function()
+	return heroSpots.Far
+end)
 for _, side in ipairs(SIDES) do
 	for i = 1, CardData.MaxEnergy do
 		energyGems[side][i] = board:WaitForChild("Energy_" .. side .. "_" .. i)
@@ -3372,6 +3415,8 @@ local function makeCardBack(parent, small)
 	make("UIStroke", { Thickness = small and 2 or 4, Color = Color3.fromRGB(240, 200, 90) }, back)
 	make("UIGradient", { Rotation = 60, Color = ColorSequence.new(Color3.fromRGB(120, 130, 230), Color3.fromRGB(70, 40, 120)) }, back)
 	label(back, "DECK\nWARS", { ZIndex = 9, Size = UDim2.fromScale(0.8, 0.4), Position = UDim2.fromScale(0.1, 0.3), TextColor3 = Color3.fromRGB(255, 225, 120), TextStrokeTransparency = 0.3 })
+	-- painted in the card back bought in the Shop (Cosmetics.luau)
+	require(Shared:WaitForChild("Cosmetics")).styleBack(back, small)
 	return back
 end
 
@@ -4875,6 +4920,7 @@ local function enterMatch()
 	if ui.collectionUI then
 		ui.collectionUI.Visible = false
 	end
+	require(Shared:WaitForChild("ShopUI")).close()
 	highlight.Enabled = false
 	ui.matchUI.Visible = true
 	turnState = "opp"
