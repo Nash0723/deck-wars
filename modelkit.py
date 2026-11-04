@@ -189,8 +189,8 @@ class Model:
             else:
                 self.ell("Pupil", (pd, pd * 1.1, d * 0.3), (px, py, ez - d * (bulge * 0.42 + 0.02)), pupil, R=Rt)
             gz = ez - d * (bulge * 0.42 + 0.1)
-            self.ell("Glint", (pd * 0.4, pd * 0.4, d * 0.12), (px + pd * 0.22, py + pd * 0.28, gz), white)
-            self.ell("Glint", (pd * 0.18, pd * 0.18, d * 0.08), (px - pd * 0.22, py - pd * 0.25, gz), white)
+            self.ell("Glint", (max(pd * 0.4, 0.035), max(pd * 0.4, 0.035), max(d * 0.12, 0.025)), (px + pd * 0.22, py + pd * 0.28, gz), white)
+            self.ell("Glint", (max(pd * 0.18, 0.025), max(pd * 0.18, 0.025), max(d * 0.08, 0.02)), (px - pd * 0.22, py - pd * 0.25, gz), white)
             if lid is not None:
                 self.ell("Lid", (d * 1.18, d * 1.28, d * max(bulge, 0.55) * 1.7), (ex, y, ez - d * 0.06), lid, R=Rt, tr=1)
             if angry:
@@ -202,7 +202,7 @@ class Model:
             for k in range(lash):
                 a = math.radians(55 + 28 * k)
                 bx, by = ex + s * math.cos(a) * d * 0.5, y + math.sin(a) * d * 0.56
-                self.rod("Lash", (bx, by, ez - d * 0.1), (bx + s * math.cos(a) * d * 0.32, by + math.sin(a) * d * 0.3, ez - d * 0.05), d * 0.07, lc)
+                self.rod("Lash", (bx, by, ez - d * 0.1), (bx + s * math.cos(a) * d * 0.32, by + math.sin(a) * d * 0.3, ez - d * 0.05), max(d * 0.07, 0.025), lc)
 
     def smile(self, y, zf, w, color=(60, 25, 35), x=0.0, open_=False, tongue=(240, 110, 130)):
         if open_:

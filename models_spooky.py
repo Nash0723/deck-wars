@@ -37,7 +37,7 @@ def sheet_ghost_body(m, scale=1.0, tr=0.08, color=(245, 245, 255), lift=0.35):
     m.cheeks(y0 + 1.55 * s, -0.66 * s, 1.0 * s, 0.24 * s)
     # a laundry tag and a patched corner
     m.blk("Tag", (0.18 * s, 0.24 * s, 0.03 * s), (0.62 * s, y0 + 0.62 * s, -0.66 * s), (250, 250, 250), R=rot(y=-30))
-    m.blk("TagLine", (0.12 * s, 0.03 * s, 0.02 * s), (0.62 * s, y0 + 0.66 * s, -0.68 * s), (120, 140, 220), R=rot(y=-30))
+    m.blk("TagLine", (0.12 * s, 0.03 * s, max(0.02 * s, 0.02)), (0.62 * s, y0 + 0.66 * s, -0.68 * s), (120, 140, 220), R=rot(y=-30))
 
 
 @model
@@ -182,7 +182,7 @@ def haunted_vending_machine():
     m.rod("Web", (-0.9, 3.33, -0.82), (-1.02, 3.03, -0.82), 0.02, (230, 230, 240))
     for s in (-1, 1):
         for z in (-0.5, 0.5):
-            m.cyl("Foot", 0.12, 0.3, (s * 0.95, 0.03, z), (30, 20, 40))
+            m.cyl("CabinetFoot", 0.12, 0.3, (s * 0.95, 0.03, z), (30, 20, 40))
     return m
 
 
@@ -385,7 +385,7 @@ def the_mannequin_duke():
     for s in (-1, 1):
         m.blk("Tape", (0.1, 0.9, 0.03), (s * 0.3, 3.25, -0.43), (250, 220, 80), R=rot(z=s * 6))
         for k in range(4):
-            m.blk("TapeMark", (0.06, 0.015, 0.02), (s * 0.3 - 0.01, 2.95 + k * 0.18, -0.45), (40, 30, 30))
+            m.blk("TapeMark", (0.06, 0.022, 0.022), (s * 0.3 - 0.01, 2.95 + k * 0.18, -0.45), (40, 30, 30))
     # layered ruff collar and the blank mannequin head
     m.cyl("Ruff", 0.25, 1.15, (0, 3.75, 0), (250, 250, 250), mat="Fabric")
     for k in range(10):
@@ -416,9 +416,9 @@ def the_mannequin_duke():
         m.rod("Forearm", (s * 0.95, 2.7, -0.2), (s * 0.95, 2.2, -0.55), 0.22, skin, refl=0.2)
         m.cyl("Cuff", 0.12, 0.28, (s * 0.95, 2.66, -0.23), (250, 250, 250), mat="Fabric", R=rot(x=40))
         m.mitt((s * 0.95, 2.15, -0.58), 0.27, skin, s)
-    m.ball("Cushion", 0.24, (-0.95, 2.38, -0.45), (220, 60, 80), mat="Fabric")
+    m.ball("PinCushion", 0.24, (-0.95, 2.38, -0.45), (220, 60, 80), mat="Fabric")
     for k in range(3):
-        m.ball("Pin", 0.05, (-0.95 + (k - 1) * 0.07, 2.52, -0.48 + k * 0.03), [(255, 230, 80), (90, 200, 255), WHITE][k])
+        m.ball("CushionPin", 0.05, (-0.95 + (k - 1) * 0.07, 2.52, -0.48 + k * 0.03), [(255, 230, 80), (90, 200, 255), WHITE][k])
     m.cyl("Cane", 2.1, 0.12, (0.95, 1.15, -0.62), (30, 25, 30))
     m.cyl("CaneBand", 0.08, 0.15, (0.95, 2.05, -0.62), gold, mat="Metal")
     m.ball("CaneTop", 0.28, (0.95, 2.3, -0.62), gold, mat="Metal", refl=0.3)

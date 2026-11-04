@@ -32,7 +32,7 @@ def tin_can_tom():
     for y in (0.4, 1.9):
         m.ring("Rim", (0.04 * (y - 1.15), y, 0), 0.62, 0.09, (160, 165, 175), normal="y", segments=14, mat="Metal", R=rot(z=4))
     # lid peeled open like a hat, with a jagged edge and a pull ring
-    m.cyl("Lid", 0.06, 1.15, (-0.1, 2.12, 0.25), (200, 205, 215), mat="Metal", refl=0.35, R=rot(x=35, z=4))
+    m.cyl("CanLid", 0.06, 1.15, (-0.1, 2.12, 0.25), (200, 205, 215), mat="Metal", refl=0.35, R=rot(x=35, z=4))
     for k in range(5):
         a = math.radians(-60 + k * 30)
         m.wedge("Jag", (0.1, 0.12, 0.06), (-0.1 + math.sin(a) * 0.55, 2.0 + math.cos(a) * 0.05, -0.15 + math.cos(a) * 0.12), (175, 180, 190), mat="Metal", R=rot(x=35, y=-math.degrees(a)))
@@ -197,7 +197,7 @@ def dumpster_diver():
     for s in (-1, 1):
         m.cyl("SideHandle", 0.9, 0.1, (s * 1.45, 1.4, 0), (150, 150, 155), axis="z", mat="Metal")
     # lid propped open on hinges
-    m.blk("Lid", (2.9, 0.12, 2.0), (0, 2.6, 1.55), (45, 90, 55), mat="Metal", R=rot(x=-70))
+    m.blk("BinLid", (2.9, 0.12, 2.0), (0, 2.6, 1.55), (45, 90, 55), mat="Metal", R=rot(x=-70))
     for x in (-0.9, 0.9):
         m.cyl("Hinge", 0.3, 0.14, (x, 1.88, 1.08), (120, 120, 125), axis="x", mat="Metal")
     for s in (-1, 1):
@@ -255,7 +255,7 @@ def dumpster_diver():
     m.ell("Banana", (0.25, 0.7, 0.25), (1.2, 2.3, -1.05), (250, 220, 70), R=rot(z=-35))
     m.ell("BananaTip", (0.1, 0.12, 0.1), (1.42, 2.6, -1.05), (90, 70, 40), R=rot(z=-35))
     for k in range(3):
-        m.ball("Spot", 0.07, (1.12 + k * 0.08, 2.2 + k * 0.12, -1.18), (170, 140, 60))
+        m.ball("BananaSpot", 0.07, (1.12 + k * 0.08, 2.2 + k * 0.12, -1.18), (170, 140, 60))
     return m
 
 
@@ -340,7 +340,7 @@ def scrapheap_titan():
         m.cyl("Hub", 0.58, 0.45, (s * 1.25, 3.2, 0), (160, 160, 170), axis="x", mat="Metal")
         for k in range(6):
             a = k * math.pi / 3
-            m.blk("Tread", (0.57, 0.1, 0.1), (s * 1.25, 3.2 + math.sin(a) * 0.57, math.cos(a) * 0.57), (25, 25, 28), R=rot(x=math.degrees(a)))
+            m.blk("TireTread", (0.57, 0.1, 0.1), (s * 1.25, 3.2 + math.sin(a) * 0.57, math.cos(a) * 0.57), (25, 25, 28), R=rot(x=math.degrees(a)))
     # old TV head with dials, a speaker grille and rabbit-ear antennas
     m.rbox("TV", (1.6, 1.2, 1.2), (0, 3.95, 0), (110, 85, 60), 0.12, mat="Wood", axis="z")
     m.rbox("Screen", (1.15, 0.85, 0.08), (-0.12, 3.95, -0.6), (30, 60, 40), 0.15, axis="z")
@@ -413,8 +413,8 @@ def the_junk_king():
     for s in (-1, 1):
         m.chain("Mustache", [(0, 3.28, -1.22), (s * 0.35, 3.22, -1.2), (s * 0.7, 3.3, -1.1), (s * 0.85, 3.5, -0.98), (s * 0.75, 3.62, -0.98)], 0.2, (90, 70, 50), mat="Fabric")
     # lid with a crown made of bottle caps and spoons
-    m.cyl("Lid", 0.25, 2.6, (0, 4.0, 0), metal, mat="Metal", refl=0.25)
-    m.ring("Lid", (0, 4.0, 0), 1.3, 0.1, (140, 145, 155), normal="y", segments=16, mat="Metal")
+    m.cyl("TrashLid", 0.25, 2.6, (0, 4.0, 0), metal, mat="Metal", refl=0.25)
+    m.ring("TrashLidRim", (0, 4.0, 0), 1.3, 0.1, (140, 145, 155), normal="y", segments=16, mat="Metal")
     m.cyl("LidHandle", 0.2, 0.9, (0, 4.2, 0), (150, 150, 160), mat="Metal")
     crown = m.cyl("Crown", 0.5, 1.5, (0, 4.55, 0), (245, 200, 60), mat="Metal", refl=0.3)
     m.ring("CrownBand", (0, 4.35, 0), 0.76, 0.08, (255, 225, 120), normal="y", segments=14, mat="Metal")

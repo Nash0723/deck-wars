@@ -180,7 +180,7 @@ def laundry_bot_3000():
     m.cyl("Door", 0.1, 1.25, (0, 1.25, -0.97), (120, 190, 255), axis="z", mat="Glass", tr=0.35, refl=0.35)
     m.ell("Water", (1.1, 0.5, 0.2), (0, 1.0, -0.88), (60, 140, 230))
     m.ell("Foam", (1.0, 0.15, 0.22), (0, 1.22, -0.88), (230, 245, 255))
-    m.ell("Sock", (0.25, 0.45, 0.12), (-0.25, 1.35, -0.86), (240, 80, 120), R=rot(z=40))
+    m.ell("SockInside", (0.25, 0.45, 0.12), (-0.25, 1.35, -0.86), (240, 80, 120), R=rot(z=40))
     m.ell("Sock2", (0.25, 0.45, 0.12), (0.28, 1.2, -0.86), (90, 200, 120), R=rot(z=-30))
     m.blk("DoorHandle", (0.12, 0.35, 0.1), (0.72, 1.25, -1.0), (150, 155, 165), mat="Metal")
     # head with screen eyes and a little antenna
@@ -204,7 +204,7 @@ def laundry_bot_3000():
     for s in (-1, 1):
         m.rbox("Tread", (0.6, 0.38, 1.9), (s * 0.85, 0.19, 0), (40, 40, 45), 0.18, mat="Rubber", axis="x")
         for z in (-0.65, 0, 0.65):
-            m.cyl("WheelHub", 0.62, 0.22, (s * 0.85, 0.19, z), (150, 150, 160), axis="x", mat="Metal")
+            m.cyl("TreadHub", 0.62, 0.22, (s * 0.85, 0.19, z), (150, 150, 160), axis="x", mat="Metal")
     # a drain hose and bubbles
     m.chain("Hose", [(-0.8, 0.8, 0.9), (-0.9, 0.5, 1.15), (-0.7, 0.2, 1.3)], 0.12, (200, 200, 210), joints=False)
     for (x, y, z, d) in [(-0.6, 3.4, 0.0, 0.35), (0.2, 3.6, 0.3, 0.25), (0.7, 3.3, -0.2, 0.3), (-0.1, 3.85, -0.1, 0.2), (-0.9, 3.0, -0.3, 0.18)]:
@@ -299,7 +299,7 @@ def mecha_fridge():
     for s in (-1, 1):
         m.ball("Shoulder", 0.85, (s * 1.35, 3.5, 0), (120, 125, 135), mat="Metal")
         m.ell("Pauldron", (0.9, 0.4, 1.0), (s * 1.4, 3.85, 0), mint, R=rot(z=s * -20))
-        m.ball("Rivet", 0.1, (s * 1.45, 3.98, -0.45), chrome, mat="Metal")
+        m.ball("PauldronRivet", 0.1, (s * 1.45, 3.98, -0.45), chrome, mat="Metal")
     m.rod("Arm", (-1.4, 3.4, 0), (-1.6, 2.4, -0.5), 0.5, steel, mat="Metal")
     m.rod("Piston", (-1.25, 3.2, -0.2), (-1.45, 2.4, -0.6), 0.12, chrome, mat="Metal")
     m.rbox("Fist", (0.78, 0.78, 0.78), (-1.62, 2.05, -0.65), (110, 115, 125), 0.15, mat="Metal")
@@ -359,8 +359,8 @@ def mega_blender_prime():
     m.rod("HandleTop", (0.9, 4.75, 0), (1.25, 4.75, 0), 0.3, (40, 40, 50), mat="Metal")
     m.rod("HandleTop", (0.9, 2.85, 0), (1.25, 2.85, 0), 0.3, (40, 40, 50), mat="Metal")
     # lid head with angry glowing eyes
-    m.cyl("Lid", 0.5, 2.1, (0, 5.3, 0), (40, 40, 50), mat="Metal")
-    m.ring("Lid", (0, 5.06, 0), 1.05, 0.08, (200, 205, 215), normal="y", segments=16, mat="Metal")
+    m.cyl("JarLid", 0.5, 2.1, (0, 5.3, 0), (40, 40, 50), mat="Metal")
+    m.ring("JarLidRing", (0, 5.06, 0), 1.05, 0.08, (200, 205, 215), normal="y", segments=16, mat="Metal")
     m.cyl("LidCap", 0.4, 0.8, (0, 5.7, 0), (60, 60, 70), mat="Metal")
     m.ball("LidCap", 0.3, (0, 5.95, 0), (255, 70, 70), mat="Neon")
     for s in (-1, 1):
@@ -430,7 +430,7 @@ def omega_microwave():
         m.rbox("Foot", (1.0, 0.3, 1.4), (s * 0.9, 0.15, -0.2), (120, 90, 30), 0.15, mat="Metal")
         m.ball("Shoulder", 0.85, (s * 1.8, 2.7, 0), (200, 160, 60), mat="Metal")
         m.ell("Pauldron", (1.0, 0.45, 1.1), (s * 1.85, 3.05, 0), gold, mat="Metal", R=rot(z=s * -20))
-        m.gem("Gem", (s * 1.95, 3.15, -0.5), 0.16, purple, glow=True)
+        m.gem("PauldronGem", (s * 1.95, 3.15, -0.5), 0.16, purple, glow=True)
         m.rod("Arm", (s * 1.85, 2.6, 0), (s * 2.1, 1.7, -0.7), 0.5, (200, 160, 60), mat="Metal")
         m.cyl("Bracer", 0.3, 0.6, (s * 2.05, 1.88, -0.56), dgold, mat="Metal", R=rot(x=38, z=s * -16))
         m.ball("Fist", 0.78, (s * 2.12, 1.6, -0.78), (180, 140, 50), mat="Metal")

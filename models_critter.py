@@ -232,7 +232,7 @@ def pigeon_body(m, x, z, scale=1.0, helmet=True, yaw=0.0):
         m.ell("WingTip", (0.1 * s, 0.25 * s, 0.5 * s), (cx + k * 0.4 * s, 0.6 * s, cz + 0.55 * s), (90, 95, 110), R=rot(x=-30))
         m.cyl("Leg", 0.35 * s, 0.08 * s, (cx + k * 0.18 * s, 0.2 * s, cz), (240, 130, 140))
         for t in (-1, 0, 1):
-            m.ell("Toe", (0.05 * s, 0.05 * s, 0.22 * s), (cx + k * 0.18 * s + t * 0.06 * s, 0.03 * s, cz - 0.12 * s), (240, 130, 140), R=rot(y=t * 25))
+            m.ell("Toe", (0.05 * s, 0.05 * s, 0.22 * s), (cx + k * 0.18 * s + t * 0.045 * s, 0.03 * s, cz - 0.12 * s), (240, 130, 140), R=rot(y=t * 25))
     m.ell("Tail", (0.5 * s, 0.12 * s, 0.6 * s), (cx, 0.75 * s, cz + 0.8 * s), dgray, R=rot(x=20))
     m.ell("Tail", (0.5 * s, 0.1 * s, 0.15 * s), (cx, 0.66 * s, cz + 1.05 * s), (70, 75, 90), R=rot(x=20))
     m.eyes(1.58 * s, cz - 0.55 * s, 0.32 * s, 0.17 * s, x=cx, lid=gray, pupil=PUPIL, pupil_scale=0.45, iris=(230, 110, 40), z_back=0.02 * s)
@@ -252,7 +252,7 @@ def pigeon_squad():
     pigeon_body(m, 1.05, 0.55, 1.0)
     # sergeant stripes on the leader, bread-crumb ammo belts and a tiny flag
     for k in range(2):
-        m.blk("Stripe", (0.06, 0.06, 0.3), (0.5, 1.02 - k * 0.1, -0.6), (250, 210, 60), R=rot(x=20))
+        m.blk("WingStripe", (0.06, 0.06, 0.3), (0.5, 1.02 - k * 0.1, -0.6), (250, 210, 60), R=rot(x=20))
     for cx, cz in ((-1.05, 0.55), (1.05, 0.55)):
         m.rod("Belt", (cx - 0.35, 1.05, cz - 0.3), (cx + 0.35, 0.65, cz - 0.4), 0.08, (110, 80, 50), shape="B")
         for k in range(3):
@@ -349,7 +349,7 @@ def big_momma_moose():
     m.ell("Shawl", (2.35, 0.9, 1.6), (0, 3.05, -0.55), (200, 80, 120), mat="Fabric")
     for k in range(9):
         a = math.radians(-80 + k * 20)
-        m.blk("Fringe", (0.08, 0.35, 0.08), (math.sin(a) * 1.15, 2.55, -0.55 - math.cos(a) * 0.78), (255, 210, 120), mat="Fabric")
+        m.blk("ShawlFringe", (0.08, 0.35, 0.08), (math.sin(a) * 1.15, 2.55, -0.55 - math.cos(a) * 0.78), (255, 210, 120), mat="Fabric")
     for k in range(3):
         m.ring("ShawlStripe", (0, 2.75 + k * 0.22, -0.55), 1.12 - k * 0.12, 0.05, (255, 210, 120), normal="y", segments=14, mat="Fabric", R=rot(x=0))
     m.ell("Neck", (1.0, 1.3, 1.1), (0, 3.2, -1.2), fur, mat="Fabric", R=rot(x=-25))

@@ -137,7 +137,7 @@ def disco_cactus():
         m.rod("ArmOut", (s * 0.3, 1.65, 0), (s * 0.7, 1.75, 0), 0.32, green)
         m.ell("ArmUp", (0.32, 0.8, 0.32), (s * 0.72, 2.1, 0), green)
     for (x, y, z) in [(-0.2, 2.2, -0.34), (0.2, 1.6, -0.34), (0.15, 2.45, -0.3), (-0.25, 1.4, -0.32), (0.3, 1.25, -0.25), (-0.32, 1.85, -0.22), (0.75, 2.3, -0.15), (-0.7, 2.0, -0.15)]:
-        m.blk("Spine", (0.03, 0.03, 0.16), (x, y, z), (250, 250, 230))
+        m.blk("ArmSpine" if abs(x) > 0.6 else "Spine", (0.03, 0.03, 0.16), (x, y, z), (250, 250, 230))
     m.eyes(1.95, -0.33, 0.3, 0.2, lid=green, iris=(150, 90, 40), z_back=0.02)
     m.grin(1.72, -0.34, 0.2, open_=True, curve=0.3)
     # star-shaped party shades, a flower and a disco ball on a stem
@@ -199,7 +199,7 @@ def haunted_arcade():
     for k in range(5):
         m.blk("ScreenTooth", (0.08, 0.08 + 0.04 * (k % 2), 0.03), (-0.2 + k * 0.1, 1.42 - 0.02 * (k % 2), -0.565), (20, 40, 25), R=rot(x=-10))
     for k in range(4):
-        m.blk("Scanline", (1.08, 0.015, 0.02), (0, 1.33 + k * 0.17, -0.565 - k * 0.006), (30, 120, 60), tr=0.55, R=rot(x=-10))
+        m.blk("Scanline", (1.08, 0.022, 0.02), (0, 1.33 + k * 0.17, -0.565 - k * 0.006), (30, 120, 60), tr=0.55, R=rot(x=-10))
     m.blk("Score", (0.3, 0.06, 0.02), (0.32, 1.9, -0.57), (255, 255, 150), mat="Neon", R=rot(x=-10))
     m.blk("Controls", (1.5, 0.2, 0.6), (0, 1.0, -0.6), (90, 55, 140), R=rot(x=15))
     m.blk("ControlTrim", (1.52, 0.05, 0.05), (0, 0.98, -0.9), trim, mat="Neon")
@@ -232,14 +232,14 @@ def haunted_arcade():
     for k in range(4):
         a = math.radians(185 + k * 28)
         ends.append((-0.75 + math.cos(a) * -0.45, 2.45 + math.sin(a) * 0.45, -0.48))
-        m.rod("Web", hub, ends[-1], 0.015, (230, 230, 240))
+        m.rod("Web", hub, ends[-1], 0.022, (230, 230, 240))
     for f in (0.45, 0.8):
         for k in range(3):
             p1 = tuple(hub[i] + (ends[k][i] - hub[i]) * f for i in range(3))
             p2 = tuple(hub[i] + (ends[k + 1][i] - hub[i]) * f for i in range(3))
-            m.rod("Web", p1, p2, 0.012, (230, 230, 240))
+            m.rod("Web", p1, p2, 0.02, (230, 230, 240))
     m.ball("Spider", 0.1, (-0.5, 2.1, -0.5), (30, 25, 35))
-    m.rod("SpiderThread", (-0.5, 2.45, -0.5), (-0.5, 2.15, -0.5), 0.01, (230, 230, 240))
+    m.rod("SpiderThread", (-0.5, 2.45, -0.5), (-0.5, 2.15, -0.5), 0.02, (230, 230, 240))
     return m
 
 
@@ -248,7 +248,7 @@ def rocket_lunchbox():
     m = Model("rocket_lunchbox", kind="gadget")
     red = (220, 50, 50)
     m.rbox("Box", (2.2, 1.2, 1.2), (0, 1.0, 0), red, 0.15, mat="Metal", refl=0.25)
-    m.rbox("Lid", (2.25, 0.3, 1.25), (0, 1.75, 0), (200, 40, 40), 0.12, mat="Metal", refl=0.25)
+    m.rbox("BoxLid", (2.25, 0.3, 1.25), (0, 1.75, 0), (200, 40, 40), 0.12, mat="Metal", refl=0.25)
     m.blk("Latch", (0.3, 0.3, 0.08), (0, 1.55, -0.64), (220, 220, 230), mat="Metal")
     m.rod("Handle", (-0.5, 1.95, 0), (0.5, 1.95, 0), 0.12, (40, 40, 45))
     for x in (-0.5, 0.5):
@@ -353,8 +353,8 @@ def bunny_burrow():
     for s in (-1, 1):
         m.ell("Ear", (0.16, 0.55, 0.1), (s * 0.15, 1.05, -0.98), white, R=rot(z=-s * 12))
         m.ell("EarInside", (0.08, 0.36, 0.04), (s * 0.15, 1.05, -1.04), (255, 170, 190), R=rot(z=-s * 12))
-        m.ball("Paw", 0.14, (s * 0.2, 0.35, -1.18), white)
-        m.blk("Whisker", (0.25, 0.015, 0.015), (s * 0.2, 0.53, -1.22), (150, 150, 150), R=rot(z=s * 10))
+        m.ball("BunnyPaw", 0.14, (s * 0.2, 0.35, -1.18), white)
+        m.blk("Whisker", (0.25, 0.025, 0.025), (s * 0.2, 0.53, -1.22), (150, 150, 150), R=rot(z=s * 10))
     m.eyes(0.66, -1.2, 0.21, 0.17, lid=white, iris=(90, 60, 50))
     m.ball("Nose", 0.09, (0, 0.55, -1.23), (255, 140, 170))
     m.cheeks(0.55, -1.2, 0.36, 0.1)

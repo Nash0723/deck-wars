@@ -1941,7 +1941,8 @@ do
 	local function findLids(model)
 		local lids = {}
 		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("BasePart") and d.Name == "Lid" then
+			-- eyelids are the see-through "Lid" parts (a bin or jar lid is not an eyelid)
+			if d:IsA("BasePart") and d.Name == "Lid" and d.Transparency > 0.99 then
 				table.insert(lids, d)
 			end
 		end

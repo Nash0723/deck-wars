@@ -348,7 +348,7 @@ def burrito_bouncer():
         m.blk("Crinkle", (0.06, 0.7, 0.05), (math.sin(a) * 1.0, 0.55, -math.cos(a) * 1.0), (185, 190, 205), mat="Foil", R=rot(y=-math.degrees(a), z=12 * (1 if k % 2 else -1)))
     # tortilla fold seam
     m.blk("Fold", (0.12, 1.5, 0.1), (0.35, 1.95, -0.95), (205, 165, 110))
-    m.blk("Fold", (0.9, 0.1, 0.1), (0.55, 2.68, -0.75), (205, 165, 110), R=rot(z=-8))
+    m.blk("Fold", (0.55, 0.1, 0.1), (0.45, 2.66, -0.86), (205, 165, 110), R=rot(y=-28, z=-8))
     # mirror shades with a frame, a stern mouth and a furrowed brow
     for s in (-1, 1):
         m.rbox("Shades", (0.62, 0.4, 0.12), (s * 0.38, 2.3, -0.96), (20, 20, 25), 0.1, axis="z", refl=0.5)

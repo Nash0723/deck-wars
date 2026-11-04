@@ -43,7 +43,8 @@ local ARM = set({
 	"ArmPipe", "ArmCrane", "ArmOut", "ArmUp", "Joint", "Peg", "Paw", "Shoulder", "Epaulette", "Fringe",
 	-- details added by the model overhaul
 	"Thumb", "Finger", "Knuckle", "Cuff", "Bracer", "Gauntlet", "Wristband", "Pauldron", "Bicep", "ArmBand",
-	"ArmPlate", "Piston", "Pincer", "Mitt", "Bone", "Talon",
+	"ArmPlate", "Piston", "Pincer", "Mitt", "Bone", "Talon", "ArmSpine", "PauldronGem", "PauldronGemShine",
+	"PauldronRivet", "PinCushion", "CushionPin",
 })
 -- things a creature holds: they move with the hand on their side
 local HELD = set({
@@ -57,6 +58,7 @@ local HELD = set({
 	"KnifeEdge", "KnifeGuard", "WandBand", "WandGlow", "StaffGem", "StaffBand", "ScepterBand", "ScepterTop",
 	"PlungerBand", "WrenchBolt", "CaneBand", "FlashBand", "CannonRing", "CannonMouth", "FishTail", "FishEye",
 	"BananaTip", "BroomBand", "SpyglassBand", "GlueLabel", "WaferStripe", "Lollipop", "LollipopSwirl",
+	"BananaSpot", "CheeseHole",
 })
 -- held things that are swung like weapons
 local WEAPON = set({
@@ -68,9 +70,10 @@ local LEG = set({
 	"LegCan", "Hip", "Tread",
 	-- details added by the model overhaul
 	"Sole", "Toe", "Laces", "Ankle", "Kneepad", "Sock", "Heel", "Greave", "ShinPlate", "Claws", "Spat",
+	"TreadHub",
 })
 local TAIL = set({ "Tail", "TailTip", "Tail2" })
-local WING = set({ "Wing", "WingLow", "WingSpot", "WingTip" })
+local WING = set({ "Wing", "WingLow", "WingSpot", "WingTip", "WingStripe" })
 local WHEEL = set({ "Wheel", "Tire", "Hubcap", "WheelHub" })
 local HEAD_ANCHOR = set({ "Head", "DinoHead", "Skull", "TV", "Hood", "BunnyHead" })
 local BODY_ANCHOR = set({
@@ -97,7 +100,8 @@ local FACE = set({
 
 -- Per-creature fixes: { noHead = true } keeps the face on the body, { body = "PartName" } picks
 -- the torso, { blob = true } turns all limbs off, { noLegs = true } keeps legs still,
--- { keepOnBody = { PartName = true } } keeps those parts off the head.
+-- { keepOnBody = { PartName = true } } keeps those parts off the head, { faceReach = n } lets face
+-- parts that far from the head still follow it.
 local RIG_OVERRIDES = {
 	-- the bin rim belongs to the bin, not the raccoon's head
 	dumpster_diver = { keepOnBody = { BinRim = true } },
@@ -107,8 +111,8 @@ local RIG_OVERRIDES = {
 	pigeon_squad = {},
 	-- tornado funnels are the body
 	tornado_twins = { noLegs = true },
-	-- the snail's "Foot" is its whole slimy base
-	sergeant_snail = { noLegs = true },
+	-- the snail's "Foot" is its whole slimy base; its eyes sit high up on stalks
+	sergeant_snail = { noLegs = true, faceReach = 1.4 },
 	-- couch legs are stubby furniture legs
 	couch_golem = {},
 	-- buildings
@@ -185,6 +189,27 @@ local function yRange(p)
 		end
 	end
 	return lo, hi
+end
+
+-- Lowest and highest x / z a part reaches (rough, from its rotated box).
+local function axisRange(p, axis)
+	local lo, hi = math.huge, -math.huge
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sy in ipairs({ -1, 1 }) do
+			for _, sz in ipairs({ -1, 1 }) do
+				local v = { mvec(p.rot, sx * p.size[1] / 2, sy * p.size[2] / 2, sz * p.size[3] / 2) }
+				lo = math.min(lo, p.pos[axis] + v[axis])
+				hi = math.max(hi, p.pos[axis] + v[axis])
+			end
+		end
+	end
+	return lo, hi
+end
+local function xRange(p)
+	return axisRange(p, 1)
+end
+local function zRange(p)
+	return axisRange(p, 3)
 end
 
 local function dist2(a, b)
@@ -315,6 +340,47 @@ function Rig.build(id, spec)
 			end
 		end
 	end
+	-- one head can be built from several pieces (a rounded box, a skull with a cap): a head
+	-- piece whose middle sits inside a bigger head piece is part of that head, not a new head
+	local mergedHead = {}
+	if #heads > 1 then
+		local function vol(p)
+			return p.size[1] * p.size[2] * p.size[3]
+		end
+		local kept = {}
+		for _, hd in ipairs(heads) do
+			local into = nil
+			for _, other in ipairs(heads) do
+				if other ~= hd and (vol(other) > vol(hd) or (vol(other) == vol(hd) and other.i < hd.i)) then
+					-- is this piece's middle inside the other piece's (turned) box?
+					local dx, dy, dz = hd.pos[1] - other.pos[1], hd.pos[2] - other.pos[2], hd.pos[3] - other.pos[3]
+					local m = other.rot
+					local lx = m[1] * dx + m[4] * dy + m[7] * dz
+					local ly = m[2] * dx + m[5] * dy + m[8] * dz
+					local lz = m[3] * dx + m[6] * dy + m[9] * dz
+					if math.abs(lx) <= other.size[1] / 2 + 0.05 and math.abs(ly) <= other.size[2] / 2 + 0.05 and math.abs(lz) <= other.size[3] / 2 + 0.05 then
+						into = other
+						break
+					end
+				end
+			end
+			if into then
+				mergedHead[hd.i] = into
+			else
+				table.insert(kept, hd)
+			end
+		end
+		-- a piece may have merged into a piece that itself merged: follow to the kept one
+		for i, into in pairs(mergedHead) do
+			local seen = 0
+			while mergedHead[into.i] and seen < 8 do
+				into = mergedHead[into.i]
+				seen += 1
+			end
+			mergedHead[i] = into
+		end
+		heads = kept
+	end
 	-- a "Head" that is really the whole body (bolt bug, hamster...) is not a separate head
 	if #heads == 1 then
 		local hd = heads[1]
@@ -341,14 +407,48 @@ function Rig.build(id, spec)
 						best, bd = k, d
 					end
 				end
+				if mergedHead[p.i] then
+					for k, hd in ipairs(heads) do
+						if hd == mergedHead[p.i] then
+							best = k
+						end
+					end
+				end
 				local hd = heads[best]
 				local r = math.max(hd.size[1], hd.size[2], hd.size[3]) * 0.5
 				local lo = yRange(hd)
-				local close = math.sqrt(bd) <= r + 0.75
+				local close = math.sqrt(bd) <= r + (ov.faceReach or 0.75)
 				local smaller = p.size[1] * p.size[2] * p.size[3] < hd.size[1] * hd.size[2] * hd.size[3] * 0.7
-				if p == hd or (FACE[p.name] and close and p.pos[2] >= lo - 0.15) or (smaller and math.sqrt(bd) <= r * 0.95 and p.pos[2] >= lo) then
+				if p == hd or mergedHead[p.i] or (FACE[p.name] and close and p.pos[2] >= lo - 0.15) or (smaller and math.sqrt(bd) <= r * 0.95 and p.pos[2] >= lo) then
 					role[p.i] = "head"
 					headOf[p.i] = best
+				end
+			end
+		end
+	end
+
+	-- the bits of an eye (pupil, glint, lid...) always go where the eye white goes, so a
+	-- blinking lid or a pupil never stays behind when the head turns
+	local EYE_BIT = { Pupil = true, Iris = true, Glint = true, Lid = true, Lidhalf = true, Lash = true, EyeRim = true }
+	if #heads > 0 then
+		local whites = {}
+		for _, p in ipairs(parts) do
+			if p.name == "Eye" or p.name == "Eyeball" then
+				table.insert(whites, p)
+			end
+		end
+		for _, p in ipairs(parts) do
+			if EYE_BIT[p.name] and (role[p.i] == nil or role[p.i] == "head") then
+				local best, bd = nil, math.huge
+				for _, e in ipairs(whites) do
+					local d = dist2(p.pos, e.pos)
+					if d < bd then
+						best, bd = e, d
+					end
+				end
+				if best and math.sqrt(bd) <= math.max(best.size[1], best.size[2], best.size[3]) * 1.2 then
+					role[p.i] = role[best.i]
+					headOf[p.i] = headOf[best.i]
 				end
 			end
 		end
@@ -370,12 +470,52 @@ function Rig.build(id, spec)
 		end
 	end
 	if #grounded >= 4 then
+		-- a quadruped stands on separate front and back feet on both sides. A biped's foot can
+		-- be several parts (shoe, sole, toe cap...), but they make one patch of ground per side.
+		local function patches(side)
+			-- footprints (x and z ranges) of the grounded parts on this side, joined where they touch
+			local fp = {}
+			for _, p in ipairs(grounded) do
+				if sideOf(p) == side then
+					local x0, x1 = xRange(p)
+					local z0, z1 = zRange(p)
+					table.insert(fp, { x0, x1, z0, z1 })
+				end
+			end
+			local group = {}
+			for i = 1, #fp do
+				group[i] = i
+			end
+			local function find(i)
+				while group[i] ~= i do
+					i = group[i]
+				end
+				return i
+			end
+			for i = 1, #fp do
+				for j = i + 1, #fp do
+					local a, b = fp[i], fp[j]
+					if a[1] <= b[2] + 0.02 and b[1] <= a[2] + 0.02 and a[3] <= b[4] + 0.02 and b[3] <= a[4] + 0.02 then
+						group[find(i)] = find(j)
+					end
+				end
+			end
+			local n, seen = 0, {}
+			for i = 1, #fp do
+				local g = find(i)
+				if not seen[g] then
+					seen[g] = true
+					n += 1
+				end
+			end
+			return n
+		end
 		local zs = {}
 		for _, p in ipairs(grounded) do
 			table.insert(zs, p.pos[3])
 		end
 		table.sort(zs)
-		quad = (zs[#zs] - zs[1]) > 0.5 and #anchors == 1
+		quad = (zs[#zs] - zs[1]) > 0.5 and #anchors == 1 and patches(-1) >= 2 and patches(1) >= 2
 	end
 	local zMid = 0
 	if quad then
