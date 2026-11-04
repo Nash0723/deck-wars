@@ -821,6 +821,16 @@ InstanceMT.__newindex = function(inst, key, value)
 		setParent(inst, value)
 		return
 	end
+	-- callbacks (BindableFunction.OnInvoke, RemoteFunction.OnServerInvoke / OnClientInvoke)
+	if (key == "OnInvoke" and r.className == "BindableFunction")
+		or ((key == "OnServerInvoke" or key == "OnClientInvoke") and r.className == "RemoteFunction") then
+		if value ~= nil and type(value) ~= "function" then
+			error(key .. " must be a function", 2)
+		end
+		r.callbacks = r.callbacks or {}
+		r.callbacks[key] = value
+		return
+	end
 	if key == "Position" and isA(r.className, "BasePart") then
 		checkType(r.className, key, "Vector3", value)
 		local cf = r.props.CFrame or CFrame.new()
@@ -1122,6 +1132,15 @@ function methods.Sit(self, humanoid)
 	assert(rec(self).className == "Seat", "Sit on non-seat")
 	rec(self).props.Occupant = humanoid
 	rec(humanoid).props.SeatPart = self
+end
+function methods.Invoke(self, ...)
+	local r = rec(self)
+	assert(r.className == "BindableFunction", "Invoke on " .. r.className)
+	local cb = r.callbacks and r.callbacks.OnInvoke
+	if not cb then
+		error("BindableFunction \"" .. r.name .. "\" has no OnInvoke callback", 2)
+	end
+	return cb(...)
 end
 function methods.FireServer(self, ...)
 	assert(rec(self).className == "RemoteEvent", "FireServer on " .. rec(self).className)

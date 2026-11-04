@@ -336,12 +336,21 @@ function Arena:update(now, dt, frozen)
 end
 
 -- The pack in the middle of the ring at the start: shakes, then rips open.
-function Arena:makePack(parent, at)
+-- pack = a pack from Packs.luau (its colors and name), or nil for the classic Brawl Pack look.
+function Arena:makePack(parent, at, pack)
 	local base = CFrame.new(Kit.world(at, 2.2))
-	local body = part({ Name = "PackBody", Size = Vector3.new(3, 3.4, 0.5), CFrame = base, Color = rgb(120, 70, 220), Material = Enum.Material.Foil, Reflectance = 0.15 }, parent)
-	local top = part({ Name = "PackTop", Size = Vector3.new(3, 0.8, 0.5), CFrame = base * CFrame.new(0, 2.1, 0), Color = rgb(150, 100, 240), Material = Enum.Material.Foil }, parent)
+	local main, accent, label = rgb(120, 70, 220), rgb(150, 100, 240), "DECK\nWARS"
+	if pack and pack.color then
+		main = rgb(pack.color[1], pack.color[2], pack.color[3])
+		accent = rgb(pack.accent[1], pack.accent[2], pack.accent[3])
+		if pack.family then
+			label = string.upper(string.gsub(pack.name, " Pack$", ""))
+		end
+	end
+	local body = part({ Name = "PackBody", Size = Vector3.new(3, 3.4, 0.5), CFrame = base, Color = main, Material = Enum.Material.Foil, Reflectance = 0.15 }, parent)
+	local top = part({ Name = "PackTop", Size = Vector3.new(3, 0.8, 0.5), CFrame = base * CFrame.new(0, 2.1, 0), Color = accent, Material = Enum.Material.Foil }, parent)
 	local g = make("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0.5, CanvasSize = Vector2.new(300, 340) }, body)
-	make("TextLabel", { Size = UDim2.fromScale(1, 0.5), Position = UDim2.fromScale(0, 0.25), BackgroundTransparency = 1, Text = "DECK\nWARS", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 230, 120) }, g)
+	make("TextLabel", { Size = UDim2.fromScale(1, 0.5), Position = UDim2.fromScale(0, 0.25), BackgroundTransparency = 1, Text = label, TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 230, 120):Lerp(accent, 0.5) }, g)
 	return { body = body, top = top, base = base }
 end
 

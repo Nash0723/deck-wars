@@ -9,7 +9,7 @@
 --
 -- No tapping: it opens by itself after a few seconds. "Pack fights: Quick" needs one tap.
 --
---   PackTease.play({ tier = "Epic", count = 1 | 10, quick = bool }, onDone)
+--   PackTease.play({ tier = "Epic", count = 1 | 10, quick = bool, pack = Packs def or nil }, onDone)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +18,8 @@ local UserInputService = game:GetService("UserInputService")
 local here = script.Parent
 local Kit = require(here:WaitForChild("Kit"))
 local PullRates = require(here:WaitForChild("PullRates"))
+local Packs = require(here:WaitForChild("Packs"))
+local CreatureBuilder = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("CreatureBuilder"))
 local Juice = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("Juice"))
 
 local make, tween, rgb = Juice.make, Juice.tween, Juice.rgb
@@ -51,43 +53,110 @@ function PackTease.shownAfter(tier, k, n)
 	return PullRates.Tiers[1 + math.floor((cap - 1) * k / n + 1e-9)]
 end
 
-local function buildPack(parent, count)
-	local pack = make("Frame", { Name = "Pack", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 1.4), Size = UDim2.fromOffset(240, 340), BackgroundColor3 = rgb(255, 255, 255), BorderSizePixel = 0, Rotation = -10, ZIndex = 10 }, parent)
-	make("UICorner", { CornerRadius = UDim.new(0, 14) }, pack)
+-- Colors for a pack from Packs.luau (the classic Brawl Pack when nil).
+local function packColors(pack)
+	pack = pack or Packs.get(nil)
+	local function c(key)
+		local v = pack[key]
+		return rgb(v[1], v[2], v[3])
+	end
+	return c("color"), c("dark"), c("accent"), pack
+end
+PackTease.colorsOf = packColors
+
+-- The pack's mascot turning slowly in a window on the front (themed packs only).
+local function mascotWindow(parent, pack, zIndex)
+	if not (pack and pack.mascot and CreatureBuilder.has(pack.mascot)) then
+		return nil
+	end
+	local model = CreatureBuilder.build(pack.mascot)
+	if not model then
+		return nil
+	end
+	local vp = make("ViewportFrame", {
+		Name = "Mascot",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromScale(0.82, 0.46),
+		BackgroundTransparency = 1,
+		Ambient = rgb(170, 165, 185),
+		LightColor = rgb(255, 246, 230),
+		LightDirection = Vector3.new(-0.5, -1, -0.7),
+		ZIndex = zIndex,
+	}, parent)
+	model.Parent = vp
+	local info = CreatureBuilder.info(pack.mascot) or { height = 4, width = 3, depth = 3 }
+	local h = math.max(info.height, 0.5)
+	local look = Vector3.new(0, h * 0.5, 0)
+	local dist = math.max(h * 2.1, math.max(info.width, info.depth) * 1.4) + 0.5
+	local cam = Instance.new("Camera")
+	cam.FieldOfView = 30
+	cam.Parent = vp
+	vp.CurrentCamera = cam
+	Juice.onFrame(vp, function(t)
+		local yaw = math.sin(t * 0.7) * 0.45
+		cam.CFrame = CFrame.lookAt(look + Vector3.new(math.sin(yaw) * dist, dist * 0.18, -math.cos(yaw) * dist), look)
+	end)
+	return vp
+end
+
+-- The pack as a GUI object (also used by the card reveal's pack rip). Children the rip uses:
+-- Top (the crimped strip that tears off), Body parts, Emblem/Mascot, Title, Sub.
+function PackTease.buildPack(parent, count, pack)
+	local main, dark, accent
+	main, dark, accent, pack = packColors(pack)
+	local themed = pack.family ~= nil
+	local packFrame = make("Frame", { Name = "Pack", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 1.4), Size = UDim2.fromOffset(240, 340), BackgroundColor3 = rgb(255, 255, 255), BorderSizePixel = 0, Rotation = -10, ZIndex = 10 }, parent)
+	make("UICorner", { CornerRadius = UDim.new(0, 14) }, packFrame)
 	local foil = make("UIGradient", {
 		Rotation = 35,
 		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, rgb(30, 26, 70)),
-			ColorSequenceKeypoint.new(0.45, rgb(70, 40, 120)),
-			ColorSequenceKeypoint.new(0.55, rgb(110, 70, 160)),
-			ColorSequenceKeypoint.new(1, rgb(24, 20, 56)),
+			ColorSequenceKeypoint.new(0, dark),
+			ColorSequenceKeypoint.new(0.45, main:Lerp(dark, 0.25)),
+			ColorSequenceKeypoint.new(0.55, main:Lerp(rgb(255, 255, 255), 0.18)),
+			ColorSequenceKeypoint.new(1, dark),
 		}),
-	}, pack)
-	make("UIStroke", { Thickness = 4, Color = GOLD, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pack)
-	Juice.onFrame(pack, function(t)
+	}, packFrame)
+	make("UIStroke", { Thickness = 4, Color = accent, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, packFrame)
+	Juice.onFrame(packFrame, function(t)
 		foil.Offset = Vector2.new(math.sin(t * 0.9) * 0.25, 0)
 	end)
 	-- the crimped top strip with its tear line
-	local top = make("Frame", { Name = "Top", Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = rgb(205, 160, 60), BorderSizePixel = 0, ZIndex = 11 }, pack)
+	local top = make("Frame", { Name = "Top", Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = accent, BorderSizePixel = 0, ZIndex = 11 }, packFrame)
 	make("UICorner", { CornerRadius = UDim.new(0, 14) }, top)
-	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(rgb(255, 228, 140), rgb(190, 130, 40)) }, top)
+	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(accent:Lerp(rgb(255, 255, 255), 0.45), accent:Lerp(dark, 0.3)) }, top)
 	for k = 0, 11 do
 		make("Frame", { Name = "Dash", Position = UDim2.new(k / 12, 4, 1, -3), Size = UDim2.new(1 / 12, -8, 0, 2), BackgroundColor3 = INK, BackgroundTransparency = 0.4, BorderSizePixel = 0, ZIndex = 12 }, top)
 	end
-	-- emblem
-	local emblem = make("TextLabel", { Name = "Emblem", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.47), Size = UDim2.fromOffset(170, 110), BackgroundTransparency = 1, Text = "DW", Font = Enum.Font.GothamBlack, TextScaled = true, TextColor3 = rgb(255, 255, 255), ZIndex = 12 }, pack)
-	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(rgb(255, 238, 170), rgb(255, 156, 40)) }, emblem)
-	make("UIStroke", { Thickness = 3, Color = INK }, emblem)
-	make("TextLabel", { Name = "Title", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.66), Size = UDim2.fromOffset(200, 24), BackgroundTransparency = 1, Text = "DECK WARS", Font = Enum.Font.GothamBlack, TextSize = 22, TextColor3 = GOLD, ZIndex = 12 }, pack)
-	make("TextLabel", { Name = "Sub", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.75), Size = UDim2.fromOffset(200, 18), BackgroundTransparency = 1, Text = count > 1 and (count .. " CARDS · BRAWL PACK") or "1 CARD · BRAWL PACK", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = rgb(210, 200, 230), ZIndex = 12 }, pack)
+	make("TextLabel", { Name = "Brand", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromOffset(160, 16), BackgroundTransparency = 1, Text = "DECK WARS", Font = Enum.Font.GothamBlack, TextSize = 14, TextColor3 = dark, ZIndex = 12 }, top)
+	if themed then
+		-- the mascot in a window, with a soft glow in the pack's color behind it
+		local window = make("Frame", { Name = "Window", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromScale(0.82, 0.46), BackgroundColor3 = main:Lerp(rgb(255, 255, 255), 0.25), BackgroundTransparency = 0.35, ZIndex = 11 }, packFrame)
+		make("UICorner", { CornerRadius = UDim.new(0, 12) }, window)
+		make("UIStroke", { Thickness = 2, Color = accent, Transparency = 0.3 }, window)
+		make("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0.1, 0.7) }, window)
+		mascotWindow(packFrame, pack, 12)
+	else
+		local emblem = make("TextLabel", { Name = "Emblem", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(170, 110), BackgroundTransparency = 1, Text = "DW", Font = Enum.Font.GothamBlack, TextScaled = true, TextColor3 = rgb(255, 255, 255), ZIndex = 12 }, packFrame)
+		make("UIGradient", { Rotation = 90, Color = ColorSequence.new(rgb(255, 238, 170), rgb(255, 156, 40)) }, emblem)
+		make("UIStroke", { Thickness = 3, Color = INK }, emblem)
+	end
+	local title = string.upper(string.gsub(pack.name, " Pack$", ""))
+	local titleLabel = make("TextLabel", { Name = "Title", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.68), Size = UDim2.fromOffset(212, 30), BackgroundTransparency = 1, Text = title, Font = Enum.Font.GothamBlack, TextScaled = true, TextColor3 = rgb(255, 255, 255), ZIndex = 12 }, packFrame)
+	make("UIStroke", { Thickness = 2, Color = dark }, titleLabel)
+	local what = themed and (string.upper(pack.family) .. " PACK") or "BRAWL PACK"
+	make("TextLabel", { Name = "Sub", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.79), Size = UDim2.fromOffset(200, 18), BackgroundTransparency = 1, Text = (count > 1 and (count .. " CARDS · ") or "1 CARD · ") .. what, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = accent, ZIndex = 12 }, packFrame)
+	-- the crimped bottom edge
+	make("Frame", { Name = "Bottom", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 16), BackgroundColor3 = accent:Lerp(dark, 0.2), BorderSizePixel = 0, ZIndex = 11 }, packFrame)
 	if count > 1 then
-		local badge = make("TextLabel", { Name = "Count", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -10, 0, 54), Size = UDim2.fromOffset(64, 64), BackgroundColor3 = rgb(255, 84, 112), Text = "x" .. count, Font = Enum.Font.GothamBlack, TextSize = 24, TextColor3 = rgb(255, 255, 255), Rotation = 12, ZIndex = 14 }, pack)
+		local badge = make("TextLabel", { Name = "Count", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -10, 0, 54), Size = UDim2.fromOffset(64, 64), BackgroundColor3 = rgb(255, 84, 112), Text = "x" .. count, Font = Enum.Font.GothamBlack, TextSize = 24, TextColor3 = rgb(255, 255, 255), Rotation = 12, ZIndex = 14 }, packFrame)
 		make("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
 		make("UIStroke", { Thickness = 3, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, badge)
 	end
-	Juice.shine(pack, 2.2, UDim.new(0, 14))
-	return pack
+	Juice.shine(packFrame, 2.2, UDim.new(0, 14))
+	return packFrame
 end
+local buildPack = PackTease.buildPack
 
 -- A crack in the pack with light pouring out of it.
 local function addCrack(pack, color, k)
@@ -115,7 +184,7 @@ function PackTease.play(opts, onDone)
 	local glow = make("Frame", { Name = "Glow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(260, 360), BackgroundTransparency = 1, ZIndex = 3 }, gui)
 	make("UICorner", { CornerRadius = UDim.new(0, 26) }, glow)
 	local glowStroke = make("UIStroke", { Thickness = 18, Color = Kit.TierColor[state.shown], Transparency = 1 }, glow)
-	local pack = buildPack(gui, count)
+	local pack = buildPack(gui, count, opts.pack)
 	local packScale = Juice.scaleOf(pack)
 
 	local hint = make("TextLabel", { Name = "Hint", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 200), Size = UDim2.fromOffset(400, 28), BackgroundTransparency = 1, Text = "TAP TO OPEN", Font = Enum.Font.GothamBlack, TextSize = 24, TextColor3 = rgb(255, 255, 255), TextTransparency = 1, ZIndex = 20 }, gui)

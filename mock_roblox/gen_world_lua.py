@@ -26,6 +26,14 @@ def lua(v, t):
         return f"CFrame.new({pos[0]},{pos[1]},{pos[2]},{o[0][0]},{o[0][1]},{o[0][2]},{o[1][0]},{o[1][1]},{o[1][2]},{o[2][0]},{o[2][1]},{o[2][2]})"
     if t=="UDim2":
         (xs,xo),(ys,yo)=v["UDim2"]; return f"UDim2.new({xs},{xo},{ys},{yo})"
+    if t=="UDim":
+        sc,of=v["UDim"] if isinstance(v,dict) else v; return f"UDim.new({sc},{of})"
+    if t=="ColorSequence":
+        kps=v["ColorSequence"]["keypoints"]
+        return "ColorSequence.new({"+",".join(f"ColorSequenceKeypoint.new({k['time']},Color3.new({k['color'][0]},{k['color'][1]},{k['color'][2]}))" for k in kps)+"})"
+    if t=="NumberSequence":
+        kps=v["NumberSequence"]["keypoints"]
+        return "NumberSequence.new({"+",".join(f"NumberSequenceKeypoint.new({k['time']},{k['value']},{k.get('envelope',0)})" for k in kps)+"})"
     if t and t.startswith("Enum:"): return f'Enum.{t[5:]}.{v}'
     if isinstance(v,bool): return "true" if v else "false"
     if isinstance(v,(int,float)): return repr(v)
@@ -42,5 +50,6 @@ def node(n, ind="\t"):
     parts.append("Children={"+",".join(kids)+"}")
     return "{"+", ".join(parts)+"}"
 src=json.load(open(sys.argv[1]))
-open(sys.argv[2],"w").write("return function()\n\treturn "+node(src)+"\nend\n")
+out="return function()\n\treturn "+node(src)+"\nend\n"
+open(sys.argv[2],"w").write(out)
 print("ok")

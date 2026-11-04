@@ -4,10 +4,12 @@
 # DuelTable/Seat_Near, Seat_Far, Board/Tile_<column 1-4>_<row 1-6> (row 1 nearest Seat_Near), building slots
 # Board/Tile_<column>_0 (near) and Tile_<column>_7 (far), Hero_<side>,
 # HeroGlow_<side>, Energy_<side>_<1-8>, Deck_<side>, Discard_<side>, TableLamp,
-# Structure/FireLight, PackParty/MachineBase, DiscoBall, DiscoTile, PartyLight*, StringLight, and "Sign" billboards.
+# Structure/FireLight, PackParty/PackShelf/ShelfPack_<pack id> (PackBody, ...), MascotSpot_<pack id>, MarqueeBulb,
+# DiscoBall, DiscoTile, PartyLight*, StringLight, and "Sign" billboards.
 import json, math
 import numpy as np
 from modelkit import Model, rot, Rx, Ry, Rz, I3
+from modelkit import shade as kshade
 
 W = 48; H = 18; HALF = W / 2
 
@@ -515,33 +517,182 @@ shelf_nodes = emit(sh, children={shelf_lamp: [light("PointLight", (255, 214, 150
 shelf_nodes += label_part("ShelfLabel", (-20, 14.6, 0), "DECK SHELF")
 
 # ---------------------------------------------------------------------------
+# The Pack Shelf (in the Pack Party corner): a lit display stand with one pack per family and
+# the classic Brawl Pack on top. Pack names and colors come from src/packbrawl/Packs.luau.
+# Built in its own frame (x across, y up, +z toward the room) and turned to face the room.
+# ---------------------------------------------------------------------------
+import re
+
+
+def read_packs():
+    src = open("src/packbrawl/Packs.luau").read()
+    body = src[src.index("Packs.List = {"):]
+    body = body[:body.index("\n}\n")]
+    packs = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line.startswith("{ id ="):
+            continue
+        d = {k: v for k, v in re.findall(r'(\w+) = "([^"]*)"', line)}
+        for key in ("color", "dark", "accent"):
+            nums = re.search(key + r" = \{ (\d+), (\d+), (\d+) \}", line)
+            d[key] = tuple(int(v) for v in nums.groups())
+        packs.append(d)
+    return packs
+
+
+PACKS = read_packs()
+SHELF_AT = (18.0, 0.0, -18.0)
+SHELF_YAW = -45  # local +z (the shelf's front) faces the middle of the room
+LACQUER = (30, 22, 48)
+LACQUER_LIGHT = (44, 34, 70)
+GOLD = (255, 206, 72)
+BULB = (255, 238, 196)
+# Where each pack stands: (x, floor y, z, scale) in the shelf's frame.
+SHELF_SLOTS = {
+    "brawl": (0.0, 7.625, -0.45, 1.15),
+    "snack": (-3.2, 4.225, 0.15, 1.0), "junk": (0.0, 4.225, 0.15, 1.0), "weather": (3.2, 4.225, 0.15, 1.0),
+    "critter": (-3.2, 1.0, 1.15, 1.0), "spooky": (0.0, 1.0, 1.15, 1.0), "robo": (3.2, 1.0, 1.15, 1.0),
+}
+PACK_TILT = Rx(-8)  # leaning back a little against its stand
+
+
+def pack_face_gui(d):
+    """The printed front of a pack: DECK WARS, the pack's name, its family."""
+    words = d["name"].upper().replace(" PACK", "").split(" ")
+    title = "\n".join(words)
+    sub = (d["family"].upper() + " PACK") if d.get("family") else "ALL FAMILIES"
+    def lbl(name, text, y, h, color, font="GothamBlack", stroke=0.5):
+        return {"Name": name, "ClassName": "TextLabel", "Properties": {
+            "Text": text, "Size": {"UDim2": [[0.9, 0], [h, 0]]}, "Position": {"UDim2": [[0.05, 0], [y, 0]]},
+            "BackgroundTransparency": 1, "TextScaled": True, "Font": font, "TextColor3": c3(color),
+            "TextStrokeTransparency": stroke, "TextStrokeColor3": c3(d["dark"])}}
+    bg = {"Name": "Bg", "ClassName": "Frame", "Properties": {
+        "Size": {"UDim2": [[1, 0], [1, 0]]}, "BackgroundColor3": c3((255, 255, 255)), "BorderSizePixel": 0, "ZIndex": 0},
+        "Children": [{"Name": "Foil", "ClassName": "UIGradient", "Properties": {
+            "Rotation": 70,
+            "Color": {"ColorSequence": {"keypoints": [{"time": 0, "color": c3(d["color"])}, {"time": 0.55, "color": c3(kshade(d["color"], 0.7))}, {"time": 1, "color": c3(d["dark"])}]}}}}]}
+    kids = [
+        bg,
+        lbl("Brand", "DECK WARS", 0.04, 0.11, d["accent"], "GothamBold", 1),
+        lbl("Title", title, 0.2, 0.52, (255, 255, 255)),
+        lbl("Family", sub, 0.78, 0.1, d["accent"], "GothamBold", 1),
+    ]
+    return {"Name": "PackArt", "ClassName": "SurfaceGui", "Properties": {
+        "Face": "Back", "SizingMode": "PixelsPerStud", "PixelsPerStud": 90, "LightInfluence": 0.15}, "Children": kids}
+
+
+def build_pack(d, slot):
+    """One pack on its riser. Returns (riser nodes, pack Model node, mascot spot node)."""
+    sx, fy, sz, k = slot
+    base = np.array([sx, fy, sz], float)
+    riser = Model("Riser")
+    riser.blk("PackRiser", (2.1 * k, 0.3, 1.1 * k), (sx, fy + 0.15, sz), (205, 225, 255), mat="Glass", tr=0.35, refl=0.1)
+    glow = riser.blk("RiserGlow", (2.0 * k, 0.07, 0.07), (sx, fy + 0.05, sz + 0.56 * k), d["color"], mat="Neon")
+    riser.blk("PackPlate", (1.5 * k, 0.22, 0.06), (sx, fy + 0.17, sz + 0.57 * k), LACQUER, mat="Metal", R=Rx(-15))
+    # a soft backlight in the pack's color on the back wall of its niche
+    riser.blk("PackBacklight", (2.6 * k, 2.6 * k, 0.05), (sx, fy + 1.55 * k, -1.37), d["color"], mat="Neon", tr=0.72)
+    riser_nodes = emit(riser, offset=SHELF_AT, yaw=SHELF_YAW,
+                       children={glow: [light("PointLight", d["color"], 1.6, 4.0 * k)]},
+                       props={i: {"CanQuery": False, "CastShadow": False} for i in range(1, 5)})
+    # the pack itself, in its own frame (center of the pack at the origin), then tilted and placed
+    pk = Model("Pack")
+    pk.blk("PackBody", (1.7, 2.1, 0.2), (0, 0, 0), d["color"], mat="Foil", refl=0.12)
+    pk.blk("PackTop", (1.78, 0.32, 0.24), (0, 1.2, 0), d["accent"], mat="SmoothPlastic", refl=0.05)
+    for j in range(7):
+        pk.wedge("PackCrimp", (0.2, 0.1, 0.24), (-0.76 + j * 0.253, 1.41, 0), d["accent"])
+    pk.blk("PackBottom", (1.78, 0.2, 0.24), (0, -1.14, 0), d["accent"])
+    face = pk.blk("PackFace", (1.46, 1.72, 0.02), (0, 0.0, 0.11), kshade(d["color"], 0.7))
+    for sxx in (-1, 1):
+        pk.blk("PackEdge", (0.06, 2.0, 0.06), (sxx * 0.86, 0, 0.1), d["accent"], mat="Neon")
+    pk.blk("PackTear", (1.6, 0.03, 0.03), (0, 1.02, 0.115), d["accent"], mat="Neon")
+    center = base + np.array([0, 0.3 + 1.32 * k, 0])
+    for p in pk.parts:
+        p["pos"] = tuple(center + PACK_TILT @ (np.array(p["pos"]) * k))
+        p["size"] = tuple(v * k for v in p["size"])
+        p["R"] = PACK_TILT @ p["R"]
+    pack_nodes = emit(pk, offset=SHELF_AT, yaw=SHELF_YAW, children={face: [pack_face_gui(d)]},
+                      props={i: {"CastShadow": False} for i in range(1, len(pk.parts) + 1)})
+    pack_model = model("ShelfPack_" + d["id"], pack_nodes)
+    # the mascot figurine (built by the client) stands to the right of the pack, a little behind
+    spot = None
+    if d.get("mascot"):
+        ms = Model("Spot")
+        ms.blk("MascotSpot_" + d["id"], (0.2, 0.2, 0.2), (sx + 1.3, fy, sz - 0.3), (0, 0, 0), tr=1, R=Ry(180))
+        spot = emit(ms, offset=SHELF_AT, yaw=SHELF_YAW, props={1: {"CanQuery": False, "CastShadow": False}})[0]
+        spot["Properties"]["CFrame"]["CFrame"]["position"][1] = r4(fy)
+    return riser_nodes, pack_model, spot
+
+
+def build_pack_shelf():
+    sh = Model("PackShelf")
+    # plinth with a brass edge and an LED strip in the six family colors
+    sh.blk("Plinth", (10.6, 1.0, 3.8), (0, 0.5, 0.15), LACQUER, refl=0.06)
+    sh.blk("PlinthTop", (10.1, 0.06, 3.5), (0, 1.0, 0.15), LACQUER_LIGHT, mat="Fabric")
+    sh.blk("PlinthTrim", (10.7, 0.12, 0.12), (0, 1.0, 2.06), GOLD, mat="Metal", refl=0.15)
+    fam = [d for d in PACKS if d.get("family")]
+    for j, d in enumerate(fam):
+        sh.blk("PlinthGlow", (10.4 / 6, 0.12, 0.08), (-5.2 + 10.4 / 12 + j * 10.4 / 6, 0.16, 2.06), d["color"], mat="Neon")
+    # back and sides
+    sh.blk("ShelfBack", (10.6, 11.0, 0.4), (0, 6.0, -1.65), LACQUER)
+    sh.blk("ShelfBackInset", (9.8, 10.2, 0.08), (0, 6.1, -1.43), LACQUER_LIGHT, mat="Fabric")
+    for sx in (-1, 1):
+        sh.blk("ShelfSide", (0.5, 11.6, 3.8), (sx * 5.3, 5.8, 0.15), LACQUER, refl=0.06)
+        sh.blk("ShelfSideGlow", (0.08, 11.0, 0.08), (sx * 5.3, 5.8, 2.07), GOLD, mat="Neon")
+        sh.blk("ShelfSideCap", (0.7, 0.18, 4.0), (sx * 5.3, 11.68, 0.15), GOLD, mat="Metal", refl=0.15)
+    # middle step and the top niche
+    sh.blk("ShelfStep", (10.1, 0.35, 2.6), (0, 4.05, -0.2), LACQUER, refl=0.06)
+    sh.blk("ShelfStepLip", (10.1, 0.12, 0.1), (0, 4.17, 1.13), GOLD, mat="Metal", refl=0.15)
+    sh.blk("ShelfTop", (4.6, 0.35, 1.9), (0, 7.45, -0.55), LACQUER, refl=0.06)
+    sh.blk("ShelfTopLip", (4.6, 0.12, 0.1), (0, 7.57, 0.42), GOLD, mat="Metal", refl=0.15)
+    halo = sh.blk("HaloBack", (3.2, 3.2, 0.05), (0, 9.3, -1.36), (60, 44, 110), mat="Neon", tr=0.55)
+    sh.ring("Halo", (0, 9.3, -1.3), 1.75, 0.14, GOLD, normal="z", segments=18, mat="Neon")
+    # glass jars of mini packs on brackets beside the top niche
+    for sx in (-1, 1):
+        x = sx * 3.65
+        sh.blk("JarBracket", (1.5, 0.2, 1.5), (x, 7.3, -0.4), LACQUER, refl=0.06)
+        sh.cyl("PackJar", 1.6, 1.25, (x, 8.2, -0.4), (220, 235, 255), mat="Glass", tr=0.55, refl=0.1)
+        sh.cyl("PackJarLid", 0.2, 1.32, (x, 9.05, -0.4), GOLD, mat="Metal", refl=0.15)
+        for j in range(6):
+            d = fam[(j + (0 if sx < 0 else 3)) % 6]
+            sh.blk("MiniPack", (0.36, 0.5, 0.06), (x - 0.3 + (j % 3) * 0.3, 7.7 + (j // 3) * 0.48, -0.4 + ((j * 37) % 5 - 2) * 0.08), d["color"],
+                   R=rot(x=0, y=(j * 47) % 90 - 45, z=(j * 29) % 30 - 15))
+    # the marquee sign with its bulbs
+    marquee = sh.blk("Marquee", (10.8, 1.7, 0.6), (0, 12.25, -1.2), LACQUER, refl=0.06)
+    sh.blk("MarqueeTrim", (11.0, 0.12, 0.7), (0, 13.12, -1.2), GOLD, mat="Metal", refl=0.15)
+    sh.blk("MarqueeTrim", (11.0, 0.12, 0.7), (0, 11.38, -1.2), GOLD, mat="Metal", refl=0.15)
+    for j in range(15):
+        x = -5.0 + j * (10.0 / 14)
+        for y in (13.0, 11.5):
+            sh.ball("MarqueeBulb", 0.22, (x, y, -0.86), BULB, mat="Neon")
+    lamp = sh.blk("ShelfLamp", (9.0, 0.15, 0.4), (0, 11.2, -0.9), (60, 50, 80), mat="Metal")
+    lamp_light = light("SpotLight", (255, 240, 220), 2.2, 16, extra={"Angle": 80, "Face": "Bottom"})
+    marquee_gui = {"Name": "MarqueeGui", "ClassName": "SurfaceGui", "Properties": {
+        "Face": "Back", "SizingMode": "PixelsPerStud", "PixelsPerStud": 40, "LightInfluence": 0},
+        "Children": [{"Name": "Title", "ClassName": "TextLabel", "Properties": {
+            "Text": "PACK SHELF", "Size": {"UDim2": [[0.9, 0], [0.62, 0]]}, "Position": {"UDim2": [[0.05, 0], [0.19, 0]]},
+            "BackgroundTransparency": 1, "TextScaled": True, "Font": "GothamBlack", "TextColor3": c3(GOLD),
+            "TextStrokeTransparency": 0.4, "TextStrokeColor3": c3((90, 40, 10))}}]}
+    nodes = emit(sh, offset=SHELF_AT, yaw=SHELF_YAW,
+                 children={marquee: [marquee_gui], lamp: [lamp_light]},
+                 props={halo: {"CanQuery": False, "CastShadow": False}})
+    for d in PACKS:
+        riser_nodes, pack_model, spot = build_pack(d, SHELF_SLOTS[d["id"]])
+        nodes += riser_nodes
+        nodes.append(pack_model)
+        if spot:
+            nodes.append(spot)
+    return model("PackShelf", nodes)
+
+
+# ---------------------------------------------------------------------------
 # Pack Party corner (north-east)
 # ---------------------------------------------------------------------------
 pp = Model("PackParty")
+pack_colors = [(255, 90, 90), (90, 170, 255), (255, 210, 60), (150, 230, 110), (200, 120, 255), (255, 150, 60)]
 for i in range(6):
     for j in range(6):
         pp.blk("DiscoTile", (1.95, 0.12, 1.95), (11 + i * 2, 0.07, -21 + j * 2), (60, 40, 90), mat="Neon", tr=0.45)
-# prize machine
-mx, mz = 17, -17
-pp.blk("MachineBase", (5, 5.4, 5), (mx, 2.7, mz), (220, 50, 80), refl=0.1)
-for y in (0.4, 5.3):
-    pp.blk("MachineTrim", (5.2, 0.3, 5.2), (mx, y, mz), (220, 220, 230), mat="Metal", refl=0.2)
-pp.blk("MachinePanel", (3.6, 1.6, 0.2), (mx, 3.8, mz + 2.55), (40, 30, 60))
-for k, c in enumerate([(255, 80, 80), (255, 220, 60), (80, 200, 255)]):
-    pp.cyl("MachineButton", 0.2, 0.6, (mx - 1.0 + k, 3.8, mz + 2.7), c, axis="z", mat="Neon")
-pp.blk("CoinSlot", (0.3, 0.6, 0.1), (mx + 1.6, 3.8, mz + 2.67), BRASS, mat="Metal")
-pp.blk("PrizeSlot", (2.4, 1.2, 0.3), (mx, 1.6, mz + 2.55), (25, 20, 30))
-pp.blk("PrizeFlap", (2.2, 1.0, 0.1), (mx, 1.6, mz + 2.72), (180, 220, 255), mat="Glass", tr=0.4)
-pp.ball("MachineDome", 5.0, (mx, 7.6, mz), (200, 235, 255), mat="Glass", tr=0.55, refl=0.2)
-pack_colors = [(255, 90, 90), (90, 170, 255), (255, 210, 60), (150, 230, 110), (200, 120, 255), (255, 150, 60)]
-for k in range(12):
-    a = k * 2.4
-    rr = 0.6 + (k % 3) * 0.55
-    pp.blk("PrizePack", (0.9, 1.2, 0.18), (mx + math.cos(a) * rr, 6.2 + (k // 4) * 0.8, mz + math.sin(a) * rr), pack_colors[k % 6], R=rot(20 * k, 37 * k, 11 * k))
-pp.cyl("DomeCap", 0.5, 1.6, (mx, 10.25, mz), (220, 50, 80))
-star = pp.ball("DomeStar", 0.9, (mx, 10.9, mz), (255, 230, 90), mat="Neon")
-pp.blk("MachineLever", (0.6, 3, 0.6), (mx + 2.8, 4.5, mz), (230, 230, 235), mat="Metal")
-pp.ball("LeverKnob", 1.2, (mx + 2.8, 6.2, mz), (250, 210, 50))
 # speakers
 for (x, z, yaw) in [(10.4, -22.3, 0), (22.3, -10.4, -90)]:
     spk = Model("Speaker")
@@ -555,7 +706,7 @@ for (x, z, yaw) in [(10.4, -22.3, 0), (22.3, -10.4, -90)]:
         p["R"] = Rw @ p["R"]
         pp.parts.append(p)
 # balloons
-for (x, y, z, c) in [(10.8, 8.6, -21.8, (255, 80, 120)), (11.8, 9.4, -22.6, (90, 170, 255)), (22.4, 9.0, -11.6, (255, 220, 60)), (21.6, 8.2, -10.6, (150, 230, 110)), (14.5, 9.6, -21.8, (200, 120, 255))]:
+for (x, y, z, c) in [(10.8, 8.6, -21.8, (255, 80, 120)), (11.8, 9.4, -22.6, (90, 170, 255)), (22.4, 9.0, -11.6, (255, 220, 60)), (21.6, 8.2, -10.6, (150, 230, 110)), (12.6, 10.2, -23.0, (200, 120, 255))]:
     pp.ell("Balloon", (1.3, 1.6, 1.3), (x, y, z), c, refl=0.2)
     pp.ell("BalloonKnot", (0.25, 0.2, 0.25), (x, y - 0.85, z), c)
     pp.cyl("BalloonString", y - 4.7, 0.04, (x, (y - 0.9 + 3.8) / 2, z), (240, 240, 240))
@@ -574,12 +725,13 @@ pp.cyl("DiscoString", 1.9, 0.08, (14, H - 1.0, -14), (200, 200, 200))
 party_lights = []
 for i, (c, x, z) in enumerate([((255, 60, 140), 10, -22), ((60, 200, 255), 22, -10), ((255, 220, 60), 22, -22)]):
     party_lights.append(pp.blk("PartyLight%d" % (i + 1), (1.2, 0.8, 1.2), (x, H - 1.2, z), c, mat="Neon"))
-pp_children = {disco: [sparkles((255, 255, 255))], star: [light("PointLight", (255, 220, 120), 1.0, 10)]}
+pp_children = {disco: [sparkles((255, 255, 255))]}
 for i, idx in enumerate(party_lights):
     c = [(255, 60, 140), (60, 200, 255), (255, 220, 60)][i]
     pp_children[idx] = [light("SpotLight", c, 2.4, 26, extra={"Angle": 60, "Face": "Bottom"})]
 pp_nodes = emit(pp, children=pp_children)
-pp_nodes += label_part("PartyLabel", (16, 13.2, -16), "PACK PARTY", color=(255, 230, 120))
+pp_nodes.append(build_pack_shelf())
+pp_nodes += label_part("PartyLabel", (14.5, 14.6, -14.5), "PACK PARTY", color=(255, 230, 120))
 
 # ---------------------------------------------------------------------------
 # Shop counter (south-east) with Pickles the shopkeeper

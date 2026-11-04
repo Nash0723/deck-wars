@@ -25,7 +25,8 @@ local StarterGui = M.service("StarterGui")
 local Lighting = M.service("Lighting")
 local StarterPlayer = M.service("StarterPlayer")
 local SoundService = M.service("SoundService")
-for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService }) do
+local ServerStorage = M.service("ServerStorage")
+for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, ServerStorage, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService }) do
 	s.Parent = game
 end
 
@@ -46,13 +47,13 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "ShopCatalog" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
 pb.Parent = ReplicatedStorage
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "PackParty" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local remotes = Instance.new("Folder")
@@ -353,8 +354,37 @@ local function playThrough(label, startFn, opts)
 	-- the reveal: tap too early does nothing, then tap to continue
 	local reveal = playerGui:FindFirstChild("PackBrawlReveal")
 	if reveal then
-		click(reveal:FindFirstChild("Tap"), "Tap")
-		check(playerGui:FindFirstChild("PackBrawlReveal") ~= nil, label .. ": an early tap does not skip the card")
+		local def = CardData.get(id)
+		local stageF = reveal:FindFirstChild("Stage")
+		check(stageF ~= nil and stageF:FindFirstChild("Pack") ~= nil, label .. ": the reveal starts with the pack")
+		local ripped = waitFor(function()
+			return reveal:FindFirstChild("RipLight", true) ~= nil
+		end, 2)
+		check(ripped, label .. ": the pack rips open with light pouring out")
+		local stats = stageF and stageF:FindFirstChild("StatCard")
+		if opts.watchReveal then
+			local hint = reveal:FindFirstChild("Hint")
+			local settled = waitFor(function()
+				return hint.TextTransparency < 0.5
+			end, 6)
+			check(settled, label .. ": left alone, the reveal ends on the stat card with 'Tap to continue'")
+			check(stageF:FindFirstChild("Pack") == nil, label .. ": the empty pack has fallen away")
+		else
+			click(reveal:FindFirstChild("Tap"), "Tap")
+			check(playerGui:FindFirstChild("PackBrawlReveal") ~= nil, label .. ": an early tap jumps to the stat card, it doesn't close the reveal")
+			M.advance(0.3)
+		end
+		local front = reveal:FindFirstChild("Front", true)
+		check(front and front.Visible, label .. ": the card has flipped face up")
+		check(stats and stats.Position.X.Scale < 0.9, label .. ": the stat card is on screen")
+		local atkRow = stats and stats:FindFirstChild("Attack")
+		local costRow = stats and stats:FindFirstChild("Cost")
+		check(costRow and costRow.Value.Text == tostring(def.cost), label .. ": the stat card shows the cost (" .. tostring(costRow and costRow.Value.Text) .. ")")
+		if def.type == "Creature" then
+			check(atkRow and atkRow.Value.Text == tostring(def.atk), label .. ": the stat card shows the attack (" .. tostring(atkRow and atkRow.Value.Text) .. ")")
+		else
+			check(atkRow == nil, label .. ": no attack bar for a " .. def.type)
+		end
 		M.advance(1)
 		click(reveal:FindFirstChild("Tap"), "Tap")
 		M.advance(1)
@@ -461,18 +491,67 @@ UserInputService.InputEnded:Fire(fakeInput, false)
 
 -- 4) a 10-pull with the card fan
 playThrough("10-pull", function()
-	click(button("Open 10 packs") or findIn(playerGui, function(d)
-		return d.ClassName == "TextButton" and d.Text == "Open 10 packs"
-	end), "Open 10")
+	click(button("Open10"), "Open 10")
 end, { fan = true })
 check(lastResult and #lastResult.cards == 10, "10-pull gives 10 cards")
 
--- 5) a single random pull (nobody taps the pack: it opens by itself)
-playThrough("Open 1", function()
-	click(findIn(playerGui, function(d)
-		return d.ClassName == "TextButton" and d.Text == "Open 1 pack"
-	end), "Open 1")
-end, { autoOpen = true })
+check(lastResult and lastResult.packId == "brawl" and lastResult.price == 900, "the 10-pull came from the Brawl Pack and cost 900 Gems")
+check(player:GetAttribute("Gems") == 100, "Gems after the 10-pull: 1000 - 900 = 100 (" .. tostring(player:GetAttribute("Gems")) .. ")")
+
+-- 5) pick a themed pack and open one (nobody taps the pack: it opens by itself; the reveal plays out)
+do
+	local PackPartyM = makeEnv(clientScript, clientCache).require(pb:WaitForChild("PackParty"))
+	click(button("Dot_spooky"), "the Spooky pack's dot")
+	check(PackPartyM.selected() == "spooky", "clicking a dot picks that pack")
+	check(findIn(playerGui, function(d)
+		return d.Name == "PackName" and d.Text == "Midnight Mall Pack"
+	end) ~= nil, "the panel shows the Midnight Mall Pack")
+	local rows = 0
+	local fam = {}
+	for _, d in ipairs(playerGui:GetDescendants()) do
+		local cid = string.match(d.Name, "^Row_(.+)$")
+		if cid then
+			rows += 1
+			fam[CardData.get(cid).family] = true
+		end
+	end
+	check(rows > 20 and fam.Spooky and fam.Any and not fam.Snack, "the contents list holds Spooky and shared cards (" .. rows .. " rows), no other family's")
+	click(button("NextPack"), "next pack")
+	check(PackPartyM.selected() == "robo", "▶ goes to the next pack on the shelf")
+	click(button("PrevPack"), "previous pack")
+	check(PackPartyM.selected() == "spooky", "◀ goes back")
+end
+playThrough("Open 1 Spooky", function()
+	click(button("Open1"), "Open 1")
+end, { autoOpen = true, watchReveal = true })
+if lastResult then
+	local def = CardData.get(lastResult.cards[1])
+	check(lastResult.packId == "spooky", "the pull came from the Spooky pack")
+	check(def.family == "Spooky" or def.family == "Any" or def.rarity == "Secret", "a Spooky pack gives a Spooky or shared card (" .. def.name .. ")")
+end
+check(player:GetAttribute("Gems") == 0, "Gems after Open 1: 0")
+
+-- 5b) out of Gems: the pull is refused, nothing plays, the panel says why
+do
+	M.advance(1.6)
+	local errors0 = M.errors
+	click(button("Open1"), "Open 1 with no Gems")
+	M.advance(0.5)
+	check(playerGui:FindFirstChild("PackTease") == nil and Workspace:FindFirstChild("PackBrawlScene") == nil, "with no Gems nothing opens")
+	check(findIn(playerGui, function(d)
+		return d.Name == "PackStatus" and string.find(d.Text, "Not enough Gems", 1, true) ~= nil
+	end) ~= nil, "the panel says there aren't enough Gems")
+	-- a client that skips the check: the server refuses too, and takes nothing
+	lastResult = nil
+	remotes.PullRequest:FireServer(1, nil, "robo")
+	M.advance(0.5)
+	check(lastResult and lastResult.error == "gems", "the server refuses a pull it can't charge for")
+	check(player:GetAttribute("Gems") == 0, "and the Gems stay at 0")
+	-- free rolls and forced tiers are for Studio / developers only: here (AllowTierPreview) they work
+	local panel = playerGui:FindFirstChild("PackPartyTest")
+	check(panel and panel.Enabled, "the panel stays up after a refused pull")
+	check(M.errors == errors0, "refused pulls: no script errors")
+end
 
 -- 6) more tiers, so buildings, spells, Secrets and fake endings all get played
 local extra = rawget(_G, "SEEDS") or 2
@@ -553,6 +632,66 @@ if rawget(_G, "ALLCARDS") == 1 then
 	end
 	check(#bad == 0, string.format("every pullable card plays its whole brawl cleanly (%d cards; problems: %s)", count, table.concat(bad, ", ")))
 	check(#crowded == 0, string.format("every pullable card's victory pose has the ring to itself (%d cards; crowded: %s)", count, table.concat(crowded, ", ")))
+end
+
+
+-- 8) with the real EconomyManager (the economy update) in ServerStorage: the pull server pays
+-- with it, saves the cards in it and uses its Luck charges
+do
+	local errors0 = M.errors
+	local econ = Instance.new("Folder")
+	econ.Name = "DeckWarsServer"
+	econ.Parent = ServerStorage
+	for _, n in ipairs({ "ProfileStore", "EconomyManager", "DevAccess" }) do
+		moduleFrom(SRC .. "econ/" .. n .. ".luau", n, econ)
+	end
+	local senv = makeEnv(serverScript, serverCache)
+	local EM = senv.require(econ.EconomyManager)
+	EM.init({ memoryOnly = true })
+	EM.load(player)
+	local start = EM.getBalance(player, "Gems")
+	check(player:GetAttribute("Gems") == start and start > 0, "the EconomyManager's Gems show on the player (" .. tostring(start) .. ")")
+	local PackPartyM = makeEnv(clientScript, clientCache).require(pb:WaitForChild("PackParty"))
+	PackPartyM.select("robo")
+	M.advance(1.6)
+	lastResult = nil
+	remotes.PullRequest:FireServer(1, nil, "robo")
+	M.advance(0.3)
+	check(lastResult and lastResult.packId == "robo" and lastResult.error == nil, "a paid Overclock pull goes through the EconomyManager")
+	-- (the result is playing as a cinematic now; let it finish)
+	waitFor(function()
+		return playerGui:FindFirstChild("PackBrawlReveal") ~= nil
+	end, 40)
+	local rv = playerGui:FindFirstChild("PackBrawlReveal")
+	if rv then
+		click(rv:FindFirstChild("Tap"), "Tap")
+		M.advance(0.5)
+		click(rv:FindFirstChild("Tap"), "Tap")
+		M.advance(1)
+	end
+	check(EM.getBalance(player, "Gems") == start - 100, "100 Gems were spent from the save")
+	check(player:GetAttribute("Gems") == start - 100, "and the player's Gems show it")
+	local card = lastResult and lastResult.cards[1]
+	check(card and EM.ownsCard(player, card) >= 1, "the pulled card is in the saved collection (" .. tostring(card) .. ")")
+	check(lastResult and lastResult.isNew[1] == true and lastResult.uniqueOwned == 1, "it is marked NEW (first card owned)")
+	-- a Luck charge is used by a paid pull
+	EM.devLuck(player, 1)
+	M.advance(1.6)
+	lastResult = nil
+	remotes.PullRequest:FireServer(1, nil, "snack")
+	M.advance(0.3)
+	check(lastResult and lastResult.error == nil and EM.takePullLuck(player) == 1, "a paid pull uses up the Luck charge")
+	waitFor(function()
+		return playerGui:FindFirstChild("PackBrawlReveal") ~= nil
+	end, 40)
+	rv = playerGui:FindFirstChild("PackBrawlReveal")
+	if rv then
+		click(rv:FindFirstChild("Tap"), "Tap")
+		M.advance(0.5)
+		click(rv:FindFirstChild("Tap"), "Tap")
+		M.advance(1)
+	end
+	check(M.errors == errors0, "EconomyManager pulls: no script errors")
 end
 
 local played = {}
