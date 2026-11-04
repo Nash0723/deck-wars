@@ -810,11 +810,68 @@ do
 		payload2.synthetic = true
 		payload2.started = nil
 		payload2.result = nil
+		-- how far a creature's parts are from where they were built (relative to its pivot): 0 at
+		-- rest, more while its arms and legs move. nil for models without data.
+		local ModelData = makeEnv(shared, clientCache).require(shared:FindFirstChild("CreatureModelData"))
+		local function offRest(m)
+			local spec = m:IsA("Model") and ModelData[m.Name]
+			local root = spec and m.PrimaryPart
+			if not root then
+				return nil
+			end
+			local list = {}
+			for _, d in ipairs(m:GetChildren()) do
+				if d:IsA("BasePart") and d ~= root and d.Name ~= "Base" and d.Name ~= "BaseRing" then
+					table.insert(list, d)
+				end
+			end
+			if #list ~= #spec.parts then
+				return nil
+			end
+			-- the model's scale: the middle of how far each part sits from the root against the data
+			-- (most parts ride on the body, so a moving arm doesn't throw it off)
+			local ratios = {}
+			for i, sp in ipairs(spec.parts) do
+				local r = math.sqrt(sp[6] ^ 2 + sp[7] ^ 2 + sp[8] ^ 2)
+				if r > 0.3 then
+					table.insert(ratios, root.CFrame:ToObjectSpace(list[i].CFrame).Position.Magnitude / r)
+				end
+			end
+			if #ratios == 0 then
+				return nil
+			end
+			for _, q in ipairs(ratios) do
+				if q ~= q then
+					return math.huge, m.Name .. " (scale is NaN)"
+				end
+			end
+			table.sort(ratios)
+			local sc = ratios[math.floor(#ratios / 2) + 1]
+			local worstErr, at = 0, ""
+			for i, sp in ipairs(spec.parts) do
+				local off = root.CFrame:ToObjectSpace(list[i].CFrame).Position
+				local err = (off - Vector3.new(sp[6], sp[7], sp[8]) * sc).Magnitude
+				if err ~= err then
+					-- a NaN position counts as flown apart, never as "in place"
+					err = math.huge
+				end
+				if err > worstErr then
+					worstErr, at = err, m.Name .. " " .. sp[2]
+				end
+			end
+			return worstErr, at
+		end
 		local logBefore = labelWithText("Combo! Moth Mailman")
 		remotes.MatchEvent:FireClient(player, payload2)
-		local maxScrap, sawPower, sawSoak = 0, false, false
-		for _ = 1, 60 do
-			M.advance(0.5)
+		local maxScrap, sawPower, sawSoak, maxPosed = 0, false, false, 0
+		for _ = 1, 120 do
+			M.advance(0.25)
+			for _, m in ipairs(Workspace.LiveBoard:GetChildren()) do
+				local err, at = offRest(m)
+				if err and err > maxPosed then
+					maxPosed = err
+				end
+			end
 			local n = 0
 			for _, d in ipairs(Workspace.LiveBoard:GetDescendants()) do
 				if d.Name == "Scrap" then
@@ -841,6 +898,20 @@ do
 			end
 		end
 		check(bases > 0, "creatures stand on round bases (" .. bases .. " on the table)")
+		-- after all that punching, kicking and flinching, every creature's arms, legs and head are
+		-- back exactly where they were built (relative to the model's pivot)
+		local checkedModels, worst, worstAt = 0, 0, ""
+		for _, m in ipairs(Workspace.LiveBoard:GetChildren()) do
+			local err, at = offRest(m)
+			if err then
+				checkedModels += 1
+				if err > worst then
+					worst, worstAt = err, at
+				end
+			end
+		end
+		check(maxPosed > 0.05 and maxPosed < 10, string.format("creatures move their arms, legs and heads during the fight, without flying apart (parts moved up to %.2f studs)", maxPosed))
+		check(checkedModels > 0 and worst < 0.02, string.format("after the fights every creature's limbs are back in place (%d checked, worst %.3f studs at %s)", checkedModels, worst, worstAt))
 		local vignette = playerGui:FindFirstChild("DeckWarsVignette")
 		check(vignette ~= nil and vignette.Enabled == true, "the dark screen edges are on during a match")
 	end

@@ -144,6 +144,7 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 - It has **not** been opened in real Roblox Studio yet (that can't be done from here). The new lighting was judged with a rough preview render (`docs/table_preview.png`: the last version on top, this one below), not Roblox's own renderer, so brightness is the thing most likely to need a tweak. If the board looks too dark on your screen, raise Lighting > ExposureCompensation a little (see "Change the lighting"); if it's still too bright, lower it. If you see a red error in Studio's Output window, copy it to me.
 - Realistic lighting with shadows is heavier on old phones. If it runs slowly, set Lighting > PrioritizeLightingQuality to off.
 - **Settings update:** a new 12-step check in the simulated Studio walks the stations with A, D and the arrow keys (including wrapping around both ways), changes settings through the real buttons, checks they reach the server once (not on every click) and that the in-match window shows the same values, then Reset and S back to the room. The rules tests check that the server throws away bad saved settings. Saving to a DataStore can't run in the simulator, so test it in Studio: turn on Game Settings > Security > "Enable Studio Access to API Services", change a setting, stop, play again. Without that switch settings simply reset every time you play; nothing breaks.
+- **Models and board fights update:** every model was checked part by part for pieces buried inside bodies, and every fight rig was dumped before and after the overhaul (the only changes are the intended ones). In the simulated Studio two new checks replay a full round of fights on a real board: the creatures' arms, legs and heads really move (up to 0.73 studs from where they were built) and afterwards every part is back in place (9 creatures checked, worst 0.000 studs off). The simulator itself had a rounding bug that slowly bent any model it moved every frame until it flew apart; that is fixed in the simulator (real Roblox keeps its rotations clean), and the check now fails if any part ever ends up at an impossible spot. All 110 checks passed with 0 errors and 0 warnings, plus 232 rules checks, 6,283 Pack Brawl checks and the pull cinematic run. The fights have **not** been watched in real Studio yet, so tell me if a move looks off.
 - Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends, building your own decks, opening packs and saving progress come in step 3.
 
 
@@ -193,7 +194,25 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
-## Latest update: combos and a calmer, heavier table
+## Latest update: detailed models and real fights on the table
+
+### Every model rebuilt with more detail
+All 61 built-in models (creatures, buildings, heroes and the bot) were rebuilt from scratch with far more parts (about 7,700 in all), keeping each one's idea, colors and family style: stitched seams, rivets, laces, labels, badges, belts, patterned capes, painted faces with lids, teeth and cheeks. Their backs got the same care, since from your seat you mostly see your own creatures from behind (the mall cop's SECURITY jacket, the vending machine's vents, the hot sauce's barcode). A second pass moved details that were hidden inside bodies (sash badges, the pretzel twist, shoe laces, stripes, flowers, arcade buttons, the crypt door) onto the surfaces where you can see them.
+
+- The models are made by `gen_models.py` from the `models_*.py` files (helpers in `modelkit.py`), into `src/shared/CreatureModelData.luau`.
+- `python3 preview/sheet.py models_snack --only=jelly_bean_scout --size=500` draws a rough preview (add `--back` to see the back).
+
+### Punches and kicks on the table
+Creatures on the table now fight with their arms and legs, using the same moving parts and moves as Pack Brawl, instead of bumping into each other as one solid block:
+
+- Before an attack both creatures raise their guard. The attacker lunges in and throws a jab, cross, hook, uppercut, kick, haymaker or spin kick (bigger hits get bigger moves), swings what it holds, or headbutts, bumps, charges and tail-whips if it has no arms. The target flinches or staggers, or blocks when it is guarding.
+- When the target hits back, it takes the blow on its guard and punches straight back, and the attacker flinches.
+- Ranged creatures make a throwing motion as their shot leaves. Big creatures with long fronts (the moose) barely step forward, so the two bodies don't sink into each other.
+- **The twitch when two creatures clashed is fixed.** A creature used to jump to the first frame of each animation (out of its breathing, a glance aside or its crouched guard) and jump back into breathing afterwards. Now every animation eases in from wherever the creature is and eases back into breathing.
+- Your own models from ReplicatedStorage > CreatureModels keep moving as one piece (the game can't tell their arms from their legs).
+- In code: the `limbs` section of DeckWarsClient (`limbs.bind`, `limbs.guard`, `limbs.play`, `limbs.update`), and `attackAnimation`.
+
+## Combos and a calmer, heavier table
 
 ### Cards that build up together
 You can still play simply: walk, attack, defend. But a player who plans can now grow a much stronger board. The ideas come from other games: Star Realms (cards of the same faction help each other), Slay the Spire (stacking buffs), Go and old Viking board games (surrounding an enemy), Into the Breach (pushing enemies into position) and auto-battlers like Teamfight Tactics (families that are stronger together).
