@@ -20,8 +20,11 @@ local Casting = require(here:WaitForChild("Casting"))
 local Scripts = require(here:WaitForChild("Scripts"))
 local Director = require(here:WaitForChild("Director"))
 local Reveal = require(here:WaitForChild("Reveal"))
+local PackTease = require(here:WaitForChild("PackTease"))
 local PullRates = require(here:WaitForChild("PullRates"))
 local CardData = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("CardData"))
+local Juice = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("Juice"))
+local Settings = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("Settings"))
 
 local rgb, make = Kit.rgb, Kit.make
 
@@ -57,29 +60,32 @@ local function onResult(result)
 		o.onStart()
 	end
 	status("")
-	Director.play(brawl, function()
-		local function back()
-			state.playing = false
-			state.busy = false
-			local def = CardData.get(id)
-			status(string.format("Last pull: %s (%s). You own %d different cards.", def.name, def.rarity, result.uniqueOwned or 0))
-			local oo = state.opts
-			if oo and oo.onEnd then
-				oo.onEnd(result)
-			end
-		end
-		Reveal.single({
-			id = id,
-			isNew = result.isNew[best],
-			dupes = result.dupes[best],
-			onDone = function()
-				if #result.cards > 1 then
-					Reveal.fan({ cards = result.cards, best = best, isNew = result.isNew, onDone = back })
-				else
-					back()
+	-- first the pack is in your hands (tap it open), then it flies into the Brawl Box
+	PackTease.play({ tier = CardData.get(id).rarity, count = #result.cards, quick = Settings.get("packFights") == "Quick" }, function()
+		Director.play(brawl, function()
+			local function back()
+				state.playing = false
+				state.busy = false
+				local def = CardData.get(id)
+				status(string.format("Last pull: %s (%s). You own %d different cards.", def.name, def.rarity, result.uniqueOwned or 0))
+				local oo = state.opts
+				if oo and oo.onEnd then
+					oo.onEnd(result)
 				end
-			end,
-		})
+			end
+			Reveal.single({
+				id = id,
+				isNew = result.isNew[best],
+				dupes = result.dupes[best],
+				onDone = function()
+					if #result.cards > 1 then
+						Reveal.fan({ cards = result.cards, best = best, isNew = result.isNew, onDone = back })
+					else
+						back()
+					end
+				end,
+			})
+		end)
 	end)
 end
 
@@ -133,6 +139,11 @@ function PackParty.mount(parent, opts)
 	local holder = make("Frame", { Name = "PackPartyControls", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, parent)
 	local open1 = button(holder, "Open1", "Open 1 pack", UDim2.fromOffset(0, 0), UDim2.new(0.5, -5, 0, 44), rgb(255, 194, 26))
 	local open10 = button(holder, "Open 10 packs", "Open 10 packs", UDim2.new(0.5, 5, 0, 0), UDim2.new(0.5, -5, 0, 44), rgb(255, 150, 90))
+	for _, b in ipairs({ open1, open10 }) do
+		make("UIStroke", { Thickness = 2, Color = rgb(30, 25, 40), ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, b)
+		Juice.shine(b, 3, UDim.new(0, 10))
+		Juice.button(b)
+	end
 	open1.Activated:Connect(function()
 		PackParty.request(1)
 	end)

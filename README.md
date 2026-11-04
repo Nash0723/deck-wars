@@ -64,7 +64,7 @@ GitHub runs the rules tests and the Pack Brawl tests and builds both place files
 | Path | What it is |
 | --- | --- |
 | `default.project.json` | The Rojo project: where each file goes in the Roblox place, plus the Lighting settings |
-| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder |
+| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen |
 | `src/server/` | ServerScriptService > MatchServer |
 | `src/client/` | StarterPlayerScripts > DeckWarsClient (menus, table, animations, camera) |
 | `src/world/` | Workspace > MenuRoom (made by `gen_world.py`) |
@@ -194,7 +194,26 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
-## Latest update: detailed models and real fights on the table
+## Latest update: a catchier opening, a livelier menu and a pack you tap open
+
+### The opening
+Joining the game now shows a title screen over the card room while the camera drifts slowly across it. The screen fades in from black, DECK and WARS slide in from both sides and slam together (flash, shake, gold sparks), a light glint runs over the gold logo every few seconds, two random showcase creatures (Epic and up) turn on pools of light at the sides, and embers drift up. The gold PLAY button pulses; PLAY (or Enter, Space, gamepad A) sweeps the title away, the cinema bars slide off, and the camera flies from low over the table up to the room overview while the menu pops in piece by piece. Code: `src/shared/TitleScreen.luau`; camera spots `TitleFrom`, `TitleTo` and `Entrance` in the `CAMS` table at the top of DeckWarsClient.
+
+### A livelier menu
+- Every button grows a little under the mouse, squishes when pressed and springs back with a click sound.
+- The station buttons are darker with gold icons, and the station you are at gets a gold underline and a little bounce.
+- Station panels slide in from the right and their contents fade up one after another; hovering a station in the room gives it a soft pulsing glow.
+- The menu title uses the same gold logo look as the title screen.
+
+### Opening a pack
+Before the Pack Brawl, the pack rises into your hands. Tap it (or press Space) three times: each tap jolts it, cracks it, and light leaks out of the cracks. The light's color teases the pull ("EPIC OR BETTER"). It never promises more than you really got, and for Mythic and up it stops one tier short so the brawl can still surprise you. After the last tap the pack shakes and flies off into the ring, where the brawl picks it up. An untouched pack opens by itself after 5 seconds, and "Pack fights: Quick" needs only one tap. Code: `src/packbrawl/PackTease.luau` (`Taps`, `QuickTaps`, `AutoOpen`, and `capFor` for the tease rule).
+
+After the brawl the rarity name slams in above the card with sparks in its color (a flash for Epic and up, a confetti shower for Legendary and Secret), and the card hovers while you look at it. In a 10-pull the cards are dealt in one by one, and face-down Epic-and-up cards glow in their rarity color before you flip them.
+
+### The motion toolkit
+`src/shared/Juice.luau` holds the helpers all of this uses: `button` (bouncy buttons), `pop`, `popIn`, `popOut`, `wobble`, `breathe`, `bob`, `shine`, `confetti`, `stars`, `flash`, `shake`, `sunburst` and `sound`. Sounds reuse the Pack Brawl sounds already uploaded (pop, whoosh, thud, glass, charge, heavy, theme), so nothing new needs uploading, and they follow the Sound effects and Music volume settings. The board and the match rules are unchanged.
+
+## Earlier update: detailed models and real fights on the table
 
 ### Every model rebuilt with more detail
 All 61 built-in models (creatures, buildings, heroes and the bot) were rebuilt from scratch with far more parts (about 7,700 in all), keeping each one's idea, colors and family style: stitched seams, rivets, laces, labels, badges, belts, patterned capes, painted faces with lids, teeth and cheeks. Their backs got the same care, since from your seat you mostly see your own creatures from behind (the mall cop's SECURITY jacket, the vending machine's vents, the hot sauce's barcode). A second pass moved details that were hidden inside bodies (sash badges, the pretzel twist, shoe laces, stripes, flowers, arcade buttons, the crypt door) onto the surfaces where you can see them.

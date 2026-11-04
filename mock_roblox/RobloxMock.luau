@@ -629,7 +629,7 @@ local function findProp(className, prop)
 end
 
 local EVENTS = {
-	Activated = true, MouseEnter = true, MouseLeave = true, MouseButton1Click = true, Completed = true,
+	Activated = true, MouseEnter = true, MouseLeave = true, MouseButton1Click = true, MouseButton1Down = true, MouseButton1Up = true, Completed = true,
 	OnServerEvent = true, OnClientEvent = true, CharacterAdded = true, PlayerRemoving = true, PlayerAdded = true,
 	InputBegan = true, InputEnded = true, RenderStepped = true, Heartbeat = true, Changed = true, ChildAdded = true,
 	Touched = true, Died = true,

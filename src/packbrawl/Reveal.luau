@@ -9,6 +9,10 @@ local Kit = require(script.Parent:WaitForChild("Kit"))
 local DeckWars = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(DeckWars:WaitForChild("CardData"))
 local CreatureBuilder = require(DeckWars:WaitForChild("CreatureBuilder"))
+local Juice = require(DeckWars:WaitForChild("Juice"))
+
+-- How big each tier's moment is (1 Common .. 6 Secret).
+local RANK = { Common = 1, Rare = 2, Epic = 3, Mythic = 4, Legendary = 5, Secret = 6 }
 
 local rgb, make = Kit.rgb, Kit.make
 local WHITE, INK = rgb(255, 255, 255), rgb(30, 25, 40)
@@ -221,6 +225,23 @@ function Reveal.single(opts)
 		back.Visible = false
 		front.Visible = true
 		local open = tween(holder, 0.28, { Size = UDim2.fromOffset(300, 420) }, Enum.EasingStyle.Back)
+		local rank = RANK[tier] or 1
+		Juice.sound("pop", 0.8 + rank * 0.08, 0.6)
+		-- the rarity name slams in above the card, with sparks in its color
+		local word = label(gui, string.upper(tier), { Name = "RarityWord", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.1), Size = UDim2.fromOffset(500, 64), Font = Enum.Font.GothamBlack, TextColor3 = tier == "Secret" and WHITE or color, ZIndex = 9 })
+		make("UIStroke", { Thickness = 4, Color = INK }, word)
+		if tier == "Secret" then
+			rainbowGradient(word)
+		end
+		Juice.pop(word, 2.2, 0.6)
+		Juice.stars(gui, 0.5, 0.47, 6 + rank * 3, { text = "✦", color = tier == "Secret" and nil or color:Lerp(WHITE, 0.3), speed = 1 + rank * 0.15, size = 18 + rank * 2 })
+		if rank >= 3 then
+			Juice.flash(gui, color, 0.35, 0.55)
+		end
+		if rank >= 5 then
+			-- Legendary and Secret: a shower of confetti in the tier's colors
+			Juice.confetti(gui, 0.5, 0.5, 30 + (rank - 5) * 25, { colors = tier == "Secret" and { rgb(255, 80, 80), rgb(255, 230, 80), rgb(80, 220, 255), rgb(220, 90, 255), WHITE } or { color, color:Lerp(WHITE, 0.5), WHITE } })
+		end
 		open.Completed:Connect(function()
 			if stampLabel then
 				stampLabel.TextSize = 80
@@ -234,9 +255,16 @@ function Reveal.single(opts)
 	tween(title, 0.4, { TextTransparency = 0 })
 	local hint = label(gui, "Tap to continue", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.92), Size = UDim2.fromOffset(300, 26), TextColor3 = rgb(230, 225, 240), Font = BODY, TextTransparency = 1 })
 	local tap = make("TextButton", { Name = "Tap", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 10 }, gui)
+	local floating, floatT = true, 0
 	local conn = RunService.RenderStepped:Connect(function(dt)
 		animate(dt)
 		rays.Rotation = (rays.Rotation + dt * 8) % 360
+		floatT += dt
+		if floating and floatT > 0.55 then
+			-- the card hovers and tilts a little while you look at it
+			holder.Position = UDim2.new(0.5, 0, 0.47, math.sin(floatT * 1.8) * 6)
+			holder.Rotation = math.sin(floatT * 1.1) * 1.5
+		end
 	end)
 	local ready, done = false, false
 	task.delay(0.6, function()
@@ -248,6 +276,12 @@ function Reveal.single(opts)
 			return
 		end
 		done = true
+		floating = false
+		Juice.sound("whoosh", 1.2, 0.4)
+		local word = gui:FindFirstChild("RarityWord")
+		if word then
+			tween(word, 0.25, { TextTransparency = 1 })
+		end
 		-- the card flies to the collection corner and the screen fades back to the game
 		tween(holder, 0.45, { Position = UDim2.fromOffset(70, 70), Rotation = -12 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		tween(scale, 0.45, { Scale = 0.15 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -291,6 +325,19 @@ function Reveal.fan(opts)
 			local burst = make("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(60, 60), BackgroundColor3 = Kit.TierColor[tier], BackgroundTransparency = 0.2, ZIndex = 0 }, slot.slot)
 			corner(burst, 100)
 			tween(burst, 0.35, { Size = UDim2.fromOffset(260, 260), BackgroundTransparency = 1 })
+			local rank = RANK[tier] or 1
+			Juice.sound("pop", 0.85 + rank * 0.08, 0.45)
+			if slot.aura then
+				slot.aura.Visible = false
+			end
+			if rank >= 3 then
+				local p = slot.slot.AbsolutePosition + slot.slot.AbsoluteSize / 2
+				local sz = gui.AbsoluteSize
+				if sz.X > 0 and sz.Y > 0 then
+					Juice.stars(gui, p.X / sz.X, p.Y / sz.Y, 4 + rank * 2, { text = "✦", color = Kit.TierColor[tier], size = 16, speed = 0.7 })
+				end
+				Juice.pop(slot.holder, 1.15, 0.5)
+			end
 			if slot.stamp then
 				tween(slot.stamp, 0.18, { TextTransparency = 0 })
 			end
@@ -310,6 +357,31 @@ function Reveal.fan(opts)
 		table.insert(animators, animate)
 		local button = make("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 8 }, holder)
 		local slot = { id = id, holder = holder, back = back, front = front, slot = slotFrame, stamp = stampLabel }
+		-- face-down Epic and up glow in their tier color (a hint of what is under it)
+		local tierOf = CardData.get(id).rarity
+		if (RANK[tierOf] or 1) >= 3 and i ~= opts.best then
+			local aura = make("Frame", { Name = "Aura", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 10, 1, 10), BackgroundTransparency = 1, ZIndex = 0 }, holder)
+			corner(aura, 20)
+			local st = make("UIStroke", { Thickness = 6, Color = Kit.TierColor[tierOf], Transparency = 0.3 }, aura)
+			local ph = i * 0.7
+			Juice.onFrame(aura, function(t)
+				st.Transparency = 0.25 + 0.35 * (0.5 + 0.5 * math.sin(t * 4 + ph))
+				if tierOf == "Secret" then
+					st.Color = Kit.prism(t)
+				end
+			end)
+			slot.aura = aura
+		end
+		-- deal the card in from the bottom of the screen
+		local finalPos = slotFrame.Position
+		slotFrame.Position = UDim2.new(0, 2 * 150, 0, 900)
+		slotFrame.Rotation = (col - 2) * 12
+		task.delay(0.05 + (i - 1) * 0.06, function()
+			if slotFrame.Parent then
+				tween(slotFrame, 0.4, { Position = finalPos, Rotation = 0 }, Enum.EasingStyle.Back)
+				Juice.sound("whoosh", 1.3 + i * 0.03, 0.2)
+			end
+		end)
 		button.Activated:Connect(function()
 			flip(slot)
 		end)
