@@ -1,6 +1,6 @@
 # Spooky family models (friendly ghosts, haunted stuff, purple and ghost-green glows)
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade
+from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
 
 MODELS = []
 
@@ -146,7 +146,13 @@ def haunted_vending_machine():
     body = (70, 40, 100)
     dark = (45, 25, 65)
     slime = (120, 255, 150)
-    m.rbox("Cabinet", (2.4, 3.4, 1.6), (0, 1.75, 0), body, 0.15, refl=0.1)
+    m.rbox("Cabinet", (2.4, 3.4, 1.25), (0, 1.75, 0.175), body, 0.15, refl=0.1)
+    # the front is a frame round the window, so the snacks inside show through the glass
+    m.rbox("CabinetFrame", (0.2, 3.4, 0.42), (-1.1, 1.75, -0.59), body, 0.08, refl=0.1)
+    m.rbox("CabinetFrame", (0.8, 3.4, 0.42), (0.8, 1.75, -0.59), body, 0.08, refl=0.1)
+    m.blk("CabinetFrame", (1.5, 0.42, 0.42), (-0.3, 3.24, -0.59), body, refl=0.1)
+    m.blk("CabinetFrame", (1.5, 0.8, 0.42), (-0.3, 0.45, -0.59), body, refl=0.1)
+    m.blk("Inside", (1.5, 2.2, 0.04), (-0.3, 1.95, -0.43), (35, 20, 50))
     m.rbox("Top", (2.5, 0.28, 1.7), (0, 3.5, 0), (90, 55, 130), 0.12)
     # glowing header sign
     sign = m.rbox("Sign", (2.0, 0.32, 0.06), (0, 3.2, -0.82), (255, 110, 200), 0.1, mat="Neon", axis="z")
@@ -231,7 +237,7 @@ def mushroom_witch():
     m.eyes(1.4, -0.68, 0.56, 0.38, lid=stem, look=(0.03, 0), iris=(120, 200, 90), lash=2, z_back=0.04)
     m.brow(-0.28, 1.72, -0.66, 0.32, (110, 60, 140), -1, tilt=-14)
     m.brow(0.28, 1.72, -0.66, 0.32, (110, 60, 140), 1, tilt=-14)
-    m.grin(0.95, -0.7, 0.4, curve=0.3, bend=0.05)
+    m.grin(0.95, -0.7, 0.4, curve=0.3, surface=ell_front((0, 1.15, 0), (1.6, 2.2, 1.45)))
     m.wedge("Tooth", (0.08, 0.1, 0.04), (0.08, 0.92, -0.71), WHITE, R=rot(x=180))
     # warty nose
     m.ell("Nose", (0.22, 0.34, 0.24), (0, 1.18, -0.76), (240, 200, 180), R=rot(x=-20))
@@ -327,6 +333,13 @@ def mall_cop_phantom():
     m.cyl("Beam", 0.9, 0.5, (0.75, 2.4, -1.55), (255, 250, 210), axis="z", mat="Neon", tr=0.88)
     m.light(fl, (255, 250, 210), 1.2, 7)
     m.smoke(badge, (200, 230, 255), 0.05, 0.2, 1.2)
+    # the back of the uniform: SECURITY in big yellow letters, a collar and a back belt with a baton
+    m.ell("ShirtBack", (1.46, 0.95, 1.26), (0, 2.25, 0.15), navy)
+    m.text("SecurityText", "SECURITY", (0, 2.42, 0.78), 0.15, (255, 220, 60), wrap=lambda x: 0.15 + 0.645 * math.sqrt(max(0.0, 1 - (x / 0.74) ** 2)))
+    m.ell("BeltBack", (1.44, 0.16, 1.24), (0, 1.84, 0.15), (30, 30, 35), mat="Leather")
+    m.cyl("Baton", 0.7, 0.09, (0.42, 1.62, 0.6), (25, 25, 28), R=rot(z=-80))
+    m.cyl("BatonGrip", 0.2, 0.12, (0.47, 1.9, 0.6), (60, 60, 65), mat="Rubber", R=rot(z=-80))
+    m.blk("CapStrap", (0.8, 0.06, 0.04), (0, 3.73, 0.55), (25, 30, 60))
     return m
 
 

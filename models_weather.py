@@ -1,6 +1,6 @@
 # Weather family models (soft puffy clouds, ice, lightning, fog)
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade
+from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
 
 MODELS = []
 
@@ -163,7 +163,7 @@ def fog_bank():
             m.cyl("Hoof", 0.14, 0.42, (s * 0.55, 0.07, sz * 0.7), pink)
     m.eyes(1.62, -1.02, 0.65, 0.34, lid=fog, sleepy=True, iris=(120, 140, 200))
     m.cheeks(1.32, -1.0, 1.15, 0.24)
-    m.grin(1.0, -1.08, 0.3, curve=0.2, color=(130, 110, 130), bend=0.06)
+    m.grin(0.8, -1.08, 0.3, curve=0.2, color=(130, 110, 130), surface=ell_front((0, 1.25, 0), (1.9, 1.6, 2.4)))
     # coin slot with a coin dropping in, and a cork stopper underneath
     m.rbox("CoinSlot", (0.85, 0.08, 0.2), (0, 2.06, 0.1), (60, 60, 70), 0.04)
     m.cyl("Coin", 0.08, 0.5, (0, 2.25, 0.1), (240, 200, 60), mat="Metal", axis="x", refl=0.3)
@@ -215,7 +215,7 @@ def lightning_llama():
     for (x, z, d) in [(0, -1.0, 0.55), (-0.25, -0.85, 0.42), (0.25, -0.85, 0.42), (0, -0.7, 0.45)]:
         m.ball("Hair", d, (x, 3.9, z), (110, 115, 135))
     m.ball("Hair", 0.3, (0.0, 3.85, -1.35), (140, 145, 165))
-    bolt(m, "Spark", (0.15, 3.75, -1.45), 0.45, 0.1)
+    bolt(m, "Spark", (0.15, 3.75, -1.6), 0.45, 0.1)
     # lightning bolt marks on both sides
     for s in (-1, 1):
         m.blk("Bolt", (0.06, 0.6, 0.18), (s * 0.71, 1.95, 0.05), (255, 220, 40), mat="Neon", R=rot(x=25))

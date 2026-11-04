@@ -765,7 +765,21 @@ do
 		local opp = nowView.players[3 - nowView.you]
 		check(oppHand ~= nil and #oppHand:GetChildren() == opp.handCount, string.format("the opponent's card backs match its hand (%d backs, %d cards)", oppHand and #oppHand:GetChildren() or -1, opp.handCount))
 		if not u.defending then
-			check(Workspace.LiveBoard:FindFirstChild("GuardBar", true) == nil, "the guard hexagon is gone after Guard down")
+			-- other creatures may really be defending in this match: each of those keeps its own
+			-- hexagon (6 bars), so only the replayed creature's bars must be gone
+			local othersDefending = 0
+			for _, o in ipairs(lastUpdate.view.units) do
+				if o.uid ~= u.uid and o.defending then
+					othersDefending += 1
+				end
+			end
+			local bars = 0
+			for _, d in ipairs(Workspace.LiveBoard:GetDescendants()) do
+				if d.Name == "GuardBar" then
+					bars += 1
+				end
+			end
+			check(bars == 6 * othersDefending, string.format("the guard hexagon is gone after Guard down (%d bars left, %d other defenders)", bars, othersDefending))
 		end
 
 		-- Scenario 2c: the combo animations (Power, Soak, Zap, Scrap, Upload, Sandwich, Combo,

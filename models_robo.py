@@ -1,6 +1,6 @@
 # Robo family models (shiny appliances and robots with screws, LEDs and panels)
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade
+from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
 
 MODELS = []
 
@@ -101,7 +101,7 @@ def roomba_rex():
     m.chain("Tail", [(0, 1.0, 0.9), (0, 0.85, 1.35), (0.1, 0.75, 1.7)], 0.3, green)
     m.ball("TailTip", 0.2, (0.12, 0.72, 1.82), green)
     for k in range(5):
-        m.wedge("Spike", (0.08, 0.25, 0.25), (0, 2.25 - k * 0.22, -0.3 + k * 0.32), (250, 160, 60) if k % 2 else (60, 130, 60))
+        m.wedge("Spike", (0.08, 0.25, 0.25), (0, [2.32, 2.3, 1.81, 1.59, 1.37][k], -0.3 + k * 0.32), (250, 160, 60) if k % 2 else (60, 130, 60))
     return m
 
 
@@ -255,9 +255,15 @@ def microwave_mage():
         m.cyl("HatCone", 0.45, 1.2 - k * 0.26, (0.1 * k, 2.55 + k * 0.42, 0.04 * k), hat, R=rot(z=-7 * k))
     m.cyl("HatBand", 0.12, 1.22, (0, 2.42, 0), (255, 220, 80))
     m.ball("HatTip", 0.2, (0.42, 4.15, 0.2), (255, 230, 80), mat="Neon")
-    for (x, y, z) in [(-0.4, 2.7, -0.55), (0.35, 3.1, -0.4), (0.0, 2.6, 0.58), (0.2, 3.5, -0.25)]:
+    # stars stuck on the hat's surface (front and one on the back), facing outward
+    for (x, y, side) in [(-0.4, 2.7, -1), (0.35, 3.1, -1), (0.0, 2.6, 1), (0.2, 3.5, -1)]:
+        j = min(3, max(0, int(round((y - 2.55) / 0.42))))
+        r, cx, cz = (1.2 - j * 0.26) / 2, 0.1 * j, 0.04 * j
+        dx = max(-r * 0.9, min(r * 0.9, x - cx))
+        z = cz + side * (math.sqrt(r * r - dx * dx) + 0.017)
+        yaw = math.degrees(math.atan2(dx, -side * math.sqrt(r * r - dx * dx)))
         for k in range(3):
-            m.blk("HatStar", (0.2, 0.05, 0.03), (x, y, z), (255, 230, 80), mat="Neon", R=rot(z=k * 60))
+            m.blk("HatStar", (0.2, 0.05, 0.03), (cx + dx, y, z), (255, 230, 80), mat="Neon", R=rot(y=-yaw if side < 0 else yaw) @ rot(z=k * 60))
     m.ell("Moon", (0.3, 0.3, 0.05), (-0.3, 3.15, -0.38), (255, 240, 160), mat="Neon")
     m.ell("Moon", (0.26, 0.26, 0.06), (-0.22, 3.2, -0.4), hat)
     # a fluffy popcorn beard

@@ -1,6 +1,6 @@
 # Critter family models (cute fuzzy animals with big eyes and little outfits)
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade
+from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
 
 MODELS = []
 
@@ -76,7 +76,9 @@ def moth_mailman():
     wing = (210, 190, 150)
     m.ell("Body", (0.9, 1.5, 0.9), (0, 1.55, 0.1), fuzz, mat="Fabric")
     for k in range(3):
-        m.ring("BodyStripe", (0, 1.15 + k * 0.28, 0.1), 0.44 - abs(k - 1) * 0.05, 0.05, shade(fuzz, 0.85), normal="y", segments=10, mat="Fabric")
+        y = 1.15 + k * 0.28
+        r = 0.45 * math.sqrt(1 - ((y - 1.55) / 0.75) ** 2) + 0.012
+        m.ring("BodyStripe", (0, y, 0.1), r, 0.05, shade(fuzz, 0.85), normal="y", segments=12, mat="Fabric", outer=True)
     m.ell("Head", (0.95, 0.85, 0.85), (0, 2.55, -0.1), fuzz, mat="Fabric")
     m.ell("Ruff", (1.25, 0.42, 1.12), (0, 2.15, 0.0), (250, 245, 235), mat="Fabric")
     m.scatter("Fluff", (0, 2.15, 0), (1.25, 0.42, 1.12), 8, [(255, 252, 245)], seed=5, d=0.2, shape="dot", ymin=-0.3, mat="Fabric")
@@ -263,11 +265,15 @@ def pigeon_squad():
     pigeon_body(m, 1.05, 0.55, 1.0)
     # sergeant stripes on the leader, bread-crumb ammo belts and a tiny flag
     for k in range(2):
-        m.blk("WingStripe", (0.06, 0.06, 0.3), (0.5, 1.02 - k * 0.1, -0.6), (250, 210, 60), R=rot(x=20))
+        m.blk("WingStripe", (0.06, 0.06, 0.3), (0.575, 1.02 - k * 0.1, -0.62), (250, 210, 60), R=rot(x=20))
     for cx, cz in ((-1.05, 0.55), (1.05, 0.55)):
-        m.rod("Belt", (cx - 0.35, 1.05, cz - 0.3), (cx + 0.35, 0.65, cz - 0.4), 0.08, (110, 80, 50), shape="B")
+        chest = front_of(ell_front((cx, 0.75, cz + 0.1), (0.85, 0.85, 1.2)), ell_front((cx, 0.85, cz - 0.4), (0.6, 0.55, 0.3)))
+        belt = [(cx - 0.25 + t * 0.5, 1.0 - t * 0.32) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
+        m.band("Belt", belt, 0.08, 0.06, (110, 80, 50), surface=chest, lift=0.03)
         for k in range(3):
-            m.blk("Crumb", (0.09, 0.09, 0.07), (cx - 0.2 + k * 0.2, 0.97 - k * 0.11, cz - 0.42), (220, 180, 110))
+            t = 0.2 + k * 0.3
+            bx, by = cx - 0.25 + t * 0.5, 1.0 - t * 0.32
+            m.blk("Crumb", (0.09, 0.09, 0.07), (bx, by - 0.02, chest(bx, by) - 0.09), (220, 180, 110), R=rot(x=10, z=20 * k))
     m.cyl("FlagPole", 1.6, 0.06, (1.6, 1.0, 0.6), (200, 200, 210), mat="Metal")
     m.ball("FlagTop", 0.12, (1.6, 1.82, 0.6), (240, 200, 60), mat="Metal")
     m.blk("Flag", (0.6, 0.4, 0.04), (1.92, 1.6, 0.6), (220, 60, 60), mat="Fabric")
@@ -361,15 +367,27 @@ def big_momma_moose():
     for k in range(9):
         a = math.radians(-80 + k * 20)
         m.blk("ShawlFringe", (0.08, 0.35, 0.08), (math.sin(a) * 1.15, 2.55, -0.55 - math.cos(a) * 0.78), (255, 210, 120), mat="Fabric")
+    # knitted stripes follow the shawl's oval (the back half is under the body, so it is left out)
     for k in range(3):
-        m.ring("ShawlStripe", (0, 2.75 + k * 0.22, -0.55), 1.12 - k * 0.12, 0.05, (255, 210, 120), normal="y", segments=14, mat="Fabric", R=rot(x=0))
+        y = 2.75 + k * 0.22
+        f = math.sqrt(1 - ((y - 3.05) / 0.45) ** 2)
+        ax, az = 1.175 * f + 0.02, 0.8 * f + 0.02
+        n = 18
+        pts = [(math.sin(2 * math.pi * j / n) * ax, y, -0.55 - math.cos(2 * math.pi * j / n) * az) for j in range(n + 1)]
+        for j in range(n):
+            p1, p2 = pts[j], pts[j + 1]
+            mx, mz = (p1[0] + p2[0]) / 2, (p1[2] + p2[2]) / 2
+            if (mx / 1.1) ** 2 + ((y - 2.55) / 1.0) ** 2 + ((mz - 0.35) / 1.7) ** 2 < 0.97:
+                continue
+            v = [p2[i] - p1[i] for i in range(3)]
+            m.rod("ShawlStripe", [p1[i] - v[i] * 0.06 for i in range(3)], [p2[i] + v[i] * 0.06 for i in range(3)], 0.05, (255, 210, 120), mat="Fabric")
     m.ell("Neck", (1.0, 1.3, 1.1), (0, 3.2, -1.2), fur, mat="Fabric", R=rot(x=-25))
     m.ell("Head", (1.1, 1.0, 1.8), (0, 3.6, -1.95), fur, mat="Fabric", R=rot(x=10))
     m.ell("Snout", (1.0, 0.85, 0.9), (0, 3.3, -2.65), (140, 100, 75), mat="Fabric")
     m.ell("Lip", (0.85, 0.3, 0.5), (0, 3.0, -2.75), (150, 110, 85), mat="Fabric")
     for s in (-1, 1):
         m.ell("Nostril", (0.15, 0.22, 0.08), (s * 0.22, 3.4, -3.08), (50, 35, 30))
-    m.grin(3.08, -3.0, 0.5, curve=0.25, color=(70, 45, 35), bend=0.12)
+    m.grin(3.08, -3.0, 0.5, curve=0.25, color=(70, 45, 35), surface=ell_front((0, 3.3, -2.65), (1.0, 0.85, 0.9)))
     m.ell("Dewlap", (0.4, 0.6, 0.35), (0, 2.8, -2.0), fur, mat="Fabric")
     m.eyes(3.95, -2.25, 0.85, 0.32, lid=fur, iris=(110, 70, 40), lash=3, z_back=0.05)
     m.cheeks(3.62, -2.5, 0.95, 0.22)
@@ -416,7 +434,9 @@ def captain_confetti():
     m.ell("Belly", (1.0, 1.4, 0.5), (0, 1.7, -0.5), (255, 200, 60))
     for k in range(3):
         for j in range(3 - k % 2):
-            m.ell("ChestFeather", (0.32, 0.22, 0.1), (-0.25 + j * 0.25 + (k % 2) * 0.12, 2.15 - k * 0.3, -0.72 + k * 0.03), (255, 220, 100))
+            fx, fy = -0.25 + j * 0.25 + (k % 2) * 0.12, 2.15 - k * 0.3
+            fz = front_of(ell_front((0, 1.85, 0.1), (1.5, 2.1, 1.5)), ell_front((0, 1.7, -0.5), (1.0, 1.4, 0.5)))(fx, fy)
+            m.ell("ChestFeather", (0.32, 0.22, 0.1), (fx, fy, fz - 0.01), (255, 220, 100))
     # captain's coat over the shoulders with gold buttons and braid
     m.ell("Coat", (1.6, 1.0, 1.55), (0, 2.45, 0.15), (40, 50, 110), mat="Fabric")
     m.ell("Collar", (1.3, 0.3, 1.2), (0, 2.75, 0.05), gold, mat="Fabric")
@@ -425,8 +445,11 @@ def captain_confetti():
         m.ball("Button", 0.1, (-0.42, 2.35 - k * 0.2, -0.6), gold, mat="Metal")
     m.ball("Head", 1.35, (0, 3.2, -0.15), red)
     m.ell("FacePatch", (0.9, 0.8, 0.4), (0, 3.2, -0.65), (255, 245, 235))
-    for k in range(3):
-        m.ell("Freckle", (0.08, 0.05, 0.03), (-0.2 + k * 0.1, 3.0 + (k % 2) * 0.05, -0.84), (220, 200, 200))
+    patch = ell_front((0, 3.2, -0.65), (0.9, 0.8, 0.4))
+    for sd in (-1, 1):
+        for k in range(3):
+            fx, fy = sd * (0.24 + k * 0.06), 3.0 + (k % 2) * 0.05
+            m.ell("Freckle", (0.07, 0.05, 0.03), (fx, fy, patch(fx, fy) - 0.005), (230, 185, 185))
     # hooked beak, upper and lower
     m.ell("Beak", (0.45, 0.55, 0.55), (0, 2.95, -0.9), (60, 60, 70), R=rot(x=20))
     m.ell("BeakTip", (0.3, 0.3, 0.3), (0, 2.72, -0.95), (60, 60, 70))

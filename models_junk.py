@@ -1,6 +1,6 @@
 # Junk family models (rusty metal, old furniture, tape, patches and glitter)
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade
+from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
 
 MODELS = []
 
@@ -23,7 +23,7 @@ def tin_can_tom():
     m.cyl("Body", 1.5, 1.2, (0, 1.15, 0), tin, mat="Metal", refl=0.3, R=rot(z=4))
     # ribbed sides above and below the label
     for y in (0.6, 0.72, 1.56, 1.68):
-        m.ring("Groove", (0.04 * (y - 1.15), y, 0), 0.61, 0.04, (150, 155, 165), normal="y", segments=14, mat="Metal", R=rot(z=4))
+        m.ring("Groove", (0.04 * (y - 1.15), y, 0), 0.615, 0.04, (150, 155, 165), normal="y", segments=14, mat="Metal", R=rot(z=4), outer=True)
     m.cyl("Label", 0.68, 1.24, (0.03, 1.12, 0), (200, 60, 50), R=rot(z=4))
     m.cyl("LabelStripe", 0.12, 1.26, (0.03, 0.88, 0), (250, 220, 90), R=rot(z=4))
     # tomato on the label
@@ -36,7 +36,7 @@ def tin_can_tom():
     for k in range(5):
         a = math.radians(-60 + k * 30)
         m.wedge("Jag", (0.1, 0.12, 0.06), (-0.1 + math.sin(a) * 0.55, 2.0 + math.cos(a) * 0.05, -0.15 + math.cos(a) * 0.12), (175, 180, 190), mat="Metal", R=rot(x=35, y=-math.degrees(a)))
-    m.ring("PullTab", (-0.1, 2.32, -0.02), 0.1, 0.035, (170, 175, 185), normal="y", segments=8, mat="Metal", R=rot(x=35))
+    m.ring("PullTab", (-0.1, 2.365, 0.0), 0.1, 0.035, (170, 175, 185), normal="y", segments=8, mat="Metal", R=rot(x=35))
     # dents, rust and a tape patch
     m.ell("Dent", (0.4, 0.3, 0.2), (0.45, 1.6, -0.5), (150, 155, 165), mat="Metal")
     m.ell("Rust", (0.3, 0.2, 0.06), (-0.4, 0.55, -0.48), (150, 85, 45), mat="CorrodedMetal", R=rot(y=-35))
@@ -45,7 +45,7 @@ def tin_can_tom():
     # mismatched eyes and a gap-tooth grin
     m.eyes(1.28, -0.6, 0.46, 0.36, lid=(200, 60, 50), iris=(90, 150, 220), z_back=0.04)
     m.ell("EyeRim", (0.5, 0.55, 0.2), (-0.23, 1.28, -0.57), (40, 35, 40))
-    m.grin(0.92, -0.62, 0.36, open_=True, teeth=2, bend=0.06)
+    m.grin(0.92, -0.62, 0.36, open_=True, teeth=2, surface=cyl_front(0.03, 0, 0.62))
     m.brow(-0.23, 1.55, -0.62, 0.26, (60, 50, 50), -1, tilt=-12)
     m.brow(0.23, 1.52, -0.62, 0.26, (60, 50, 50), 1, tilt=10)
     # twig limbs with twig fingers and bottle-cap shoes
@@ -314,7 +314,7 @@ def glitter_gremlin():
     m.brow(-0.32, 1.82, -0.58, 0.36, deep, -1, tilt=18, d=0.1)
     m.brow(0.32, 1.82, -0.58, 0.36, deep, 1, tilt=18, d=0.1)
     # toothy grin, wide and wicked
-    m.grin(1.02, -0.72, 0.84, color=(70, 20, 60), curve=0.25, open_=True, teeth=0, bend=0.1)
+    m.grin(1.02, -0.72, 0.84, color=(70, 20, 60), curve=0.25, open_=True, teeth=0, surface=front_of(ell_front((0, 1.15, 0), (1.7, 1.6, 1.5)), ell_front((0, 0.95, -0.55), (1.0, 0.9, 0.5))))
     for k in range(5):
         x = -0.32 + k * 0.16
         m.wedge("Tooth", (0.11, 0.16, 0.06), (x, 1.04 + 0.12 * (x / 0.42) ** 2, -0.8 + 0.08 * (x / 0.42) ** 2), WHITE, R=rot(x=180))
@@ -487,8 +487,11 @@ def the_junk_king():
     m.blk("Patch", (0.45, 0.4, 0.04), (-0.95, 1.3, 1.37), (220, 180, 60), mat="Fabric", R=rot(x=-6, y=-30, z=-12))
     m.stitches("Stitch", (-1.12, 1.12, 1.47), (-0.78, 1.48, 1.28), 3, 0.04, (250, 240, 200))
     m.blk("CapeCollar", (2.9, 0.4, 0.5), (0, 3.4, 1.15), (240, 240, 240), mat="Fabric")
+    # ermine spots on the back and the top of the collar (the front of it is inside the can)
     for k in range(6):
-        m.ell("CollarSpot", (0.1, 0.16, 0.05), (-1.2 + k * 0.48, 3.4, 0.88), (30, 30, 30))
+        m.ell("CollarSpot", (0.1, 0.16, 0.05), (-1.2 + k * 0.48, 3.4 + (k % 2) * 0.06, 1.41), (30, 30, 30))
+    for k in range(5):
+        m.ell("CollarSpot", (0.1, 0.05, 0.16), (-0.96 + k * 0.48, 3.61, 1.22 + (k % 2) * 0.1), (30, 30, 30))
     # can-lid medal on a ribbon
     m.wedge("Ribbon", (0.3, 0.4, 0.05), (-0.5, 2.85, -1.18), (60, 110, 210), R=rot(z=180))
     m.cyl("Medal", 0.06, 0.4, (-0.5, 2.55, -1.21), (215, 220, 230), axis="z", mat="Metal", refl=0.3)

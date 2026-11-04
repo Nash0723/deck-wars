@@ -75,6 +75,44 @@ def on_ell(center, size, direction):
     return p, nrm / np.linalg.norm(nrm)
 
 
+def ell_front(center, size):
+    """The front (-Z) surface of an ellipsoid as z = f(x, y); far behind where the point misses it."""
+    cx, cy, cz = center
+    hx, hy, hz = size[0] / 2, size[1] / 2, size[2] / 2
+    def f(x, y):
+        q = 1 - ((x - cx) / hx) ** 2 - ((y - cy) / hy) ** 2
+        return cz - hz * math.sqrt(q) if q > 0 else 1e9
+    return f
+
+
+def cyl_front(cx, cz, r):
+    """The front (-Z) surface of an upright cylinder as z = f(x, y)."""
+    def f(x, y):
+        q = r * r - (x - cx) ** 2
+        return cz - math.sqrt(q) if q > 0 else 1e9
+    return f
+
+
+def ell_top(center, size):
+    """The top (+Y) surface of an ellipsoid as y = f(x, z); far below where the point misses it."""
+    cx, cy, cz = center
+    hx, hy, hz = size[0] / 2, size[1] / 2, size[2] / 2
+    def f(x, z):
+        q = 1 - ((x - cx) / hx) ** 2 - ((z - cz) / hz) ** 2
+        return cy + hy * math.sqrt(q) if q > 0 else -1e9
+    return f
+
+
+def top_of(*fs):
+    """The highest of several top surfaces."""
+    return lambda x, z: max(f(x, z) for f in fs)
+
+
+def front_of(*fs):
+    """The frontmost of several surfaces."""
+    return lambda x, y: min(f(x, y) for f in fs)
+
+
 def lerp(a, b, t):
     return tuple(a[i] + (b[i] - a[i]) * t for i in range(len(a)))
 
@@ -151,9 +189,13 @@ class Model:
             if joints and i > 0:
                 self.ball(name, d, points[i], color, mat)
 
-    def ring(self, name, center, radius, thickness, color, normal="z", segments=10, mat="SmoothPlastic", R=None, tr=0, refl=0):
-        """A ring (torus-ish) made of short rods. normal is the ring's axis."""
+    def ring(self, name, center, radius, thickness, color, normal="z", segments=10, mat="SmoothPlastic", R=None, tr=0, refl=0, outer=False):
+        """A ring (torus-ish) made of short rods. normal is the ring's axis.
+        outer=True: radius is where the middle of each rod sits (for bands wrapped around a
+        cylinder of that radius, so the straight segments do not sink into it)."""
         c = np.array(center, float)
+        if outer:
+            radius = radius / math.cos(math.pi / segments)
         Rn = {"x": Ry(90), "y": Rx(90), "z": I3}[normal]
         if R is not None:
             Rn = np.array(R, float) @ Rn
@@ -215,14 +257,20 @@ class Model:
         for s in (-1, 1):
             self.ell("Cheek", (d, d * 0.6, d * 0.25), (s * sep / 2, y, zf), color, tr=0.25)
 
-    def grin(self, y, zf, w, color=(60, 25, 35), x=0.0, curve=0.22, d=None, bend=0.0, teeth=0, open_=False, tongue=(240, 110, 130), tooth=WHITE, name="Mouth", segments=5):
+    def grin(self, y, zf, w, color=(60, 25, 35), x=0.0, curve=0.22, d=None, bend=0.0, teeth=0, open_=False, tongue=(240, 110, 130), tooth=WHITE, name="Mouth", segments=5, surface=None):
         """A curved smile line (ends higher than the middle when curve > 0; frown when < 0).
-        bend pushes the ends back into a round face. teeth: number of top teeth (open mouths)."""
+        bend pushes the ends back into a round face. teeth: number of top teeth (open mouths).
+        surface(x, y) -> z seats the mouth on a curved face (zf and bend are then ignored)."""
         d = d or w * 0.13
         pts = []
         for k in range(segments):
             u = -1 + 2 * k / (segments - 1)
-            pts.append((x + u * w / 2, y + curve * w * u * u, zf + bend * u * u))
+            px, py = x + u * w / 2, y + curve * w * u * u
+            pz = surface(px, py) - d * 0.3 if surface else zf + bend * u * u
+            pts.append((px, py, pz))
+        if surface:
+            zf = surface(x, y) - d * 0.3
+            bend = 0.0
         if open_:
             # open mouth: dark inside, tongue, teeth on top
             self.ell(name, (w * 0.9, w * 0.5, w * 0.22), (x, y + curve * w * 0.25 - w * 0.12, zf + bend * 0.2 + w * 0.02), color)
@@ -266,8 +314,13 @@ class Model:
         if toe is not None:
             self.ell("Toe", (w * 0.8, h * 1.0, l * 0.42), (x, y + h * 0.5, z - l * 0.3), toe, mat)
         if lace is not None:
+            # two lace bars lying on the instep (on the upper's surface, not buried in it)
             for k in range(2):
-                self.blk("Laces", (w * 0.5, h * 0.12, h * 0.12), (x, y + h * (1.1 - k * 0.1), z - l * (0.05 + k * 0.14)), lace)
+                t = -(0.3 + k * 0.25)
+                q = math.sqrt(1 - t * t)
+                top = y + h * 0.55 + h * 0.8 * q
+                slope = math.degrees(math.atan2(h * 0.8 * t / q, l / 2))
+                self.blk("Laces", (w * 0.5, h * 0.12, h * 0.14), (x, top - h * 0.015, z + t * l / 2), lace, R=rot(x=slope))
 
     def rbox(self, name, size, pos, color, r, mat="SmoothPlastic", R=None, tr=0, refl=0, edge_name=None, axis="y"):
         """A box with rounded edges along one axis (2 blocks + 4 cylinders)."""
@@ -297,6 +350,80 @@ class Model:
                     off = R0 @ np.array([0, iy * (sy / 2 - r), iz * (sz / 2 - r)])
                     self.cyl(en, sx, 2 * r, c + off, color, "x", mat, R0, tr, refl)
         return first
+
+    # strokes for simple block letters on a 2 x 4 grid (x across, y up)
+    FONT = {
+        "S": [(0, 4, 2, 4), (0, 2, 2, 2), (0, 0, 2, 0), (0, 2, 0, 4), (2, 0, 2, 2)],
+        "E": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 2, 1.6, 2), (0, 0, 2, 0)],
+        "C": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 0, 2, 0)],
+        "U": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 0, 2, 0)],
+        "R": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 2, 2, 2), (2, 2, 2, 4), (0.8, 2, 2, 0)],
+        "I": [(1, 0, 1, 4), (0.3, 4, 1.7, 4), (0.3, 0, 1.7, 0)],
+        "T": [(0, 4, 2, 4), (1, 0, 1, 4)],
+        "Y": [(0, 4, 1, 2), (2, 4, 1, 2), (1, 0, 1, 2)],
+        "O": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 4, 2, 4), (0, 0, 2, 0)],
+        "B": [(0, 0, 0, 4), (0, 4, 1.6, 4), (0, 2, 2, 2), (0, 0, 2, 0), (2, 0, 2, 2), (1.6, 2.4, 1.6, 4)],
+        "N": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 4, 2, 0)],
+        "A": [(0, 0, 0, 4), (2, 0, 2, 4), (0, 4, 2, 4), (0, 2, 2, 2)],
+        "K": [(0, 0, 0, 4), (0, 2, 2, 4), (0.6, 2.6, 2, 0)],
+        "J": [(2, 0, 2, 4), (0, 0, 2, 0), (0, 0, 0, 1.4)],
+        "G": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 0, 2, 0), (2, 0, 2, 2), (1, 2, 2, 2)],
+        "L": [(0, 0, 0, 4), (0, 0, 2, 0)],
+        "P": [(0, 0, 0, 4), (0, 4, 2, 4), (0, 2, 2, 2), (2, 2, 2, 4)],
+        "!": [(1, 1.3, 1, 4), (1, 0, 1, 0.35)],
+    }
+
+    def text(self, name, string, center, height, color, facing="back", d=None, mat="SmoothPlastic", depth=0.03, wrap=None):
+        """Block letters on a surface. facing="back" reads from behind the model (+Z side),
+        "front" reads from the front (-Z side). wrap(x) gives the surface z at x, for curved bodies."""
+        cw = height / 4.0
+        adv = cw * 2.9
+        d = d or cw * 0.8
+        total = adv * len(string) - cw * 0.9
+        cx, cy, cz = center
+        sgn = 1 if facing == "back" else -1
+        for i, ch in enumerate(string):
+            strokes = self.FONT.get(ch.upper())
+            if not strokes:
+                continue
+            x0 = -total / 2 + i * adv
+            for (ax, ay, bx, by) in strokes:
+                x1, x2 = cx + sgn * (x0 + ax * cw), cx + sgn * (x0 + bx * cw)
+                p1 = (x1, cy - height / 2 + ay * cw, wrap(x1) if wrap else cz)
+                p2 = (x2, cy - height / 2 + by * cw, wrap(x2) if wrap else cz)
+                v = np.array(p2) - np.array(p1)
+                L = float(np.linalg.norm(v))
+                if L < 1e-6:
+                    continue
+                e = v / L * d / 2  # stretch each stroke a little so the corners meet
+                self.rod(name, tuple(np.array(p1) - e), tuple(np.array(p2) + e), d, color, mat=mat, shape="B")
+
+    def band(self, name, pts, width, thick, color, surface=None, lift=0.0, mat="SmoothPlastic", R=None):
+        """A flat strap (sash, stripe, belt) through points given as (x, y); z comes from the
+        front surface z = surface(x, y) so the strap lies on it instead of sinking in."""
+        P = []
+        for (x, y) in pts:
+            z = surface(x, y) - lift
+            P.append(np.array([x, y, z], float))
+        for i in range(len(P) - 1):
+            p1, p2 = P[i], P[i + 1]
+            v = p2 - p1
+            L = float(np.linalg.norm(v))
+            xa = v / L
+            # surface normal from the slope of z = f(x, y), pointing out of the front
+            mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
+            e = 0.02
+            dzdx = (surface(mx + e, my) - surface(mx - e, my)) / (2 * e)
+            dzdy = (surface(mx, my + e) - surface(mx, my - e)) / (2 * e)
+            n = np.array([dzdx, dzdy, -1.0])
+            if not np.isfinite(n).all() or np.abs(n).max() > 50:
+                n = np.array([0.0, 0.0, -1.0])
+            n = n - xa * float(n @ xa)
+            n /= np.linalg.norm(n)
+            wa = np.cross(n, xa)
+            Rf = np.column_stack([xa, wa, n])
+            self.add("B", name, (L * 1.08, width, thick), (p1 + p2) / 2, color, mat, Rf)
+        return P
 
     def rivets(self, name, pts, d, color, normal="z", mat="Metal"):
         for p in pts:

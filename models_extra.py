@@ -1,6 +1,6 @@
 # Buildings, hero figurines and the bot opponent
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade
+from modelkit import ell_top, top_of, Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
 
 MODELS = []
 
@@ -59,7 +59,7 @@ def bouncy_castle():
     for s in (-1, 1):
         m.cyl("Tower", 1.6, 0.75, (s * 1.25, 0.95, 0.2), yellow, mat="Rubber")
         for y in (0.55, 1.05, 1.5):
-            m.ring("TowerRing", (s * 1.25, y, 0.2), 0.38, 0.07, shade(yellow, 0.88), normal="y", segments=10, mat="Rubber")
+            m.ring("TowerRing", (s * 1.25, y, 0.2), 0.385, 0.07, shade(yellow, 0.88), normal="y", segments=10, mat="Rubber", outer=True)
         m.ell("TowerTop", (0.88, 0.62, 0.88), (s * 1.25, 1.95, 0.2), pink, mat="Rubber")
         m.ball("Bump", 0.3, (s * 1.25, 2.3, 0.2), blue, mat="Rubber")
         m.ell("Window", (0.22, 0.3, 0.05), (s * 1.25, 1.25, -0.18), (60, 90, 190))
@@ -132,7 +132,8 @@ def disco_cactus():
     # ridges running up the cactus
     for k in range(6):
         a = k * math.pi / 3 + math.pi / 6
-        m.ell("Ridge", (0.12, 1.7, 0.12), (math.cos(a) * 0.3, 1.75, math.sin(a) * 0.3), ridge)
+        if math.sin(a) > -0.9:  # no ridge down the middle of the face
+            m.ell("Ridge", (0.12, 1.7, 0.12), (math.cos(a) * 0.3, 1.75, math.sin(a) * 0.3), ridge)
     for s in (-1, 1):
         m.rod("ArmOut", (s * 0.3, 1.65, 0), (s * 0.7, 1.75, 0), 0.32, green)
         m.ell("ArmUp", (0.32, 0.8, 0.32), (s * 0.72, 2.1, 0), green)
@@ -192,15 +193,21 @@ def haunted_arcade():
     m.blk("ScreenBezel", (1.3, 0.9, 0.1), (0, 1.6, -0.47), (20, 15, 30), R=rot(x=-10))
     scr = m.blk("Screen", (1.1, 0.72, 0.06), (0, 1.6, -0.52), (60, 220, 120), mat="Neon", R=rot(x=-10))
     # the screen shows a spooky pixel face with pixel teeth and scanlines
+    # (everything sits on the tilted glass: the screen leans forward 10 degrees at the top)
+    def on_screen(y, depth, out=0.0):
+        ly = (y - 1.6) / 0.985
+        return -0.52 - 0.174 * ly - 0.03 * 0.985 - depth * 0.5 * 0.985 + 0.006 - out
     for s in (-1, 1):
-        m.blk("ScreenEye", (0.18, 0.22, 0.04), (s * 0.22, 1.7, -0.56), (20, 40, 25), R=rot(x=-10))
-        m.blk("ScreenGlint", (0.06, 0.06, 0.03), (s * 0.22 - 0.04, 1.75, -0.58), (200, 255, 210), mat="Neon", R=rot(x=-10))
-        m.blk("ScreenBrow", (0.2, 0.05, 0.03), (s * 0.22, 1.85, -0.57), (20, 40, 25), R=rot(x=-10, z=-s * 15))
+        m.blk("ScreenEye", (0.18, 0.22, 0.04), (s * 0.22, 1.7, on_screen(1.7, 0.04)), (20, 40, 25), R=rot(x=-10))
+        m.blk("ScreenGlint", (0.06, 0.06, 0.03), (s * 0.22 - 0.04, 1.75, on_screen(1.75, 0.03, 0.02)), (200, 255, 210), mat="Neon", R=rot(x=-10))
+        m.blk("ScreenBrow", (0.2, 0.05, 0.03), (s * 0.22, 1.85, on_screen(1.85, 0.03)), (20, 40, 25), R=rot(x=-10, z=-s * 15))
     for k in range(5):
-        m.blk("ScreenTooth", (0.08, 0.08 + 0.04 * (k % 2), 0.03), (-0.2 + k * 0.1, 1.42 - 0.02 * (k % 2), -0.565), (20, 40, 25), R=rot(x=-10))
+        y = 1.42 - 0.02 * (k % 2)
+        m.blk("ScreenTooth", (0.08, 0.08 + 0.04 * (k % 2), 0.03), (-0.2 + k * 0.1, y, on_screen(y, 0.03)), (20, 40, 25), R=rot(x=-10))
     for k in range(4):
-        m.blk("Scanline", (1.08, 0.022, 0.02), (0, 1.33 + k * 0.17, -0.565 - k * 0.006), (30, 120, 60), tr=0.55, R=rot(x=-10))
-    m.blk("Score", (0.3, 0.06, 0.02), (0.32, 1.9, -0.57), (255, 255, 150), mat="Neon", R=rot(x=-10))
+        y = 1.33 + k * 0.17
+        m.blk("Scanline", (1.08, 0.022, 0.02), (0, y, on_screen(y, 0.02, 0.015)), (30, 120, 60), tr=0.55, R=rot(x=-10))
+    m.blk("Score", (0.3, 0.06, 0.02), (0.32, 1.9, on_screen(1.9, 0.02)), (255, 255, 150), mat="Neon", R=rot(x=-10))
     m.blk("Controls", (1.5, 0.2, 0.6), (0, 1.0, -0.6), (90, 55, 140), R=rot(x=15))
     m.blk("ControlTrim", (1.52, 0.05, 0.05), (0, 0.98, -0.9), trim, mat="Neon")
     m.cyl("JoyBase", 0.05, 0.2, (-0.35, 1.12, -0.63), (20, 20, 25))
@@ -209,7 +216,9 @@ def haunted_arcade():
     m.ball("JoyShine", 0.05, (-0.38, 1.47, -0.72), (255, 220, 220), mat="Neon")
     for k in range(6):
         col = [(255, 220, 60), (60, 160, 255), (255, 80, 80)][k % 3]
-        m.cyl("Button", 0.06, 0.13, (0.05 + (k % 3) * 0.2, 1.15 - (k // 3) * 0.06, -0.62 - (k // 3) * 0.12), col, mat="Neon")
+        bz = -0.62 - (k // 3) * 0.12
+        top = 1.0966 - 0.259 * (bz + 0.5741) / 0.966
+        m.cyl("Button", 0.06, 0.13, (0.05 + (k % 3) * 0.2, top + 0.012, bz), col, mat="Neon", R=rot(x=15))
     m.blk("CoinDoor", (0.6, 0.45, 0.05), (0, 0.5, -0.47), (30, 20, 40))
     for s in (-1, 1):
         m.blk("CoinSlot", (0.06, 0.16, 0.03), (s * 0.13, 0.55, -0.5), (255, 200, 60), mat="Neon")
@@ -359,17 +368,25 @@ def bunny_burrow():
     m.ball("Nose", 0.09, (0, 0.55, -1.23), (255, 140, 170))
     m.cheeks(0.55, -1.2, 0.36, 0.1)
     # carrots and flowers around the mound
+    # (carrots are planted in the mound with their tops showing, flowers sit on the grass)
+    ground = top_of(ell_top((0, 0.4, 0.15), (2.8, 1.4, 2.5)), ell_top((0.25, 0.85, 0.35), (1.8, 1.2, 1.6)))
     for (x, z, a) in [(1.05, -0.55, 25), (-1.1, -0.45, -30), (0.95, 0.85, 10)]:
-        m.ell("Carrot", (0.16, 0.5, 0.16), (x, 0.3, z), (250, 140, 40), R=rot(z=a))
+        g = ground(x, z)
+        cy = g + 0.02
+        sa = math.sin(math.radians(a))
+        m.ell("Carrot", (0.16, 0.5, 0.16), (x, cy, z), (250, 140, 40), R=rot(z=a))
         for k in range(2):
-            m.blk("CarrotLine", (0.17, 0.02, 0.02), (x - math.sin(math.radians(a)) * (k * 0.12 - 0.05), 0.25 + k * 0.12, z - 0.08), (220, 110, 30), R=rot(z=a))
+            ly = 0.02 + k * 0.1
+            m.blk("CarrotLine", (0.13, 0.02, 0.02), (x - sa * ly, cy + ly, z - 0.075 * math.sqrt(1 - (ly / 0.25) ** 2) - 0.005), (220, 110, 30), R=rot(z=a))
         for k in (-1, 0, 1):
-            m.ell("CarrotTop", (0.08, 0.26, 0.06), (x - math.sin(math.radians(a)) * 0.3 + k * 0.05, 0.62, z), (80, 170, 70), R=rot(z=a + k * 25))
+            m.ell("CarrotTop", (0.08, 0.26, 0.06), (x - sa * 0.3 + k * 0.05, cy + 0.33, z), (80, 170, 70), R=rot(z=a + k * 25))
     for (x, z, c) in [(-0.7, 0.9, (255, 220, 80)), (0.5, -0.7, (255, 140, 200)), (-0.95, 0.2, (160, 200, 255))]:
+        g = ground(x, z)
+        m.cyl("FlowerStem", 0.14, 0.04, (x, g + 0.05, z), (80, 150, 60))
         for k in range(5):
             aa = k * 2 * math.pi / 5
-            m.ball("Flower", 0.11, (x + math.cos(aa) * 0.07, 0.75, z + math.sin(aa) * 0.07), c)
-        m.ball("Flower", 0.07, (x, 0.77, z), (255, 240, 200))
+            m.ball("Flower", 0.11, (x + math.cos(aa) * 0.07, g + 0.13, z + math.sin(aa) * 0.07), c)
+        m.ball("Flower", 0.07, (x, g + 0.15, z), (255, 240, 200))
     m.blk("SignPost", (0.1, 0.9, 0.1), (1.05, 0.75, 0.25), (140, 100, 60), mat="Wood")
     m.blk("SignBoard", (0.6, 0.32, 0.06), (1.05, 1.15, 0.21), (200, 160, 110), mat="Wood", R=rot(z=-5))
     m.ell("SignCarrot", (0.3, 0.08, 0.03), (1.05, 1.15, 0.17), (250, 140, 40), R=rot(z=-5))
@@ -450,9 +467,10 @@ def spooky_crypt():
         for col in range(2):
             x = -0.7 + col * 1.4
             m.blk("Brick", (0.5, 0.03, 0.02), (x, 0.6 + row * 0.5, -0.71), (100, 95, 110))
-    m.blk("Roof", (1.55, 1.55, 1.9), (0, 1.95, 0.15), (85, 70, 105), mat="Slate", R=rot(z=45))
-    m.blk("RoofRidge", (0.15, 0.15, 2.0), (0, 3.05, 0.15), (70, 55, 90), mat="Slate")
-    m.wedge("Gable", (1.9, 0.6, 0.1), (0, 2.25, -0.78), (110, 100, 125), mat="Slate")
+    # (the roof starts just behind the front wall, so it no longer hides the top of the door)
+    m.blk("Roof", (1.55, 1.55, 1.75), (0, 1.95, 0.24), (85, 70, 105), mat="Slate", R=rot(z=45))
+    m.blk("RoofRidge", (0.15, 0.15, 1.85), (0, 3.05, 0.24), (70, 55, 90), mat="Slate")
+    m.wedge("Gable", (1.9, 0.6, 0.1), (0, 2.25, -0.7), (110, 100, 125), mat="Slate")
     for s in (-1, 1):
         m.blk("Pillar", (0.3, 1.8, 0.3), (s * 0.85, 1.15, -0.8), (155, 150, 165), mat="Marble")
         m.blk("PillarCap", (0.42, 0.14, 0.42), (s * 0.85, 2.1, -0.8), (175, 170, 185), mat="Marble")

@@ -1,6 +1,6 @@
 # Snack family models (warm, food colors, glossy and a little sticky)
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, BLACK, PUPIL, shade
+from modelkit import Model, rot, Rx, Ry, Rz, WHITE, BLACK, PUPIL, shade, ell_front, cyl_front, front_of, ell_top, top_of
 
 MODELS = []
 
@@ -37,11 +37,16 @@ def jelly_bean_scout():
     m.wedge("Scarf", (0.55, 0.36, 0.08), (0.02, 1.12, -0.66), (250, 200, 50), R=rot(z=180) @ rot(x=14))
     m.cyl("Woggle", 0.1, 0.16, (0.02, 1.27, -0.67), (160, 100, 50), axis="z")
     # merit badge sash
-    m.rod("Sash", (-0.7, 1.3, -0.35), (0.45, 0.62, -0.5), 0.26, (70, 120, 60), mat="Fabric", shape="B")
+    # (lies on the bean and the belly, so the badges show instead of sinking into the belly)
+    bean = front_of(ell_front((0, 1.3, 0), (1.5, 2.0, 1.3)), ell_front((0.05, 1.1, -0.45), (1.0, 1.2, 0.5)))
+    sash = [(-0.7 + 1.15 * t, 1.3 - 0.68 * t) for t in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)]
+    m.band("Sash", sash, 0.26, 0.06, (70, 120, 60), surface=bean, lift=0.01, mat="Fabric")
     for k, c in enumerate([(60, 140, 230), (250, 180, 40), (230, 70, 70)]):
         t = 0.3 + k * 0.22
-        m.cyl("Badge", 0.06, 0.18, (-0.7 + 1.15 * t, 1.3 - 0.68 * t, -0.53 - 0.06 * t), c, axis="z")
-        m.cyl("Badge", 0.065, 0.08, (-0.7 + 1.15 * t, 1.3 - 0.68 * t, -0.56 - 0.06 * t), (255, 250, 230), axis="z")
+        x, y = -0.7 + 1.15 * t, 1.3 - 0.68 * t
+        z = bean(x, y)
+        m.cyl("Badge", 0.06, 0.18, (x, y, z - 0.06), c, axis="z")
+        m.cyl("Badge", 0.065, 0.08, (x, y, z - 0.08), (255, 250, 230), axis="z")
     # campaign hat with the four pinches and a feather
     hat = (195, 155, 95)
     m.cyl("HatBrim", 0.1, 1.5, (0, 2.27, 0), (185, 145, 85))
@@ -69,7 +74,7 @@ def jelly_bean_scout():
     m.eyes(1.78, -0.5, 0.52, 0.4, lid=body, iris=(110, 60, 40), z_back=0.02)
     m.brow(-0.26, 2.08, -0.48, 0.28, dark, -1, tilt=-8)
     m.brow(0.26, 2.08, -0.48, 0.28, dark, 1, tilt=-8)
-    m.grin(1.5, -0.6, 0.36, curve=0.25, open_=True, teeth=2, bend=0.04)
+    m.grin(1.5, -0.6, 0.36, curve=0.25, open_=True, teeth=2, surface=front_of(ell_front((0, 1.3, 0), (1.5, 2.0, 1.3)), ell_front((0.05, 1.1, -0.45), (1.0, 1.2, 0.5))))
     m.cheeks(1.55, -0.56, 0.95, 0.22)
     return m
 
@@ -83,10 +88,13 @@ def pretzel_guard():
     steel = (190, 195, 205)
     m.ell("Body", (2.0, 2.4, 1.7), (0, 1.35, 0), bread, refl=0.15)
     # the pretzel twist pressed into the belly
-    m.ring("Twist", (-0.32, 1.05, -0.62), 0.32, 0.14, dark, normal="z", segments=10, R=rot(x=12))
-    m.ring("Twist", (0.32, 1.05, -0.62), 0.32, 0.14, dark, normal="z", segments=10, R=rot(x=12))
-    m.rod("Twist", (-0.55, 0.62, -0.62), (0.4, 1.3, -0.72), 0.14, dark)
-    m.rod("Twist", (0.55, 0.62, -0.62), (-0.4, 1.3, -0.72), 0.14, dark)
+    # (the loops and the crossing follow the round belly, so they read as a raised twist)
+    belly = ell_front((0, 1.35, 0), (2.0, 2.4, 1.7))
+    for cx in (-0.32, 0.32):
+        loop = [(cx + math.cos(a) * 0.32, 1.05 + math.sin(a) * 0.32) for a in [k * 2 * math.pi / 12 for k in range(13)]]
+        m.band("Twist", loop, 0.13, 0.1, dark, surface=belly, lift=0.02)
+    m.band("Twist", [(-0.55, 0.62), (-0.08, 0.96), (0.4, 1.3)], 0.13, 0.1, dark, surface=belly, lift=0.04)
+    m.band("Twist", [(0.55, 0.62), (0.08, 0.96), (-0.4, 1.3)], 0.13, 0.1, dark, surface=belly, lift=0.07)
     m.scatter("Salt", (0, 1.35, 0), (2.0, 2.4, 1.7), 16, [salt], seed=7, d=0.075, shape="cube", ymin=-0.3)
     # belt with a buckle
     m.cyl("Belt", 0.2, 1.88, (0, 0.72, 0), (90, 55, 30), mat="Leather")
@@ -99,7 +107,7 @@ def pretzel_guard():
     m.blk("NoseGuard", (0.14, 0.5, 0.1), (0, 2.02, -0.82), (160, 165, 175), mat="Metal")
     for s in (-1, 1):
         for k in range(3):
-            m.ball("HelmetRivet", 0.08, (s * (0.35 + k * 0.17), 2.2, -0.75 + k * 0.04), (230, 200, 90), mat="Metal")
+            m.ball("HelmetRivet", 0.08, (s * (0.35 + k * 0.17), 2.2, -0.795), (230, 200, 90), mat="Metal")
     m.cyl("Plume", 0.55, 0.24, (0, 3.08, 0.1), (230, 190, 80), mat="Metal")
     for k, c in enumerate([(220, 50, 50), (250, 240, 235), (220, 50, 50)]):
         m.ell("PlumeTop", (0.26, 0.5, 0.85), (0, 3.35 + k * 0.05, 0.18 + k * 0.3), c, R=rot(x=20 + k * 25), mat="Fabric")
@@ -234,12 +242,13 @@ def hot_sauce_imp():
         a = math.radians(-50 + k * 25)
         x, z = math.sin(a) * 0.66, -math.cos(a) * 0.66
         m.wedge("Flame", (0.16, 0.26, 0.04), (x, 0.8, z), (255, 140, 30) if k % 2 else (255, 200, 60), R=rot(y=-math.degrees(a)))
-    m.ell("Chili", (0.48, 0.18, 0.1), (0.05, 0.98, -0.66), (220, 40, 30), R=rot(z=18))
-    m.rod("ChiliStem", (-0.17, 0.92, -0.67), (-0.25, 1.0, -0.66), 0.05, (60, 150, 60))
+    m.ell("Chili", (0.4, 0.16, 0.1), (math.sin(math.radians(140)) * 0.66, 1.05, -math.cos(math.radians(140)) * 0.66), (220, 40, 30), R=rot(y=-140, z=18))
+    m.ell("ChiliStem", (0.1, 0.05, 0.05), (math.sin(math.radians(150)) * 0.67, 1.12, -math.cos(math.radians(150)) * 0.67), (60, 150, 60), R=rot(y=-150))
+    # little flame ticks along the label's lower edge, beside the chili
     for k in range(3):
-        x = 0.25 + k * 0.1
+        a = math.radians(160 + k * 14)
         for d in (-1, 1):
-            m.blk("Hot", (0.03, 0.12, 0.02), (x, 1.22, -0.655), (180, 30, 30), R=rot(z=d * 35))
+            m.blk("Hot", (0.03, 0.12, 0.02), (math.sin(a) * 0.655, 1.28, -math.cos(a) * 0.655), (180, 30, 30), R=rot(y=-math.degrees(a)) @ rot(z=d * 35))
     # face: mischievous
     m.eyes(1.2, -0.62, 0.48, 0.36, lid=(250, 240, 215), angry=18, look=(0, -0.03), iris=(255, 180, 40), z_back=0.03)
     m.grin(0.92, -0.66, 0.34, curve=0.3, color=(90, 20, 20), bend=0.03)
@@ -382,7 +391,7 @@ def burrito_bouncer():
         m.ball("Knuckle", 0.13, (0.62 + (k - 1) * 0.13, 1.66, -1.3), grill)
         m.ball("Knuckle", 0.13, (-0.62 + (k - 1) * 0.13, 1.66, -1.2), grill)
     # gold chain with a hot pepper medallion
-    m.ring("Chain", (0, 2.0, -0.05), 0.85, 0.08, (240, 200, 60), normal="y", segments=14, R=rot(x=-12), mat="Metal")
+    m.ring("Chain", (0, 2.0, 0.0), 1.0, 0.08, (240, 200, 60), normal="y", segments=16, R=rot(x=-12), mat="Metal")
     m.cyl("Medal", 0.06, 0.3, (0.0, 1.88, -0.98), (250, 210, 70), axis="z", mat="Metal", refl=0.3)
     # sneakers
     for s in (-1, 1):
