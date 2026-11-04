@@ -8,7 +8,7 @@ C=[
 ("pancake_paladin","Pancake Paladin","Creature","Snack",3,3,5,"Snack Time 2. When played, heal your creatures next to it 2","Rare"),
 ("hot_sauce_imp","Hot Sauce Imp","Creature","Snack",2,2,3,"Zoom. Gets 2 Power from every heal","Rare"),
 ("spaghetti_hydra","Spaghetti Hydra","Creature","Snack",5,5,6,"Splash. Combo: gets 2 Power","Epic"),
-("burrito_bouncer","Burrito Bouncer","Creature","Snack",4,3,6,"Creatures that hit it take 1 damage back","Mythic"),
+("burrito_bouncer","Burrito Bouncer","Creature","Snack",4,3,7,"Creatures that hit it take 1 damage back","Mythic"),
 ("queen_parfait","Queen Parfait","Creature","Snack",7,5,8,"When played, fully heal your creatures. Snack Time 3","Legendary"),
 ("tin_can_tom","Tin Can Tom","Creature","Junk",1,2,2,"When it pops, it leaves 2 Scrap","Common"),
 ("couch_golem","Couch Golem","Creature","Junk",3,2,6,"Sturdy","Common"),
@@ -62,8 +62,8 @@ C=[
 # "Its lane" = the column the building stands in, on both halves of the table.
 # Row buildings (Frontline / Midline / Backline) help one of your rows wherever they stand.
 ("spiked_fence","Spiked Fence","Building","Any",2,0,5,"At the start of your turn, deal 1 damage to the nearest enemy creature in its lane","Common"),
-("bouncy_castle","Bouncy Castle","Building","Any",3,0,4,"Your Frontline creatures have Sturdy","Common"),
-("snack_bar","Snack Bar","Building","Snack",3,0,5,"At the start of your turn, heal your creatures in its lane 2","Common"),
+("bouncy_castle","Bouncy Castle","Building","Any",2,0,4,"Your Frontline creatures have Sturdy","Common"),
+("snack_bar","Snack Bar","Building","Snack",2,0,4,"At the start of your turn, heal your creatures in its lane 2","Common"),
 ("bunny_burrow","Bunny Burrow","Building","Critter",3,0,4,"You can summon creatures anywhere in its lane on your half. When built, a 1/1 Pigeon hops into its lane","Rare"),
 ("wind_turbine","Wind Turbine","Building","Weather",3,0,4,"Your creatures in its lane have Fast. At the start of your turn, Soak the nearest enemy creature in its lane","Rare"),
 ("lemonade_stand","Lemonade Stand","Building","Any",3,0,4,"Gain 1 extra energy each turn (doesn't stack)","Rare"),

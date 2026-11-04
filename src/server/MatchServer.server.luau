@@ -528,7 +528,23 @@ pcall(function()
 	end)
 end)
 
+-- Deck requests cost a profile read (and a save mark): a client may send at most 12 every 5 seconds.
+local deckCalls = setmetatable({}, { __mode = "k" }) -- [player] = { t = window start, n = calls }
+local function deckCallAllowed(player)
+	local now = time()
+	local c = deckCalls[player]
+	if not c or now - c.t > 5 then
+		c = { t = now, n = 0 }
+		deckCalls[player] = c
+	end
+	c.n += 1
+	return c.n <= 12
+end
+
 MenuAction.OnServerEvent:Connect(function(player, what, options)
+	if (what == "GetDecks" or what == "SaveDeck" or what == "DeleteDeck") and not deckCallAllowed(player) then
+		return
+	end
 	if what == "LoadSettings" then
 		local entry = loadSettings(player)
 		MenuAction:FireClient(player, "Settings", entry.values)

@@ -1,6 +1,6 @@
 # Deck Wars
 
-A 3D card battler for Roblox. You walk around a cozy game room, sit down at the Duel Table and fight on a 5x6 tile board with six themed decks (Snack, Junk, Weather, Critter, Spooky and Robo), 69 cards, combos and a bot with three difficulties.
+A 3D card battler for Roblox. You walk around a cozy game room, sit down at the Duel Table and fight on a board of 4 lanes (3 rows a side, plus a row of building slots behind each side) with decks you build from your own card collection, six themed practice decks (Snack, Junk, Weather, Critter, Spooky and Robo), 69 cards, combos and a bot with three difficulties.
 
 ![The duel table](docs/table_preview.png)
 
@@ -55,10 +55,11 @@ tools/luaurun/target/release/luaurun mock_roblox/harness.luau mock_roblox       
 tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every rig and move
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl  # saves, session locks, Gems/Coins, Shop, boosts, Robux receipts
+tools/luaurun/target/release/luaurun tests/deck_tests.luau src/shared src/econ src/server src/packbrawl  # deck rules, the starter collection, saving decks
 tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the Shop, dev panel and saving in a simulated Studio
 ```
 
-`-D NAME=VALUE` sets a setting before the script runs: `SOAK_GAMES` for the tests, `BAL_GAMES`, `BAL_DIFF`, `BAL_SEED` and `BAL_FIRSTDRAW` for the balance check.
+`-D NAME=VALUE` sets a setting before the script runs: `SOAK_GAMES` for the tests, `BAL_GAMES`, `BAL_DIFF`, `BAL_SEED`, `BAL_FIRSTDRAW` and `BAL_CARDS` (print how often each card was played and won) for the balance check.
 
 GitHub runs the rules tests, the Pack Brawl tests and the economy tests and builds both place files for every pull request (`.github/workflows/build.yml`).
 
@@ -66,8 +67,8 @@ GitHub runs the rules tests, the Pack Brawl tests and the economy tests and buil
 | Path | What it is |
 | --- | --- |
 | `default.project.json` | The Rojo project: where each file goes in the Roblox place, plus the Lighting settings |
-| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes) |
-| `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools) |
+| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes), DeckRules (what a deck may hold, the starter collection), DeckBuilderUI (the Deck Shelf) |
+| `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools), PlayerDecks (your saved decks and the starter grant) |
 | `src/econ/` | ServerStorage > DeckWarsServer: EconomyManager, ProfileStore (session-locked saves), DevAccess (who's a developer) |
 | `src/devcontrols/` | ServerStorage > DevControls: the developer panel, copied only to developers |
 | `src/client/` | StarterPlayerScripts > DeckWarsClient (menus, table, animations, camera) |
@@ -84,9 +85,10 @@ GitHub runs the rules tests, the Pack Brawl tests and the economy tests and buil
 ## How to play
 - In the menu room, click a station or a button at the bottom, or press **A / ←** and **D / →** to go to the station before or after (it wraps around; on a gamepad the D-pad or bumpers). **S / ↓** (or Backspace, gamepad B) goes back to the room view. The station you're at has its button lit up.
 - The **Settings** station (the radio) has: Sound effects and Music volume, Action camera, Camera lean, Screen shake (Off, Low, Full), Table speed (Slow, Normal, Fast), Pack fights (Full, or Quick = always fast-forwarded), Quality (High, or Low = no shadows or glow, for slower devices) and Background blur, plus Reset to defaults. In a match the **⚙ Settings** button opens the same options. Changes apply at once and are saved to your Roblox account.
-- Click the Duel Table (or its button). Pick a deck and a bot difficulty, then press "Sit down and play!".
+- At the **Deck Shelf** you see your collection and your deck slots. New players get the Starter Deck in slot 1. Press **+ New** or **Edit** to open the deck builder (see "Build your own decks" below).
+- Click the Duel Table (or its button). Pick one of your ready decks or a practice deck, and a bot difficulty, then press "Sit down and play!".
 - Each turn you get 1 more energy (up to 8) and draw a card. The first player starts with 4 cards and skips the draw on their very first turn; the second player starts with 5.
-- **Play a card:** click it in your hand. Gold tiles show where it can go: creatures go on your back two rows (or next to your Bunny Burrow), and buildings go anywhere in your half. Spells that need a target light up what they can hit.
+- **Play a card:** click it in your hand. Gold tiles show where it can go, and a see-through copy of the card follows your mouse and glides onto the nearest one. Creatures go on your Backline or Midline (or anywhere in your half in a lane with your Bunny Burrow). Buildings go in the building slots behind your rows; a building helps its lane, or one of your rows, and while you aim it the tiles it would help light up. Building on top of your own building replaces it. Spells that need a target light up what they can hit.
 - **Command a creature:** your creatures that can still act glow green. Click one: blue tiles are where it can walk (1 tile, or 2 if it's Fast), green tiles are friends it can swap places with, and red ones are what it can hit (on the 8 tiles around it, or 2 tiles away if it's Ranged). The buttons under the message are its other commands: **🛡 Defend** (until your next turn it takes 1 less damage and hits back 1 harder) and its family chant (like **✨ Picnic · 2⚡**). A grey chant button tells you why it can't be used right now. When the creature stands in the enemy's half, the enemy hero's pedestal glows red, so click the hero to hit it. New creatures sleep (zZ) for a turn unless they have Zoom.
 - A creature can walk first and then attack, defend or chant. After it walks it stays picked, so you can give it its command right away.
 - In a fight both creatures hit each other. A Ranged creature hitting from 2 tiles away doesn't get hit back.
@@ -117,7 +119,8 @@ GitHub runs the rules tests, the Pack Brawl tests and the economy tests and buil
 - Every card's cost, attack, health and text is in ReplicatedStorage > DeckWars > CardData. What a card actually does lives in MatchEngine.
 - The combo numbers are near the top of CardData: `PowerMax` (most Power a creature can hold, 3), `SandwichBonus` (1), `SoakBonus` (1), `ZapBonus` (2), `PackMax` (most attack Pack can add, 2), `ScrapMax` (most Scrap on one tile, 3) and `ScrapGain` (+1/+1 per Scrap). `FamilyRules` and `RuleText` hold the help texts.
 - Going first: `FirstTurnDraw` in CardData (false = the first player skips their first draw; set it to true to undo that) and `SecondPlayerCard` (a card id to give the second player an extra card).
-- Board size and reach are at the top of the card list in CardData: `Cols`, `Rows`, `HomeRows` (your half), `SummonRows` (where creatures appear) and `HeroAttackRows` (how deep in the enemy half a creature must stand to hit the hero).
+- Board size and reach are at the top of the card list in CardData: `Cols` (lanes), `Rows`, `HomeRows` (your half), `SummonRows` (where creatures appear) and `HeroAttackRows` (how deep in the enemy half a creature must stand to hit the hero). Building slots are rows 0 and `Rows + 1` in MatchEngine.
+- Deck rules are in ReplicatedStorage > DeckWars > DeckRules: `MaxThemes` (2), `MinCards` (20), `MaxCards` (30), `MaxCopies` (3), `MaxCopiesByRarity` (1 Legendary, 1 Secret), `StarterCards` (what new players get) and `DefaultDeckSlots`.
 - Defend and the chants are in CardData too: `DefendArmor`, `DefendCounter`, `RaisedFades` and `Chants` (each family's chant: name, energy cost, amount, range and text). What each chant does is in MatchEngine (`chantWith`).
 - The six decks and their blurbs are in StarterDecks.
 
@@ -135,7 +138,7 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 | ReplicatedStorage > DeckWars > CreatureBuilder | Turns that data into Roblox models |
 | ServerScriptService > MatchServer | Runs matches on the server so nobody can cheat, runs the bot and the turn timer |
 | StarterPlayer > StarterPlayerScripts > DeckWarsClient | Menu room camera, menus, the match screen, the hand of cards, tile glows, clicking on the table, the command buttons, the action camera (`actionCam`), Scrap heaps (`scrapFx`) and all table animations |
-| Workspace > MenuRoom | The room. Move or restyle anything, but keep the names of the parts in Stations > DuelTable > Board (`Tile_1_1` to `Tile_5_6`, `Hero_Near`, `Energy_Near_1` and so on) |
+| Workspace > MenuRoom | The room. Move or restyle anything, but keep the names of the parts in Stations > DuelTable > Board (`Tile_1_1` to `Tile_4_6`, the building slots `Tile_1_0` to `Tile_4_0` and `Tile_1_7` to `Tile_4_7`, `Hero_Near`, `Energy_Near_1` and so on) |
 | ReplicatedStorage > CreatureModels | Empty folder for your own models (see below) |
 | ReplicatedStorage > DeckWars > ShopCatalog | Every price, reward, booster and Gem bundle (paste Developer Product ids here) |
 | ServerStorage > DeckWarsServer > DevAccess | Who gets the developer panel (UserIds and usernames) |
@@ -152,7 +155,7 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 - Realistic lighting with shadows is heavier on old phones. If it runs slowly, set Lighting > PrioritizeLightingQuality to off.
 - **Settings update:** a new 12-step check in the simulated Studio walks the stations with A, D and the arrow keys (including wrapping around both ways), changes settings through the real buttons, checks they reach the server once (not on every click) and that the in-match window shows the same values, then Reset and S back to the room. The rules tests check that the server throws away bad saved settings. Saving to a DataStore can't run in the simulator, so test it in Studio: turn on Game Settings > Security > "Enable Studio Access to API Services", change a setting, stop, play again. Without that switch settings simply reset every time you play; nothing breaks.
 - **Models and board fights update:** every model was checked part by part for pieces buried inside bodies, and every fight rig was dumped before and after the overhaul (the only changes are the intended ones). In the simulated Studio two new checks replay a full round of fights on a real board: the creatures' arms, legs and heads really move (up to 0.73 studs from where they were built) and afterwards every part is back in place (9 creatures checked, worst 0.000 studs off). The simulator itself had a rounding bug that slowly bent any model it moved every frame until it flew apart; that is fixed in the simulator (real Roblox keeps its rotations clean), and the check now fails if any part ever ends up at an impossible spot. All 110 checks passed with 0 errors and 0 warnings, plus 232 rules checks, 6,283 Pack Brawl checks and the pull cinematic run. The fights have **not** been watched in real Studio yet, so tell me if a move looks off.
-- Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends, building your own decks, opening packs and saving progress come in step 3.
+- Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends comes later.
 
 
 ## Pack Brawl: the pack-opening cinematic
