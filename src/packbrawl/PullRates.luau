@@ -48,12 +48,36 @@ do
 	end
 end
 
+-- Lucky odds (the Shop's Luck boosters): Epic and better are multiplied by `mult`, Rare stays,
+-- and Common gives up the difference, so the odds still add up to 100.
+PullRates.LuckyTiers = { Epic = true, Mythic = true, Legendary = true, Secret = true }
+function PullRates.luckyOdds(mult: number?)
+	local m = tonumber(mult) or 1
+	if m ~= m or m < 1 then
+		m = 1
+	end
+	local out, extra = {}, 0
+	for _, t in ipairs(PullRates.Tiers) do
+		local p = PullRates.Odds[t]
+		if PullRates.LuckyTiers[t] then
+			out[t] = p * m
+			extra += p * m - p
+		else
+			out[t] = p
+		end
+	end
+	out.Common = math.max(0, out.Common - extra)
+	return out
+end
+
 -- rand() returns a number in [0, 1). Works with Random.new():NextNumber or Rng:next.
-function PullRates.rollTier(rand: () -> number): string
+-- odds is optional (defaults to PullRates.Odds), for example PullRates.luckyOdds(1.5).
+function PullRates.rollTier(rand: () -> number, odds: { [string]: number }?): string
+	local o = odds or PullRates.Odds
 	local roll = rand() * 100
 	local acc = 0
 	for _, t in ipairs(PullRates.Tiers) do
-		acc += PullRates.Odds[t]
+		acc += o[t] or 0
 		if roll < acc then
 			return t
 		end
@@ -67,12 +91,13 @@ function PullRates.pickCard(tier: string, rand: () -> number): string
 	return pool[i]
 end
 
--- Rolls count cards (1 or 10). forcedTier makes the first card that tier (test place only).
+-- Rolls count cards (1 or 10). forcedTier makes the first card that tier (dev free rolls and
+-- Studio previews only). odds is optional (see rollTier).
 -- Returns { cards = { id, ... }, best = index of the rarest card }.
-function PullRates.roll(count: number, rand: () -> number, forcedTier: string?)
+function PullRates.roll(count: number, rand: () -> number, forcedTier: string?, odds: { [string]: number }?)
 	local cards, tiers = {}, {}
 	for i = 1, count do
-		local tier = (i == 1 and forcedTier) or PullRates.rollTier(rand)
+		local tier = (i == 1 and forcedTier) or PullRates.rollTier(rand, odds)
 		tiers[i] = tier
 	end
 	if count >= 10 and not forcedTier then
