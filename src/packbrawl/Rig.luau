@@ -41,6 +41,9 @@ end
 local ARM = set({
 	"Arm", "Hand", "Fist", "Claw", "Glove", "Forearm", "Elbow", "UpperArm", "Sleeve", "TinyArm",
 	"ArmPipe", "ArmCrane", "ArmOut", "ArmUp", "Joint", "Peg", "Paw", "Shoulder", "Epaulette", "Fringe",
+	-- details added by the model overhaul
+	"Thumb", "Finger", "Knuckle", "Cuff", "Bracer", "Gauntlet", "Wristband", "Pauldron", "Bicep", "ArmBand",
+	"ArmPlate", "Piston", "Pincer", "Mitt", "Bone", "Talon",
 })
 -- things a creature holds: they move with the hand on their side
 local HELD = set({
@@ -49,6 +52,11 @@ local HELD = set({
 	"PlungerStick", "PlungerCup", "Scepter", "Cheese", "FishBone", "FishRib", "Banana", "BroomStick", "Bristles",
 	"Flashlight", "FlashLens", "Cane", "CaneTop", "Wand", "WandStar", "Cannon", "IceCube", "Staff", "Orb",
 	"Spyglass", "SpyglassLens", "Butter",
+	-- details added by the model overhaul
+	"SpearFlag", "SpearBand", "SpearSeed", "ShieldRim", "ShieldBoss", "ShieldSalt", "ForkGrip", "ForkPommel",
+	"KnifeEdge", "KnifeGuard", "WandBand", "WandGlow", "StaffGem", "StaffBand", "ScepterBand", "ScepterTop",
+	"PlungerBand", "WrenchBolt", "CaneBand", "FlashBand", "CannonRing", "CannonMouth", "FishTail", "FishEye",
+	"BananaTip", "BroomBand", "SpyglassBand", "GlueLabel", "WaferStripe", "Lollipop", "LollipopSwirl",
 })
 -- held things that are swung like weapons
 local WEAPON = set({
@@ -58,6 +66,8 @@ local WEAPON = set({
 local LEG = set({
 	"Leg", "Foot", "Shoe", "Boot", "Thigh", "Shin", "Knee", "Hoof", "FrontLeg", "FrontFoot", "BackFoot",
 	"LegCan", "Hip", "Tread",
+	-- details added by the model overhaul
+	"Sole", "Toe", "Laces", "Ankle", "Kneepad", "Sock", "Heel", "Greave", "ShinPlate", "Claws", "Spat",
 })
 local TAIL = set({ "Tail", "TailTip", "Tail2" })
 local WING = set({ "Wing", "WingLow", "WingSpot", "WingTip" })
@@ -78,6 +88,11 @@ local FACE = set({
 	"NoseHole", "Screen", "ScreenEye", "ScreenMouth", "Lash", "FacePatch", "EyePatch", "EyePatchStrap",
 	"Feather", "Bun", "Headband", "Face", "Lidhalf", "EyeGlow", "EyeLED", "EyeBump", "Eyeball", "Stalk",
 	"Earpiece", "EarWire", "HoodDark", "Spark", "Spike", "Knob", "HeadSauce", "Tuft", "Flower",
+	-- details added by the model overhaul
+	"Iris", "EyeRim", "Lash", "Teeth", "Lip", "Freckle", "Blush", "Dimple", "Fang", "Tusk", "Bump", "Basil",
+	"HatFeather", "HatPin", "HatGem", "CrownGem", "CrownGemShine", "HelmetRidge", "HelmetRivet", "NoseGuard",
+	"CheekGuard", "Goggle", "GoggleLens", "Forelock", "Mane", "Whiskers", "Snoot", "Chin", "Beard", "Brim",
+	"Visor", "VisorGlow", "Halo",
 })
 
 -- Per-creature fixes: { noHead = true } keeps the face on the body, { body = "PartName" } picks
