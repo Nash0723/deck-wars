@@ -210,6 +210,17 @@ def laundry_bot_3000():
     for (x, y, z, d) in [(-0.6, 3.4, 0.0, 0.35), (0.2, 3.6, 0.3, 0.25), (0.7, 3.3, -0.2, 0.3), (-0.1, 3.85, -0.1, 0.2), (-0.9, 3.0, -0.3, 0.18)]:
         m.ball("Bubble", d, (x, y, z), (220, 240, 255), mat="Glass", tr=0.4, refl=0.4)
         m.ball("BubbleShine", d * 0.25, (x - d * 0.2, y + d * 0.2, z - d * 0.3), WHITE)
+    # the back: a service panel with screws, a water inlet with a hose, a lint filter and a sticker
+    m.rbox("ServicePanel", (1.6, 1.4, 0.05), (0, 1.4, 0.91), (225, 228, 235), 0.1, axis="z")
+    for (x, y) in [(-0.7, 2.0), (0.7, 2.0), (-0.7, 0.8), (0.7, 0.8)]:
+        m.ball("Screw", 0.07, (x, y, 0.94), (150, 155, 165), mat="Metal")
+    for k in range(5):
+        m.blk("LintSlot", (0.7, 0.06, 0.03), (0.2, 1.85 - k * 0.12, 0.94), (150, 155, 170))
+    m.cyl("Inlet", 0.15, 0.22, (-0.45, 1.25, 0.98), (180, 180, 190), axis="z", mat="Metal")
+    m.chain("InletHose", [(-0.45, 1.25, 1.05), (-0.55, 1.0, 1.25), (-0.3, 0.7, 1.4), (0.1, 0.65, 1.45)], 0.12, (90, 140, 220), joints=False)
+    m.rbox("Sticker", (0.45, 0.3, 0.03), (0.35, 0.95, 0.94), (120, 200, 255), 0.05, axis="z")
+    m.blk("StickerText", (0.3, 0.04, 0.02), (0.35, 0.98, 0.96), (255, 255, 255))
+    m.blk("StickerText", (0.22, 0.04, 0.02), (0.35, 0.9, 0.96), (255, 255, 255))
     return m
 
 
@@ -267,6 +278,16 @@ def microwave_mage():
     m.sparkles(star, (255, 240, 140))
     for s in (-1, 1):
         m.rbox("Foot", (0.5, 0.25, 0.5), (s * 0.85, 0.13, 0), (60, 60, 70), 0.1)
+    # the back: a vent grille, a warning sticker, the cord and plug, and a star the mage drew on itself
+    for k in range(6):
+        m.blk("Vent", (1.1, 0.07, 0.05), (0.1, 1.85 - k * 0.14, 0.86), (60, 60, 68))
+    m.rbox("WarnSticker", (0.5, 0.4, 0.03), (-0.75, 0.95, 0.86), (250, 210, 60), 0.05, axis="z")
+    m.wedge("WarnMark", (0.03, 0.22, 0.2), (-0.75, 0.95, 0.88), (40, 40, 40), R=rot(y=90))
+    m.chain("PowerCord", [(0.6, 0.85, 0.87), (0.75, 0.6, 1.05), (0.55, 0.3, 1.25), (0.15, 0.22, 1.35)], 0.08, (35, 35, 40), joints=False)
+    m.rbox("Plug", (0.2, 0.14, 0.24), (0.02, 0.22, 1.36), (240, 240, 235), 0.04, axis="x")
+    for k in range(5):
+        a = math.radians(90 + k * 72)
+        m.blk("BackStar", (0.07, 0.3, 0.02), (-0.85 + math.cos(a) * 0.12, 1.6 + math.sin(a) * 0.12, 0.865), (255, 220, 80), mat="Neon", R=rot(z=math.degrees(a) - 90))
     return m
 
 
@@ -326,6 +347,18 @@ def mecha_fridge():
     m.blk("Vent", (1.6, 0.25, 0.05), (0, 1.15, -0.87), (60, 70, 80))
     for k in range(4):
         m.blk("VentSlat", (1.5, 0.03, 0.03), (0, 1.07 + k * 0.055, -0.9), (40, 45, 55))
+    # the back: the black condenser coils every fridge has, a compressor, a cord and a rating sticker
+    m.rbox("CoilPanel", (1.7, 2.4, 0.05), (0, 2.55, 0.86), (40, 45, 50), 0.08, axis="z")
+    for k in range(9):
+        m.cyl("Coil", 1.5, 0.06, (0, 1.55 + k * 0.25, 0.9), (25, 25, 30), axis="x", mat="Metal")
+    for x in (-0.6, 0.0, 0.6):
+        m.blk("CoilWire", (0.03, 2.2, 0.03), (x, 2.55, 0.93), (90, 90, 95), mat="Metal")
+    m.cyl("Compressor", 0.45, 0.55, (0.45, 1.25, 0.72), (30, 30, 35), axis="x", mat="Metal")
+    m.rbox("RatingSticker", (0.5, 0.32, 0.03), (-0.55, 1.22, 0.87), (245, 245, 240), 0.05, axis="z")
+    for (y, w) in [(1.3, 0.38), (1.22, 0.3), (1.14, 0.34)]:
+        m.blk("StickerText", (w, 0.03, 0.02), (-0.55, y, 0.89), (60, 60, 70))
+    m.chain("PowerCord", [(-0.3, 1.1, 0.88), (-0.35, 0.8, 1.05), (-0.1, 0.5, 1.15), (0.25, 0.42, 1.2)], 0.08, (30, 30, 35), joints=False)
+    m.rbox("Plug", (0.2, 0.14, 0.24), (0.38, 0.42, 1.2), (240, 240, 235), 0.04, axis="x")
     return m
 
 

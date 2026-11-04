@@ -118,6 +118,21 @@ def couch_golem():
     m.ball("RemoteButton", 0.07, (-0.08, 1.73, -0.55), (220, 50, 50))
     for (x, z) in [(-0.9, -0.5), (-1.1, -0.3), (0.3, -0.75)]:
         m.ball("Popcorn", 0.13, (x, 1.76, z), (255, 245, 200))
+    # the back of the couch: a lighter panel with tufting, piping, a price tag and lost things
+    m.rbox("BackPanel", (2.9, 1.6, 0.06), (0, 2.1, 0.93), fab, 0.15, mat="Fabric", axis="z")
+    m.cyl("Piping", 3.2, 0.08, (0, 3.03, 0.9), pipe, axis="x", mat="Fabric")
+    for x in (-0.97, 0.0, 0.97):
+        m.blk("Seam", (0.04, 1.5, 0.03), (x, 2.1, 0.965), dark, mat="Fabric")
+    for (x, y) in [(-0.48, 2.5), (0.48, 2.5), (-0.48, 1.7), (0.48, 1.7)]:
+        m.cyl("Button", 0.05, 0.14, (x, y, 0.97), (40, 70, 65), axis="z")
+    m.chain("TagString", [(1.2, 3.05, 0.95), (1.25, 2.85, 1.0), (1.28, 2.6, 0.99)], 0.025, (240, 235, 220), joints=False)
+    m.rbox("PriceTag", (0.42, 0.3, 0.03), (1.28, 2.45, 1.0), (250, 220, 90), 0.06, axis="z", R=rot(z=-10))
+    m.blk("PriceText", (0.26, 0.05, 0.02), (1.29, 2.48, 1.02), (200, 40, 40), R=rot(z=-10))
+    m.blk("PriceText", (0.18, 0.04, 0.02), (1.27, 2.39, 1.02), (60, 50, 40), R=rot(z=-10))
+    m.rbox("LostSock", (0.22, 0.5, 0.1), (-1.15, 1.52, 0.98), (250, 250, 250), 0.08, axis="z", mat="Fabric", R=rot(z=25))
+    m.blk("LostSockStripe", (0.23, 0.06, 0.11), (-1.17, 1.62, 0.98), (220, 60, 60), mat="Fabric", R=rot(z=25))
+    m.blk("Patch", (0.45, 0.4, 0.04), (-0.4, 2.55, 0.96), (230, 180, 80), mat="Fabric", R=rot(z=-8))
+    m.stitches("Stitch", (-0.6, 2.38, 0.985), (-0.2, 2.72, 0.985), 4, 0.035, (250, 240, 220))
     return m
 
 
@@ -256,6 +271,24 @@ def dumpster_diver():
     m.ell("BananaTip", (0.1, 0.12, 0.1), (1.42, 2.6, -1.05), (90, 70, 40), R=rot(z=-35))
     for k in range(3):
         m.ball("BananaSpot", 0.07, (1.12 + k * 0.08, 2.2 + k * 0.12, -1.18), (170, 140, 60))
+    # the outside of the open lid: ribs, warning stripes, a sticker and a doodle; ribs on the bin's back
+    c, sn = math.cos(math.radians(-70)), math.sin(math.radians(-70))
+    def on_lid(lx, ly, lz):
+        return (lx, 2.6 + c * ly - sn * lz, 1.55 + sn * ly + c * lz)
+    for lx in (-0.95, 0.0, 0.95):
+        m.blk("LidRib", (0.12, 0.06, 1.85), on_lid(lx, -0.09, 0), dgreen, mat="Metal", R=rot(x=-70))
+    for k in range(6):
+        m.blk("HazardStripe", (0.24, 0.03, 0.22), on_lid(-1.25 + k * 0.5, -0.075, -0.82), (240, 200, 40) if k % 2 == 0 else (30, 30, 30), R=rot(x=-70))
+    m.rbox("Sticker", (0.6, 0.4, 0.03), on_lid(0.48, -0.08, 0.35), (240, 240, 230), 0.06, axis="z", R=rot(x=-70) @ rot(x=-90))
+    m.blk("StickerText", (0.4, 0.06, 0.02), on_lid(0.48, -0.1, 0.42), (200, 40, 40), R=rot(x=-70))
+    m.blk("StickerText", (0.3, 0.05, 0.02), on_lid(0.48, -0.1, 0.28), (60, 60, 60), R=rot(x=-70))
+    m.ring("Doodle", on_lid(-0.5, -0.08, 0.3), 0.2, 0.04, (240, 120, 200), normal="y", segments=8, R=rot(x=-70))
+    m.ball("DoodleEye", 0.06, on_lid(-0.57, -0.09, 0.36), (240, 120, 200))
+    m.ball("DoodleEye", 0.06, on_lid(-0.43, -0.09, 0.36), (240, 120, 200))
+    for x in (-0.9, 0, 0.9):
+        m.blk("Rib", (0.12, 1.5, 0.08), (x, 1.05, 1.02), dgreen, mat="Metal")
+    m.ell("Dent", (0.45, 0.35, 0.12), (-0.5, 0.7, 1.0), dgreen, mat="Metal")
+    m.blk("Stencil", (0.9, 0.16, 0.03), (0.0, 0.55, 1.02), (240, 240, 230))
     return m
 
 
@@ -429,12 +462,30 @@ def the_junk_king():
         m.ell("Spoon", (0.16, 0.5, 0.06), (s * 0.45, 5.15, -0.55), (210, 215, 225), mat="Metal", R=rot(z=s * 20))
     m.sparkles(crown, (255, 220, 100))
     # cape (old red blanket with patches, a fur collar and a ragged hem)
-    m.blk("Cape", (2.8, 3.4, 0.15), (0, 2.1, 1.35), (180, 30, 40), mat="Fabric", R=rot(x=-6))
+    # the cape wraps round the can in three panels, with folds, gold trim and a trash-can crest
+    cape = (180, 30, 40)
+    gold = (240, 195, 70)
+    for (x, z, w, yaw) in [(0, 1.38, 1.15, 0), (-1.0, 1.15, 1.0, -30), (1.0, 1.15, 1.0, 30)]:
+        m.blk("Cape", (w, 3.4, 0.15), (x, 2.1, z), cape, mat="Fabric", R=rot(x=-6, y=yaw))
+        m.blk("CapeTrim", (w, 0.12, 0.17), (x, 0.42, z + 0.17), gold, mat="Fabric", R=rot(x=-6, y=yaw))
+        for f in (-0.25, 0.25):
+            fx = x + f * math.cos(math.radians(yaw))
+            fz = z + 0.06 - f * math.sin(math.radians(yaw))
+            m.ell("CapeFold", (0.12, 3.0, 0.1), (fx, 1.95, fz + 0.05), shade(cape, 0.8), mat="Fabric", R=rot(x=-6, y=yaw))
     for k in range(7):
-        m.wedge("CapeHem", (0.4, 0.3, 0.15), (-1.2 + k * 0.4, 0.3, 1.53), (180, 30, 40), mat="Fabric", R=rot(x=-6) @ rot(z=180))
-    m.blk("Patch", (0.6, 0.55, 0.04), (0.6, 2.2, 1.48), (60, 90, 170), mat="Fabric", R=rot(x=-6, z=10))
-    m.stitches("Stitch", (0.35, 1.95, 1.5), (0.85, 2.45, 1.52), 4, 0.04, (250, 240, 200))
-    m.blk("Patch", (0.5, 0.45, 0.04), (-0.7, 1.3, 1.53), (220, 180, 60), mat="Fabric", R=rot(x=-6, z=-12))
+        x = -1.2 + k * 0.4
+        z = 1.55 if abs(x) < 0.55 else 1.55 - (abs(x) - 0.55) * 0.58
+        m.wedge("CapeHem", (0.38, 0.3, 0.15), (x, 0.3, z), cape, mat="Fabric", R=rot(x=-6, y=(30 if x > 0.55 else -30 if x < -0.55 else 0)) @ rot(z=180))
+    m.ring("Crest", (0, 2.35, 1.55), 0.42, 0.08, gold, normal="z", segments=14, mat="Metal", R=rot(x=-6))
+    m.cyl("CrestBack", 0.03, 0.8, (0, 2.35, 1.53), (130, 20, 30), axis="z", R=rot(x=-6))
+    m.blk("CrestCan", (0.34, 0.4, 0.04), (0, 2.27, 1.57), gold, mat="Metal", R=rot(x=-6))
+    m.blk("CrestLid", (0.44, 0.07, 0.04), (0, 2.52, 1.59), gold, mat="Metal", R=rot(x=-6, z=-12))
+    for x in (-0.09, 0.0, 0.09):
+        m.blk("CrestRib", (0.03, 0.3, 0.02), (x, 2.26, 1.6), (180, 130, 40), R=rot(x=-6))
+    m.blk("Patch", (0.5, 0.45, 0.04), (0.98, 2.3, 1.27), (60, 90, 170), mat="Fabric", R=rot(x=-6, y=30, z=10))
+    m.stitches("Stitch", (0.8, 2.08, 1.39), (1.15, 2.5, 1.19), 4, 0.04, (250, 240, 200))
+    m.blk("Patch", (0.45, 0.4, 0.04), (-0.95, 1.3, 1.37), (220, 180, 60), mat="Fabric", R=rot(x=-6, y=-30, z=-12))
+    m.stitches("Stitch", (-1.12, 1.12, 1.47), (-0.78, 1.48, 1.28), 3, 0.04, (250, 240, 200))
     m.blk("CapeCollar", (2.9, 0.4, 0.5), (0, 3.4, 1.15), (240, 240, 240), mat="Fabric")
     for k in range(6):
         m.ell("CollarSpot", (0.1, 0.16, 0.05), (-1.2 + k * 0.48, 3.4, 0.88), (30, 30, 30))
@@ -461,4 +512,5 @@ def the_junk_king():
         m.ell("Peel", (0.14, 0.4, 0.1), (-0.85 + k * 0.2, 3.22, -0.75), (250, 220, 70), R=rot(z=k * 25, x=15))
     for s in (-1, 1):
         m.shoe(s * 0.7, -0.4, 0.9, 1.2, (60, 60, 70), sole=(30, 30, 35), toe=(75, 75, 85), mat="Rubber", h=0.42)
+
     return m

@@ -108,6 +108,9 @@ def prims_from_model(model_parts, offset=(0, 0, 0), yaw=0.0):
     return out
 
 
+CORNERS = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)], float)
+
+
 def render(prims, campos, look, W=320, H=320, fov=40, bg=(0.16, 0.15, 0.2), light_dir=(-0.4, 0.9, -0.6), label=None, floor=None):
     campos = np.array(campos, float); look = np.array(look, float)
     f = look - campos; f /= np.linalg.norm(f)
@@ -117,37 +120,63 @@ def render(prims, campos, look, W=320, H=320, fov=40, bg=(0.16, 0.15, 0.2), ligh
     px = (2 * (xs + 0.5) / W - 1) * th * W / H
     py = (1 - 2 * (ys + 0.5) / H) * th
     D = f[None, None, :] + px[..., None] * r[None, None, :] + py[..., None] * u[None, None, :]
-    D = (D / np.linalg.norm(D, axis=-1, keepdims=True)).reshape(-1, 3)
-    N = D.shape[0]
+    D = D / np.linalg.norm(D, axis=-1, keepdims=True)
     L = np.array(light_dir, float); L /= np.linalg.norm(L)
-    best = np.full(N, np.inf); col = np.tile(np.array(bg, float), (N, 1))
+    best = np.full((H, W), np.inf); col = np.tile(np.array(bg, float), (H, W, 1))
     if floor is not None:  # simple ground plane at y = floor
         with np.errstate(divide="ignore", invalid="ignore"):
-            tf = (floor - campos[1]) / D[:, 1]
+            tf = (floor - campos[1]) / D[..., 1]
         m = np.isfinite(tf) & (tf > 0)
         best = np.where(m, tf, best)
         col[m] = np.array([0.22, 0.34, 0.26])
+
+    def screen_box(prim):
+        # each part only tests the rays inside the screen rectangle its corners project to
+        pts = prim["pos"][None, :] + (CORNERS * (prim["size"] / 2)[None, :]) @ prim["R"].T
+        v = pts - campos[None, :]
+        z = v @ f
+        if (z < 0.05).any():
+            return None if (z < 0.05).all() else (0, W, 0, H)
+        sx = (v @ r) / z / (th * W / H)
+        sy = (v @ u) / z / th
+        x0 = max(0, int(math.floor((sx.min() + 1) / 2 * W)) - 2)
+        x1 = min(W, int(math.ceil((sx.max() + 1) / 2 * W)) + 2)
+        y0 = max(0, int(math.floor((1 - sy.max()) / 2 * H)) - 2)
+        y1 = min(H, int(math.ceil((1 - sy.min()) / 2 * H)) + 2)
+        return (x0, x1, y0, y1) if x0 < x1 and y0 < y1 else None
+
+    def trace(prim, blend):
+        b = screen_box(prim)
+        if b is None:
+            return
+        x0, x1, y0, y1 = b
+        d = D[y0:y1, x0:x1].reshape(-1, 3)
+        t, nw = _intersect(prim, campos, d)
+        bs = best[y0:y1, x0:x1].reshape(-1)
+        m = t < bs
+        if not m.any():
+            return
+        cs = col[y0:y1, x0:x1].reshape(-1, 3)
+        c = _shade(prim, nw[m], d[m], L)
+        if blend:
+            cs[m] = cs[m] * prim["tr"] + c * (1 - prim["tr"])
+        else:
+            bs[m] = t[m]
+            cs[m] = c
+            best[y0:y1, x0:x1] = bs.reshape(y1 - y0, x1 - x0)
+        col[y0:y1, x0:x1] = cs.reshape(y1 - y0, x1 - x0, 3)
+
     trans = []
     for prim in prims:
         if prim["tr"] >= 0.3:
             trans.append(prim)
-            continue
-        t, nw = _intersect(prim, campos, D)
-        m = t < best
-        if not m.any():
-            continue
-        best[m] = t[m]
-        col[m] = _shade(prim, nw[m], D[m], L)
+        else:
+            trace(prim, False)
     # transparent parts: painter's order, far to near
     trans.sort(key=lambda p: -np.linalg.norm(p["pos"] - campos))
     for prim in trans:
-        t, nw = _intersect(prim, campos, D)
-        m = t < best
-        if not m.any():
-            continue
-        c = _shade(prim, nw[m], D[m], L)
-        col[m] = col[m] * prim["tr"] + c * (1 - prim["tr"])
-    img = (np.clip(col, 0, 1) * 255).astype(np.uint8).reshape(H, W, 3)
+        trace(prim, True)
+    img = (np.clip(col, 0, 1) * 255).astype(np.uint8)
     im = Image.fromarray(img)
     if label:
         ImageDraw.Draw(im).text((5, 4), label, fill=(255, 235, 120))

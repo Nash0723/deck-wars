@@ -49,6 +49,20 @@ def sheet_ghost():
     m.cyl("Shadow", 0.04, 1.4, (0, 0.02, 0), (40, 30, 60), tr=0.5)
     for (x, y, z, d) in [(-1.1, 2.6, 0.3, 0.25), (1.05, 2.3, 0.4, 0.2), (0.8, 3.0, -0.2, 0.15)]:
         m.ball("Wisp", d, (x, y, z), (220, 210, 255), tr=0.5)
+    # the back: a laundry care tag, a sewn-on patch and a clothespin still clipped on
+    from modelkit import on_ell
+    body_c, body_s = (0, 1.7, 0), (1.6, 2.3, 1.5)
+    p, n = on_ell(body_c, body_s, (0, 0.62, 1))
+    m.rbox("CareTag", (0.36, 0.26, 0.03), tuple(p + n * 0.02), (250, 250, 250), 0.05, axis="z", R=rot(x=-35))
+    for k in range(3):
+        m.blk("CareText", (0.24, 0.03, 0.02), tuple(p + n * 0.045 + [0, 0.07 - k * 0.07, -0.04 + k * 0.04]), (90, 120, 200), R=rot(x=-35))
+    p, n = on_ell(body_c, body_s, (0.45, -0.1, 1))
+    m.rbox("Patch", (0.42, 0.38, 0.03), tuple(p + n * 0.01), (190, 210, 255), 0.06, axis="z", R=rot(y=24))
+    m.stitches("Stitch", tuple(p + n * 0.03 + [-0.16, 0.15, 0.06]), tuple(p + n * 0.03 + [0.16, -0.15, -0.08]), 4, 0.035, (120, 130, 200))
+    p, n = on_ell(body_c, body_s, (-0.2, 1.6, 0.6))
+    for s in (-1, 1):
+        m.blk("Clothespin", (0.1, 0.42, 0.06), tuple(p + [s * 0.05, 0.12, 0.0]), (230, 180, 120), mat="Wood", R=rot(x=-30, z=s * 6))
+    m.ring("PinSpring", tuple(p + [0, 0.1, 0.0]), 0.06, 0.025, (190, 190, 200), normal="x", segments=6, mat="Metal")
     return m
 
 
@@ -183,6 +197,26 @@ def haunted_vending_machine():
     for s in (-1, 1):
         for z in (-0.5, 0.5):
             m.cyl("CabinetFoot", 0.12, 0.3, (s * 0.95, 0.03, z), (30, 20, 40))
+    # the back: vent slats, a serial plate, a power cord with a plug, an OUT OF ORDER sign and slime
+    m.rbox("BackPanel", (2.0, 2.9, 0.05), (0, 1.8, 0.81), dark, 0.1, axis="z")
+    for k in range(7):
+        m.blk("Vent", (1.3, 0.07, 0.06), (0, 2.7 - k * 0.14, 0.84), (25, 15, 35))
+    m.blk("SerialPlate", (0.6, 0.3, 0.03), (0.5, 0.75, 0.84), (190, 190, 200), mat="Metal")
+    for (x, y) in [(0.24, 0.85), (0.76, 0.85), (0.24, 0.65), (0.76, 0.65)]:
+        m.ball("Screw", 0.06, (x, y, 0.86), (120, 120, 130), mat="Metal")
+    for y in (0.8, 0.72):
+        m.blk("SerialText", (0.4, 0.03, 0.02), (0.5, y, 0.86), (60, 60, 70))
+    m.chain("PowerCord", [(-0.6, 0.6, 0.86), (-0.7, 0.35, 1.0), (-0.5, 0.08, 1.2), (-0.05, 0.06, 1.35)], 0.08, (25, 25, 30), joints=False)
+    m.rbox("Plug", (0.2, 0.14, 0.26), (0.08, 0.08, 1.4), (240, 240, 235), 0.04, axis="x")
+    for x in (0.04, 0.12):
+        m.blk("PlugProng", (0.03, 0.06, 0.12), (x, 0.08, 1.58), (200, 200, 210), mat="Metal")
+    m.blk("Tape", (0.35, 0.1, 0.02), (-0.35, 2.12, 0.905), (240, 230, 180), R=rot(z=-25))
+    m.blk("Tape", (0.35, 0.1, 0.02), (0.45, 2.12, 0.905), (240, 230, 180), R=rot(z=25))
+    m.blk("OutOfOrder", (1.0, 0.55, 0.02), (0.05, 1.95, 0.885), (250, 250, 245), R=rot(z=3))
+    for (y, w, c) in [(2.07, 0.8, (200, 40, 40)), (1.95, 0.7, (40, 40, 40)), (1.84, 0.6, (40, 40, 40))]:
+        m.blk("OutOfOrderText", (w, 0.06, 0.02), (0.05, y, 0.9), c, R=rot(z=3))
+    m.drip("BackSlime", (-0.8, 3.36, 0.82), 0.7, 0.16, slime, mat="Neon")
+    m.drip("BackSlime", (0.75, 3.36, 0.82), 0.45, 0.13, slime, mat="Neon")
     return m
 
 

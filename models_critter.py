@@ -55,6 +55,17 @@ def pocket_mouse():
     m.wedge("Cheese", (0.35, 0.32, 0.45), (-0.62, 1.55, -0.45), (255, 210, 70), R=rot(y=30))
     for (dx, dy) in [(-0.05, -0.05), (0.06, 0.05)]:
         m.ball("CheeseHole", 0.07, (-0.62 + dx - 0.1, 1.5 + dy, -0.6), (220, 170, 40))
+    # the back of the jeans: a seam, a belt loop, a big leather brand patch and a button
+    m.blk("BackSeam", (0.05, 1.3, 0.03), (0, 0.7, 0.565), (45, 75, 130), mat="Fabric")
+    for x in (-0.06, 0.06):
+        m.blk("Stitch", (0.025, 1.2, 0.02), (x, 0.7, 0.57), thread)
+    m.rbox("BeltLoop", (0.18, 0.4, 0.06), (-0.75, 1.25, 0.58), (75, 115, 185), 0.04, axis="z", mat="Fabric")
+    m.rbox("BrandPatch", (0.6, 0.38, 0.04), (0.6, 0.95, 0.575), (150, 95, 55), 0.06, axis="z", mat="Leather")
+    for (y, w) in [(1.0, 0.4), (0.9, 0.3)]:
+        m.blk("BrandText", (w, 0.04, 0.02), (0.6, y, 0.6), (90, 55, 30))
+    m.cyl("Button", 0.06, 0.2, (-0.55, 0.55, 0.58), (200, 160, 70), axis="z", mat="Metal")
+    for k in range(3):
+        m.blk("Stitch", (1.8, 0.025, 0.02), (0, 0.25 + k * 0.05, 0.565), thread)
     return m
 
 

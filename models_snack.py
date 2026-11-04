@@ -263,6 +263,18 @@ def hot_sauce_imp():
         m.cyl("Leg", 0.3, 0.3, (s * 0.3, 0.3, 0), deep)
         m.shoe(s * 0.3, -0.15, 0.4, 0.6, (50, 30, 30), sole=(30, 20, 20))
         m.ell("Toe", (0.18, 0.18, 0.3), (s * 0.3, 0.2, -0.5), (50, 30, 30), R=rot(x=25))
+    # back of the label: barcode, small print and flames all the way round
+    for k in range(9):
+        a = math.radians(180 + (k - 4) * 4.2)
+        w = 0.035 if k % 3 else 0.06
+        m.blk("Barcode", (w, 0.34, 0.02), (math.sin(a) * 0.656, 1.0, -math.cos(a) * 0.656), (30, 25, 25), R=rot(y=-math.degrees(a)))
+    for (y, w) in [(1.32, 0.46), (1.25, 0.38), (1.18, 0.42)]:
+        m.blk("SmallPrint", (w, 0.03, 0.02), (0, y, 0.656), (150, 60, 40))
+    m.blk("BackStamp", (0.34, 0.12, 0.02), (0.0, 0.74, 0.658), (230, 170, 40))
+    for k in range(6):
+        a = math.radians(120 + k * 24)
+        x, z = math.sin(a) * 0.66, -math.cos(a) * 0.66
+        m.wedge("Flame", (0.16, 0.26, 0.04), (x, 0.8, z), (255, 140, 30) if k % 2 else (255, 200, 60), R=rot(y=-math.degrees(a)))
     return m
 
 
@@ -375,6 +387,17 @@ def burrito_bouncer():
     # sneakers
     for s in (-1, 1):
         m.shoe(s * 0.5, -0.3, 0.62, 0.85, (245, 245, 250), sole=(200, 40, 40), toe=(225, 225, 235), lace=(40, 40, 45))
+    # the back: the tortilla's folded-over flap with grill marks, foil crinkles all round
+    m.ell("BackFlap", (1.5, 1.9, 0.3), (0.05, 1.95, 0.86), shade(tort, 0.93))
+    m.ell("BackFlapEdge", (0.12, 1.8, 0.2), (-0.68, 1.95, 0.8), shade(tort, 0.82), R=rot(y=-30))
+    for k in range(4):
+        m.rod("Grill", (-0.36, 1.35 + k * 0.36, 0.985), (0.4, 1.52 + k * 0.36, 0.985), 0.06, grill, shape="B")
+    for k in range(8):
+        a = math.radians(110 + k * 20)
+        m.blk("Crinkle", (0.06, 0.7, 0.05), (math.sin(a) * 1.0, 0.55, -math.cos(a) * 1.0), (185, 190, 205), mat="Foil", R=rot(y=-math.degrees(a), z=12 * (1 if k % 2 else -1)))
+    m.blk("FoilEdge", (2.0, 0.16, 0.3), (0, 1.07, 0.9), (220, 225, 235), mat="Foil", R=rot(z=-4))
+    m.ell("SalsaDrip", (0.22, 0.4, 0.1), (0.5, 2.62, 0.82), (220, 60, 50))
+    m.ball("SalsaDrop", 0.14, (0.5, 2.36, 0.86), (220, 60, 50))
     return m
 
 
