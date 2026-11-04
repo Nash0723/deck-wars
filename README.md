@@ -54,18 +54,22 @@ tools/luaurun/target/release/luaurun -D BAL_GAMES=60 bal/balance.luau src/shared
 tools/luaurun/target/release/luaurun mock_roblox/harness.luau mock_roblox                # plays matches in a simulated Studio, about 8 minutes
 tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every rig and move
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
+tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl  # saves, session locks, Gems/Coins, Shop, boosts, Robux receipts
+tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the Shop, dev panel and saving in a simulated Studio
 ```
 
 `-D NAME=VALUE` sets a setting before the script runs: `SOAK_GAMES` for the tests, `BAL_GAMES`, `BAL_DIFF`, `BAL_SEED` and `BAL_FIRSTDRAW` for the balance check.
 
-GitHub runs the rules tests and the Pack Brawl tests and builds both place files for every pull request (`.github/workflows/build.yml`).
+GitHub runs the rules tests, the Pack Brawl tests and the economy tests and builds both place files for every pull request (`.github/workflows/build.yml`).
 
 ## Project layout
 | Path | What it is |
 | --- | --- |
 | `default.project.json` | The Rojo project: where each file goes in the Roblox place, plus the Lighting settings |
-| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen |
-| `src/server/` | ServerScriptService > MatchServer |
+| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes) |
+| `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools) |
+| `src/econ/` | ServerStorage > DeckWarsServer: EconomyManager, ProfileStore (session-locked saves), DevAccess (who's a developer) |
+| `src/devcontrols/` | ServerStorage > DevControls: the developer panel, copied only to developers |
 | `src/client/` | StarterPlayerScripts > DeckWarsClient (menus, table, animations, camera) |
 | `src/world/` | Workspace > MenuRoom (made by `gen_world.py`) |
 | `cards.py`, `gen_*.py`, `models_*.py`, `modelkit.py` | Generators (see above) |
@@ -133,6 +137,9 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 | StarterPlayer > StarterPlayerScripts > DeckWarsClient | Menu room camera, menus, the match screen, the hand of cards, tile glows, clicking on the table, the command buttons, the action camera (`actionCam`), Scrap heaps (`scrapFx`) and all table animations |
 | Workspace > MenuRoom | The room. Move or restyle anything, but keep the names of the parts in Stations > DuelTable > Board (`Tile_1_1` to `Tile_5_6`, `Hero_Near`, `Energy_Near_1` and so on) |
 | ReplicatedStorage > CreatureModels | Empty folder for your own models (see below) |
+| ReplicatedStorage > DeckWars > ShopCatalog | Every price, reward, booster and Gem bundle (paste Developer Product ids here) |
+| ServerStorage > DeckWarsServer > DevAccess | Who gets the developer panel (UserIds and usernames) |
+| ServerScriptService > EconomyServer | Loads and saves players, runs the Shop, Robux purchases and the dev tools |
 
 ## Use your own models
 Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
@@ -194,7 +201,63 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
-## Latest update: a catchier opening, a livelier menu and a pack you tap open
+## Latest update: Gems, Coins, the Shop and a developer panel
+
+### Two currencies
+- **💎 Gems** are the premium currency and open card packs at the Pack Party. You get them from Robux Gem bundles, the daily login, your first win of the day, level ups and a small daily Coin exchange.
+- **🪙 Coins** are earned by playing and spent in the Shop: single cards, deck slots, board themes, card backs, emotes and boosters.
+- New players start with 💎 300 and 🪙 500. The counters sit at the top right of the room; the pack shelf and other scripts can read them from the Player attributes `Gems` and `Coins`.
+- Every number (prices, rewards, starting money, odds boosts) is in `src/shared/ShopCatalog.luau`. Only the server's copy counts, so a hacked client can't change a price.
+
+### Earning
+| How | Coins | Gems | XP |
+| --- | --- | --- | --- |
+| Daily login (once per UTC day) | 150, +25 per streak day (up to 300 on day 7) | 15 (+60 on day 7 of a streak) | |
+| Bot match win (Easy / Medium / Hard) | 60 / 100 / 160 | first win of the day: 30 | 40 / 60 / 90 |
+| Bot match loss or draw | 20 / 30 / 45 | | 15 / 25 / 35 |
+| Level up (100 XP for level 2, +25 more per level) | 100 | 40 | |
+
+A match only pays if it lasted a minute and you took 3 turns, nothing for leaving, and 30 paid matches per day (so nobody farms the bot all night). The reward pops up once you've seen the last blow.
+
+### The Shop (Pickles' counter)
+Walk to the Shop counter and the Shop window opens with three tabs:
+1. **🃏 Daily Cards:** six cards for Coins (2 Common 120, 2 Rare 350, 1 Epic 900, 1 Mythic 2,400). Everyone sees the same six, they change at UTC midnight, each can be bought once a day, and the tile tells you how many you own. Legendary and Secret only come from packs.
+2. **🎨 Deck & Field:** board themes that repaint the duel table (Midnight Velvet, Royal Emerald, Ember Forge, Frost Glass for Coins, Starlight for Gems), card backs for every face-down card (Crimson Crest, Jade Lattice, Gold Foil, Void Spiral), emotes for the new 💬 button in matches (Bot Bonkers sometimes answers), and deck slots (3 to start, up to 10, 600 Coins each).
+3. **💎 Exchange & Boosts:** Robux Gem bundles, Coins → Gems (500 → 25, 3 times a day) and Gems → Coins (50 → 600), Lucky Charm / Lucky Horseshoe (the next 3 or 10 pack openings have 1.5x the chance of Epic and better; a 10-pack counts as one) and XP Snack / XP Feast (double match XP for 30 minutes or 2 hours).
+
+Anything that costs Gems needs a second tap ("Tap again"), so nobody spends Gems by accident.
+
+**To sell Gem bundles for Robux:** publish the game, then in the Creator Dashboard open the experience > Monetization > Developer Products, create one product per bundle (names and prices are in `ShopCatalog.GemBundles`), and paste each product id into `productId`. Until then the bundles show "Not on sale yet". Purchases are granted exactly once per receipt and only confirmed to Roblox after the new Gems are saved. Players in countries where paid random items are restricted don't get the Robux bundles (Gems open random packs) but can still earn Gems.
+
+### Saving
+One save per player in the DataStore `DeckWarsPlayer_v1`: Gems, Coins, XP and level, the card collection, deck slots, saved decks (for the deck builder), cosmetics, boosters, the daily shop and streak, and stats. It is **session-locked** like ProfileService (a small version of the same idea, written for this game, in `src/econ/ProfileStore.luau`): a server only writes a save it holds the lock on, a new server waits for the old one to let go, and a lock from a crashed server can be taken over after 4 minutes. That stops the classic bug where a player hops servers and their Gems get lost or doubled. It autosaves every minute, saves when you leave and when the server shuts down. If the save can't load, the player is asked to rejoin instead of playing on an empty save.
+
+In Studio saving needs Game Settings > Security > "Enable Studio Access to API Services". Without it the game still runs with a temporary save and shows a notice.
+
+### Developer panel (free rolls)
+Developers get a **DEV** tab on the left of the screen (F7 toggles it): free rolls of any rarity from Common to Secret, free 1 and 10 pulls at the real odds, +1,000 Gems, +10,000 Coins, 10 lucky pulls, "New shop day" and "Reset my save". The normal Pack Party buttons stay as they are, so true odds can still be tested.
+
+- Who's a developer: the usernames **DNash2307** and **donatjalt** (looked up to their UserIds when the server starts) and the experience owner. Paste the numeric UserIds into `DevAccess.UserIds` in `src/econ/DevAccess.luau` when you have them (roblox.com/users/**<UserId>**/profile); that skips the lookup.
+- The panel lives in ServerStorage, which players can't see, and the server only copies it to developers. Every dev button is checked against the UserId on the server again, so a hacked client firing the dev remote gets nothing (the server logs it).
+- Free rolls use the pack pull server: it honours `free` and a forced rarity only for developers (see the pack shelf update).
+
+### For other scripts
+`ServerStorage.DeckWarsServer.EconomyManager` (find it with `ServerStorage:FindFirstChild("EconomyManager", true)`):
+
+| Call | What it does |
+| --- | --- |
+| `getBalance(player, "Gems" or "Coins")` | the balance (waits for the save to load) |
+| `trySpend(player, currency, amount, reason)` | pays if the player has enough; true when paid. Whole numbers only |
+| `grant(player, currency, amount, reason)` | gives currency (refunds, rewards) |
+| `grantCards(player, { cardId, ... })` | adds cards to the saved collection; returns isNew, counts, uniqueOwned |
+| `getCollection(player)`, `ownsCard(player, id)`, `getDeckSlots(player)` | read the collection and deck slots |
+| `takePullLuck(player)` | once per paid pack opening: the luck multiplier (1 = none) for `PullRates.luckyOdds` |
+| `waitForData(player)` then `markDirty(player)` | the live save table (`data.decks`, `data.flags`) for the deck builder |
+| `matchReward(player, { result, difficulty, seconds, turns })` | pays a finished match (MatchServer calls it) |
+
+`ServerStorage.DeckWarsServer.DevAccess.isDev(player)` tells whether a player is a developer.
+
+## Earlier update: a catchier opening, a livelier menu and a pack you tap open
 
 ### The opening
 Joining the game now shows a title screen over the card room while the camera drifts slowly across it. The screen fades in from black, DECK and WARS slide in from both sides and slam together (flash, shake, gold sparks), a light glint runs over the gold logo every few seconds, two random showcase creatures (Epic and up) turn on pools of light at the sides, and embers drift up. The gold PLAY button pulses; PLAY (or Enter, Space, gamepad A) sweeps the title away, the cinema bars slide off, and the camera flies from low over the table up to the room overview while the menu pops in piece by piece. Code: `src/shared/TitleScreen.luau`; camera spots `TitleFrom`, `TitleTo` and `Entrance` in the `CAMS` table at the top of DeckWarsClient.

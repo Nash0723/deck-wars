@@ -739,8 +739,14 @@ local function fireChanged(inst, prop)
 	end
 end
 
+-- Callback members (functions you assign), not properties.
+local CALLBACKS = { OnInvoke = true, OnServerInvoke = true, OnClientInvoke = true, ProcessReceipt = true }
+
 InstanceMT.__index = function(inst, key)
 	local r = rec(inst)
+	if CALLBACKS[key] then
+		return r.callbacks and r.callbacks[key]
+	end
 	if key == "Name" then
 		return r.name
 	elseif key == "Parent" then
@@ -798,6 +804,12 @@ end
 
 InstanceMT.__newindex = function(inst, key, value)
 	local r = rec(inst)
+	if CALLBACKS[key] then
+		assert(value == nil or type(value) == "function", key .. " must be a function")
+		r.callbacks = r.callbacks or {}
+		r.callbacks[key] = value
+		return
+	end
 	if key == "Name" then
 		assert(type(value) == "string", "Name must be a string")
 		r.name = value
@@ -949,10 +961,37 @@ function methods.GetPropertyChangedSignal(self, prop)
 	end
 	return r.changed[prop]
 end
-function methods.GetAttribute()
-	return nil
+-- Attributes: stored, type-checked like Roblox (no tables, functions or Instances).
+local ATTR_TYPES = { boolean = true, number = true, string = true, Color3 = true, Vector3 = true, Vector2 = true, UDim = true, UDim2 = true, CFrame = true, NumberRange = true, NumberSequence = true, ColorSequence = true, BrickColor = true, Rect = true }
+function methods.GetAttribute(self, name)
+	assert(type(name) == "string", "GetAttribute needs a name")
+	local a = rec(self).attrs
+	return a and a[name]
 end
-function methods.SetAttribute() end
+function methods.SetAttribute(self, name, value)
+	assert(type(name) == "string" and #name > 0 and #name <= 100, "SetAttribute needs a name")
+	if value ~= nil and not ATTR_TYPES[typeof(value)] then
+		error("SetAttribute: " .. typeof(value) .. " is not a supported attribute type (" .. name .. ")", 2)
+	end
+	local r = rec(self)
+	r.attrs = r.attrs or {}
+	local old = r.attrs[name]
+	r.attrs[name] = value
+	if old ~= value and r.attrSignals and r.attrSignals[name] then
+		r.attrSignals[name]:Fire()
+	end
+end
+function methods.GetAttributes(self)
+	return table.clone(rec(self).attrs or {})
+end
+function methods.GetAttributeChangedSignal(self, name)
+	local r = rec(self)
+	r.attrSignals = r.attrSignals or {}
+	if not r.attrSignals[name] then
+		r.attrSignals[name] = newSignal("AttributeChanged")
+	end
+	return r.attrSignals[name]
+end
 function methods.GetFullName(self)
 	local parts = {}
 	local i = self
@@ -1175,6 +1214,140 @@ end
 -- the simulated game counts as Studio (tier preview buttons show up)
 function methods.IsStudio()
 	return true
+end
+
+---------------------------------------------------------------------------
+-- Economy services: DataStores, Marketplace, Policy, player lookups, kicks
+---------------------------------------------------------------------------
+M.userIds = {} -- username -> UserId for Players:GetUserIdFromNameAsync
+M.kicked = {} -- [player] = message
+M.prompts = {} -- { { player, productId } }
+M.closeFns = {} -- game:BindToClose functions
+M.policy = { ArePaidRandomItemsRestricted = false }
+M.dataStores = {} -- [name] = { data = { [key] = value }, failNext = n, writes = n }
+
+-- DataStores only take what Roblox can save: no functions, NaN/inf, mixed or sparse tables.
+local function checkSaveable(v, path, depth)
+	depth = depth or 0
+	if depth > 40 then
+		error("DataStore: value nested too deep at " .. path, 4)
+	end
+	local t = type(v)
+	if t == "number" then
+		if v ~= v or v == math.huge or v == -math.huge then
+			error("DataStore: can't save NaN/inf at " .. path, 4)
+		end
+	elseif t == "function" or t == "thread" or t == "userdata" then
+		error("DataStore: can't save a " .. typeof(v) .. " at " .. path, 4)
+	elseif t == "table" then
+		local n, hasNum, hasStr = 0, false, false
+		for k, x in pairs(v) do
+			n += 1
+			if type(k) == "number" then
+				hasNum = true
+			elseif type(k) == "string" then
+				hasStr = true
+			else
+				error("DataStore: table key of type " .. type(k) .. " at " .. path, 4)
+			end
+			checkSaveable(x, path .. "." .. tostring(k), depth + 1)
+		end
+		if hasNum and hasStr then
+			error("DataStore: can't save a mixed table at " .. path, 4)
+		end
+		if hasNum then
+			for i = 1, n do
+				if v[i] == nil then
+					error("DataStore: can't save a sparse array at " .. path, 4)
+				end
+			end
+		end
+	end
+end
+local function deep(v)
+	if type(v) ~= "table" then
+		return v
+	end
+	local o = {}
+	for k, x in pairs(v) do
+		o[k] = deep(x)
+	end
+	return o
+end
+function methods.GetDataStore(self, name)
+	assert(rec(self).className == "DataStoreService", "GetDataStore is a DataStoreService method")
+	assert(type(name) == "string", "GetDataStore needs a name")
+	local st = M.dataStores[name]
+	if not st then
+		st = { data = {}, failNext = 0, writes = 0 }
+		M.dataStores[name] = st
+		local function maybeFail()
+			if st.failNext > 0 then
+				st.failNext -= 1
+				error("502: API Services rejected request (simulated)")
+			end
+		end
+		function st.GetAsync(_, key)
+			assert(type(key) == "string", "DataStore key must be a string")
+			maybeFail()
+			return deep(st.data[key])
+		end
+		function st.SetAsync(_, key, value)
+			maybeFail()
+			checkSaveable(value, key)
+			st.writes += 1
+			st.data[key] = deep(value)
+		end
+		function st.UpdateAsync(_, key, fn)
+			assert(type(key) == "string" and type(fn) == "function", "UpdateAsync(key, fn)")
+			maybeFail()
+			local new = fn(deep(st.data[key]), nil)
+			if new ~= nil then
+				checkSaveable(new, key)
+				st.writes += 1
+				st.data[key] = deep(new)
+			end
+			return deep(new)
+		end
+	end
+	return st
+end
+function methods.GetUserIdFromNameAsync(self, name)
+	local id = M.userIds[name]
+	if not id then
+		error("HTTP 400 (Bad Request): unknown user " .. tostring(name))
+	end
+	return id
+end
+function methods.GetPlayerByUserId(self, id)
+	for _, p in ipairs(methods.GetPlayers()) do
+		if p.UserId == id then
+			return p
+		end
+	end
+	return nil
+end
+function methods.Kick(self, message)
+	M.kicked[self] = message or ""
+	report("warning", "kicked " .. tostring(self) .. ": " .. tostring(message))
+end
+function methods.BindToClose(self, fn)
+	table.insert(M.closeFns, fn)
+end
+function methods.PromptProductPurchase(self, player, productId)
+	assert(typeof(player) == "Instance" and type(productId) == "number", "PromptProductPurchase(player, id)")
+	table.insert(M.prompts, { player = player, productId = productId })
+end
+function methods.GetPolicyInfoForPlayerAsync(self, player)
+	return table.clone(M.policy)
+end
+function methods.Invoke(self, ...)
+	assert(rec(self).className == "BindableFunction", "Invoke is a BindableFunction method")
+	local fn = rec(self).callbacks and rec(self).callbacks.OnInvoke
+	if not fn then
+		error("BindableFunction has no OnInvoke", 2)
+	end
+	return fn(...)
 end
 
 function Instance.new(className, parent)

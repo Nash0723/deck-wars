@@ -152,11 +152,11 @@ end, { Name = "NewDay", Size = UDim2.new(0.5, -3, 1, 0) })
 local armedUntil = 0
 local reset
 reset = button(shopRow, "Reset my save", rgb(255, 110, 110), function()
-	if os.clock() > armedUntil then
-		armedUntil = os.clock() + 3
+	if time() > armedUntil then
+		armedUntil = time() + 3
 		reset.Text = "Sure? Tap again"
 		task.delay(3, function()
-			if os.clock() >= armedUntil then
+			if time() >= armedUntil then
 				reset.Text = "Reset my save"
 			end
 		end)
