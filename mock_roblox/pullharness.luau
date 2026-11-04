@@ -46,13 +46,13 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
 pb.Parent = ReplicatedStorage
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackParty" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "PackParty" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local remotes = Instance.new("Folder")
@@ -272,6 +272,44 @@ local function playThrough(label, startFn, opts)
 	lastResult = nil
 	M.advance(1.6) -- server cooldown
 	startFn()
+	-- the Pack Tease: tap the pack open (or wait and let it open by itself)
+	local tease = waitFor(function()
+		return playerGui:FindFirstChild("PackTease") ~= nil
+	end, 2)
+	check(tease, label .. ": the pack rises up to be tapped open")
+	if tease then
+		local g = playerGui:FindFirstChild("PackTease")
+		check(scene() == nil, label .. ": the brawl waits for the pack")
+		M.advance(0.6)
+		if opts.autoOpen then
+			local opened = waitFor(function()
+				return playerGui:FindFirstChild("PackTease") == nil
+			end, 9)
+			check(opened, label .. ": an untouched pack opens by itself")
+		else
+			for _ = 1, 3 do
+				if g.Parent then
+					click(g:FindFirstChild("TapPack"), "tap the pack")
+					M.advance(0.3)
+				end
+			end
+			local tierShown = g:FindFirstChild("Tease") and g.Tease.Text or ""
+			local real = lastResult and CardData.get(lastResult.cards[lastResult.best]).rarity
+			local shownTier = string.match(tierShown, "^(%a+) OR BETTER$")
+			local order = { COMMON = 1, RARE = 2, EPIC = 3, MYTHIC = 4, LEGENDARY = 5, SECRET = 6 }
+			local realIdx = order[string.upper(real or "COMMON")]
+			check(shownTier == nil or order[shownTier] <= realIdx, label .. ": the tease (" .. tierShown .. ") never promises more than the real pull (" .. tostring(real) .. ")")
+			check(realIdx < 4 or (shownTier ~= nil and order[shownTier] == realIdx - 1), label .. ": Mythic and up tease one step short, so the brawl still surprises")
+			check(g:FindFirstChild("Crack", true) ~= nil, label .. ": taps crack the pack")
+		end
+		waitFor(function()
+			return scene() ~= nil
+		end, 3)
+		check(playerGui:FindFirstChild("PackTease") == nil or scene() ~= nil, label .. ": the pack flies into the ring")
+	end
+	if opts.afterTease then
+		opts.afterTease()
+	end
 	local started = waitFor(function()
 		return scene() ~= nil
 	end, 2)
@@ -411,8 +449,10 @@ end, {
 local fakeInput = { UserInputType = Enum.UserInputType.MouseButton1, KeyCode = Enum.KeyCode.Q }
 playThrough("Fast-forward Legendary", function()
 	click(button("Preview_Legendary"), "Preview Legendary")
-	UserInputService.InputBegan:Fire(fakeInput, false)
 end, {
+	afterTease = function()
+		UserInputService.InputBegan:Fire(fakeInput, false)
+	end,
 	expect = function(elapsed, brawl)
 		return elapsed < brawl.length / 3 + 1.2
 	end,
@@ -427,12 +467,12 @@ playThrough("10-pull", function()
 end, { fan = true })
 check(lastResult and #lastResult.cards == 10, "10-pull gives 10 cards")
 
--- 5) a single random pull
+-- 5) a single random pull (nobody taps the pack: it opens by itself)
 playThrough("Open 1", function()
 	click(findIn(playerGui, function(d)
 		return d.ClassName == "TextButton" and d.Text == "Open 1 pack"
 	end), "Open 1")
-end)
+end, { autoOpen = true })
 
 -- 6) more tiers, so buildings, spells, Secrets and fake endings all get played
 local extra = rawget(_G, "SEEDS") or 2

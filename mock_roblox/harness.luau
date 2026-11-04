@@ -50,14 +50,14 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 -- Pack Brawl (the Pack Party corner's pull cinematic)
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
 pb.Parent = ReplicatedStorage
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackParty" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "PackParty" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local pullRemotes = Instance.new("Folder")
@@ -282,6 +282,38 @@ MatchEvent.OnClientEvent:Connect(function(payload)
 end)
 
 ---------------------------------------------------------------------------
+-- Scenario 0: the title screen (logo slam, PLAY flies the camera into the room)
+---------------------------------------------------------------------------
+do
+	local errors0 = M.errors
+	local title = playerGui:FindFirstChild("DeckWarsTitle")
+	check(title ~= nil, "the title screen shows on join")
+	check(labelWithText("DECK WARS") == nil, "the menu stays hidden behind the title")
+	local deck = title and title:FindFirstChild("Deck", true)
+	check(deck ~= nil and deck.Position.X.Offset > -100, "DECK has slammed into place")
+	local camY0 = camera.CFrame.Position
+	M.advance(1)
+	check((camera.CFrame.Position - camY0).Magnitude > 0.01, "the camera drifts across the room behind the title")
+	-- the room ignores keys and clicks while the title is up
+	UserInputService.InputBegan:Fire({ KeyCode = Enum.KeyCode.D, UserInputType = Enum.UserInputType.Keyboard }, false)
+	M.advance(0.2)
+	check(labelWithText("Deck Shelf") == nil, "station keys do nothing on the title screen")
+	local play = title and title:FindFirstChild("Play", true)
+	check(play ~= nil, "PLAY button shows")
+	click(play, "PLAY")
+	M.advance(0.6)
+	check(labelWithText("DECK WARS") ~= nil, "the menu comes in after PLAY")
+	M.advance(2.6)
+	check(playerGui:FindFirstChild("DeckWarsTitle") == nil, "the title screen is gone")
+	check((camera.CFrame.Position - Vector3.new(0, 15, 22)).Magnitude < 0.5, "the camera has flown in to the room overview")
+	local scales = findAll(function(d)
+		return d.ClassName == "UIScale" and d.Name == "JuiceScale" and d.Parent and d.Parent:IsA("TextButton") and d.Parent.Parent and d.Parent.Parent.Name ~= "" and d.Parent.Text == "Pack Party"
+	end)
+	check(#scales == 1 and math.abs(scales[1].Scale - 1) < 0.01, "the station buttons have popped in to full size")
+	check(M.errors == errors0, "title screen: no script errors")
+end
+
+---------------------------------------------------------------------------
 -- Scenario 1: menu navigation, including a click on the 3D room
 ---------------------------------------------------------------------------
 check(labelWithText("DECK WARS") ~= nil, "menu title shows")
@@ -318,7 +350,21 @@ do
 	check(mainGui ~= nil, "Pack Party shows the pack buttons")
 	check(buttonWithText("Open 1 pack") ~= nil and buttonWithText("Open 10 packs") ~= nil, "Open 1 / Open 10 buttons show")
 	click(buttonWithText("Open 1 pack"), "Open 1 pack")
-	M.advance(1)
+	M.advance(0.4)
+	-- the pack is in your hands first: tap it three times
+	local tease = playerGui:FindFirstChild("PackTease")
+	check(tease ~= nil, "the pack rises up to be tapped open")
+	check(Workspace:FindFirstChild("PackBrawlScene") == nil, "the brawl waits for the pack to be opened")
+	M.advance(0.4)
+	for k = 1, 3 do
+		if tease and tease.Parent then
+			click(tease:FindFirstChild("TapPack"), "tap the pack")
+			M.advance(0.25)
+		end
+	end
+	check(tease and #tease:FindFirstChild("Pack"):GetChildren() > 0 and tease:FindFirstChild("Crack", true) ~= nil, "taps crack the pack open")
+	M.advance(1.6)
+	check(playerGui:FindFirstChild("PackTease") == nil, "the pack flies off into the ring")
 	local scene = Workspace:FindFirstChild("PackBrawlScene")
 	check(scene ~= nil, "opening a pack starts the Pack Brawl")
 	check(mainGui and mainGui.Enabled == false, "the menu hides during the brawl")

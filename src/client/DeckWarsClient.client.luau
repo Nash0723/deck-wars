@@ -80,6 +80,11 @@ local CAMS = {
 	ShopCounter = { Vector3.new(9, 8.5, 9), Vector3.new(16, 5.2, 17.5) },
 	TrophyWall = { Vector3.new(11, 9, 0), Vector3.new(23.5, 8, 0) },
 	Radio = { Vector3.new(-13, 6.2, -13), Vector3.new(-17.2, 3.6, -18.2) },
+	-- the title screen: a slow push across the room behind the logo
+	TitleFrom = { Vector3.new(-15, 12.5, 19), Vector3.new(0, 4.5, 0), 60 },
+	TitleTo = { Vector3.new(-5, 8.5, 13), Vector3.new(0, 4.6, -1), 55 },
+	-- after PLAY the camera starts low over the table and rises to the overview
+	Entrance = { Vector3.new(0, 7.2, 9.5), Vector3.new(0, 4.4, -2), 50 },
 }
 local DEFAULT_FOV = 70
 local cam = {
@@ -400,6 +405,7 @@ local function button(parent, text, color, onClick, props)
 	if onClick then
 		b.Activated:Connect(onClick)
 	end
+	require(Shared:WaitForChild("Juice")).button(b) -- grows on hover, squishes on press, clicks
 	return b
 end
 
@@ -737,13 +743,15 @@ local ui = {}
 ---------------------------------------------------------------------------
 
 ui.menuUI = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, gui)
-label(ui.menuUI, "DECK WARS", {
+ui.menuTitle = label(ui.menuUI, "DECK WARS", {
+	Name = "MenuTitle",
 	Size = UDim2.fromOffset(420, 64),
 	Position = UDim2.fromOffset(24, 64),
-	TextColor3 = Color3.fromRGB(255, 220, 90),
-	TextStrokeTransparency = 0,
+	Font = Enum.Font.GothamBlack,
 	TextXAlignment = Enum.TextXAlignment.Left,
 })
+make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 238, 170), Color3.fromRGB(255, 156, 40)) }, ui.menuTitle)
+make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(28, 18, 10) }, ui.menuTitle)
 label(ui.menuUI, "Click a part of the room or the buttons below. A / D or ← / → look around, S goes back", {
 	Name = "MenuHint",
 	Size = UDim2.fromOffset(620, 24),
@@ -1068,11 +1076,20 @@ do
 	-- Which station the camera is at (nil = the overview), and its nav button lit up.
 	local current = nil
 	local navButtons = {}
-	local NAV_IDLE = Color3.fromRGB(70, 60, 110)
-	local NAV_HERE = Color3.fromRGB(160, 115, 40)
+	local NAV_IDLE = Color3.fromRGB(34, 30, 52)
+	local NAV_HERE = Color3.fromRGB(70, 56, 30)
+	local NAV_ICONS = { DuelTable = "⚔", DeckShelf = "📚", PackParty = "🎁", ShopCounter = "🛒", TrophyWall = "🏆", Radio = "⚙" }
 	local function markNav()
 		for key, b in pairs(navButtons) do
-			b.BackgroundColor3 = key == current and NAV_HERE or NAV_IDLE
+			local here = key == current
+			b.BackgroundColor3 = here and NAV_HERE or NAV_IDLE
+			local accent = b:FindFirstChild("Accent")
+			if accent then
+				TweenService:Create(accent, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = here and UDim2.new(0.8, 0, 0, 4) or UDim2.new(0, 0, 0, 4) }):Play()
+			end
+			if here then
+				require(Shared:WaitForChild("Juice")).pop(b, 1.15, 0.5)
+			end
 		end
 	end
 
@@ -1081,11 +1098,24 @@ do
 		if not s or mode ~= "menu" then
 			return
 		end
+		local Juice = require(Shared:WaitForChild("Juice"))
+		if current ~= key then
+			Juice.sound("whoosh", 1, 0.35)
+			-- the panel slides in from the right and settles
+			ui.stationPanel.Position = UDim2.new(1, 60, 0.5, -20)
+			TweenService:Create(ui.stationPanel, TweenInfo.new(0.45, Enum.EasingStyle.Back), { Position = UDim2.new(1, -24, 0.5, -20) }):Play()
+		end
 		current = key
 		markNav()
 		moveCamera(key)
 		ui.stationPanel.Visible = true
 		s.show()
+		-- the panel's contents fade up one after another
+		for k, child in ipairs(ui.stationBody:GetChildren()) do
+			if child:IsA("GuiObject") and k <= 12 then
+				Juice.popIn(child, 0.05 + k * 0.03, { twist = 0, sound = false, time = 0.3 })
+			end
+		end
 	end
 
 	local function goBack()
@@ -1105,7 +1135,14 @@ do
 	for i, s in ipairs(STATIONS) do
 		navButtons[s.key] = button(ui.navBar, s.name, NAV_IDLE, function()
 			selectStation(s.key)
-		end, { LayoutOrder = i, Size = UDim2.fromOffset(150, 52) })
+		end, { LayoutOrder = i, Size = UDim2.fromOffset(150, 52), Font = Enum.Font.GothamBold })
+		local b = navButtons[s.key]
+		b.TextColor3 = Color3.fromRGB(240, 232, 215)
+		b:FindFirstChildOfClass("UIPadding").PaddingLeft = UDim.new(0, 34)
+		b:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(120, 96, 50)
+		label(b, NAV_ICONS[s.key] or "", { Name = "Icon", Size = UDim2.new(0, 24, 1, 0), Position = UDim2.fromOffset(-28, 0), Font = Enum.Font.GothamBold })
+		local accent = make("Frame", { Name = "Accent", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, -13, 1, 4), Size = UDim2.new(0, 0, 0, 4), BackgroundColor3 = Color3.fromRGB(255, 214, 102), BorderSizePixel = 0 }, b)
+		corner(accent, 2)
 	end
 	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), goBack, { LayoutOrder = 99, Size = UDim2.fromOffset(110, 52) })
 
@@ -5276,9 +5313,14 @@ do
 			if station then
 				highlight.Adornee = station
 				highlight.Enabled = true
+				-- the hovered station glows with a soft gold pulse
+				highlight.FillTransparency = 0.82 + math.sin(clock * 5) * 0.06
+				highlight.OutlineTransparency = 0.1 + math.sin(clock * 5) * 0.1
 			else
 				highlight.Enabled = false
 			end
+		elseif mode == "title" then
+			highlight.Enabled = false
 		else
 			updateTurnText()
 			updateHover()
@@ -5295,4 +5337,34 @@ do
 	end)
 end
 
-moveCamera("Overview", true)
+-- The opening: the title screen over a slow camera push across the room. PLAY flies the camera
+-- in from low over the table up to the overview, and the menu pops in piece by piece.
+ui.startTitle = function()
+	local Juice = require(Shared:WaitForChild("Juice"))
+	local TitleScreen = require(Shared:WaitForChild("TitleScreen"))
+	mode = "title"
+	ui.menuUI.Visible = false
+	moveCamera("TitleFrom", true)
+	glideCamera(CAMS.TitleTo[1], CAMS.TitleTo[2], 40, CAMS.TitleTo[3])
+	TitleScreen.show({
+		onPlay = function()
+			mode = "menu"
+			moveCamera("Entrance", true)
+			glideCamera(CAMS.Overview[1], CAMS.Overview[2], 2.4)
+			task.wait(0.5)
+			ui.menuUI.Visible = true
+			Juice.popIn(ui.menuTitle, 0.1, { twist = -6, sound = false })
+			local hint = ui.menuUI:FindFirstChild("MenuHint")
+			if hint then
+				hint.TextTransparency = 1
+				TweenService:Create(hint, TweenInfo.new(0.6), { TextTransparency = 0 }):Play()
+			end
+			for k, b in ipairs(ui.navBar:GetChildren()) do
+				if b:IsA("GuiButton") then
+					Juice.popIn(b, 0.35 + b.LayoutOrder % 20 * 0.06, { twist = 0, pitch = 0.9 + (b.LayoutOrder % 20) * 0.05 })
+				end
+			end
+		end,
+	})
+end
+ui.startTitle()
