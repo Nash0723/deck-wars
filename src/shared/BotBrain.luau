@@ -46,7 +46,21 @@ local function unitValue(m, u)
 	if u.kind == "building" then
 		-- Buildings are pricey and keep working every turn: worth about what they cost.
 		local def = CardData.Cards[u.id]
-		return 1.5 + (def and def.cost or 2) * 1.1 + u.hp * 0.35
+		local v = 1.5 + (def and def.cost or 2) * 1.1 + u.hp * 0.35
+		-- A lane building is worth a bit more in a lane where things happen: its effects (heals,
+		-- shots, Haunt, Fast...) only reach that column. Turn-start effects don't show up when the
+		-- bot tries a move on a copy, so this nudges it toward the right slot.
+		if def and def.area == "lane" then
+			local busy = 0
+			for row = 1, ROWS do
+				local x = m:at(u.col, row)
+				if x and x.kind == "creature" then
+					busy += 1
+				end
+			end
+			v += 0.3 * math.min(busy, 4)
+		end
+		return v
 	end
 	local atk = m:attackOf(u)
 	local v = atk * 1.6 + u.hp * 1.0 + 1.5

@@ -329,9 +329,9 @@ do -- start of turn: Charge, Spiked Fence, Snack Bar, Scrap Catapult, Haunted Ar
 	local behind = stats(m:spawn(2, 3, 6, "skeleton_mascot"), 2, 3) -- further up the lane
 	local side = stats(m:spawn(2, 2, 5, "skeleton_mascot"), 2, 3) -- another lane
 	m:build(1, 1, 0, "snack_bar")
-	local hurt = stats(m:spawn(1, 4, 1, "pretzel_guard"), 2, 4) -- Backline, other lane: row buildings don't care
+	local hurt = stats(m:spawn(1, 1, 3, "pretzel_guard"), 2, 4) -- in the Snack Bar's lane (Frontline)
 	hurt.hp = 1
-	local midHurt = stats(m:spawn(1, 4, 2, "pretzel_guard"), 2, 4) -- Midline: not healed
+	local midHurt = stats(m:spawn(1, 4, 2, "pretzel_guard"), 2, 4) -- another lane: not healed
 	midHurt.hp = 1
 	m:build(1, 2, 0, "lemonade_stand")
 	m:build(1, 4, 0, "haunted_arcade")
@@ -339,7 +339,7 @@ do -- start of turn: Charge, Spiked Fence, Snack Bar, Scrap Catapult, Haunted Ar
 	m:startTurn(1)
 	check(bug.power == 1 and bug.chargeLeft == 1 and m:attackOf(bug) == 2, "Charge gives 1 Power (+1 attack)")
 	check(victim.hp == 2 and behind.hp == 3 and side.hp == 3, "Spiked Fence hits only the nearest enemy creature in its lane")
-	check(hurt.hp == 3 and midHurt.hp == 1, "Snack Bar heals your Backline 2, not your Midline")
+	check(hurt.hp == 3 and midHurt.hp == 1, "Snack Bar heals your creatures in its lane 2, not in other lanes")
 	check(hurt.power == 1, "and Sweet Tooth gives the healed Snack Power")
 	check(m.players[1].energy == m.players[1].maxEnergy + 1, "Lemonade Stand gives 1 extra energy")
 	local ghosts = 0

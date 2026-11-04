@@ -1170,11 +1170,10 @@ function MatchEngine:startOfTurnAbility(p, u)
 			self:soak(e)
 		end
 	elseif id == "snack_bar" or id == "disco_cactus" then
-		-- Row buildings: Snack Bar helps your Backline, Disco Cactus your Midline.
-		local line = id == "snack_bar" and 1 or 2
+		-- Snack Bar heals your creatures in its lane; Disco Cactus helps your Midline (a row).
 		local friends = {}
 		for _, f in ipairs(self:unitsOf(p, "creature")) do
-			if lineOf(p, f.row) == line then
+			if (id == "snack_bar" and f.col == u.col) or (id == "disco_cactus" and lineOf(p, f.row) == 2) then
 				table.insert(friends, f)
 			end
 		end
