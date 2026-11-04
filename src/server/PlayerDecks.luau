@@ -73,7 +73,7 @@ end
 local function grant(player, ids)
 	local eco = getEconomy()
 	if eco and eco.grantCards then
-		eco.grantCards(player, ids)
+		eco.grantCards(player, ids, "starter")
 		return
 	end
 	local m = memory[player]

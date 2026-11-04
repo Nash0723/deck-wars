@@ -17,6 +17,10 @@ local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
 local Settings = require(Shared:WaitForChild("Settings"))
 local DeckRules = require(Shared:WaitForChild("DeckRules"))
 local PlayerDecks = require(game:GetService("ServerScriptService"):WaitForChild("PlayerDecks"))
+-- Coins and XP for finished matches (EconomyServer + ServerStorage.DeckWarsServer). Optional:
+-- without it matches just don't pay.
+local economyModule = game:GetService("ServerStorage"):FindFirstChild("EconomyManager", true)
+local Economy = economyModule and require(economyModule) or nil
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MatchEvent = Remotes:WaitForChild("MatchEvent") -- server -> client: board updates
@@ -188,6 +192,20 @@ local function finishIfOver(info)
 		local seq = sendUpdate(info, { result = result })
 		task.spawn(function()
 			waitForClient(info, seq)
+			-- pay out once the player has seen the last blow
+			if Economy then
+				local ok, reward = pcall(Economy.matchReward, info.player, {
+					result = result,
+					difficulty = info.difficulty,
+					seconds = now() - (info.startedAt or now()),
+					turns = math.floor((info.engine.turn or 0) / 2),
+				})
+				if ok and reward and Economy.announce then
+					Economy.announce(info.player, "reward", reward)
+				elseif not ok then
+					warn("Deck Wars: match reward failed: " .. tostring(reward))
+				end
+			end
 			task.wait(5)
 			endMatch(info, "finished")
 		end)
@@ -339,6 +357,7 @@ local function startBotMatch(player, options)
 		deadlines = {},
 		ended = false,
 		botRunning = false,
+		startedAt = now(),
 	}
 	matches[player] = info
 	info.botAvatar = buildBotAvatar(info.botName)

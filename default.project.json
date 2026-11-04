@@ -32,6 +32,18 @@
         "PullResult": {
           "$className": "RemoteEvent"
         }
+      },
+      "EconomyRemotes": {
+        "$className": "Folder",
+        "ShopAction": {
+          "$className": "RemoteEvent"
+        },
+        "EconomyEvent": {
+          "$className": "RemoteEvent"
+        },
+        "DevAction": {
+          "$className": "RemoteEvent"
+        }
       }
     },
     "ServerScriptService": {
@@ -43,6 +55,25 @@
       },
       "PullServer": {
         "$path": "src/pullserver/PullServer.server.luau"
+      },
+      "EconomyServer": {
+        "$path": "src/server/EconomyServer.server.luau"
+      }
+    },
+    "ServerStorage": {
+      "DeckWarsServer": {
+        "$path": "src/econ"
+      },
+      "DevControls": {
+        "$className": "ScreenGui",
+        "$properties": {
+          "ResetOnSpawn": false,
+          "DisplayOrder": 50,
+          "ZIndexBehavior": "Sibling"
+        },
+        "DevPanel": {
+          "$path": "src/devcontrols/DevPanel.client.luau"
+        }
       }
     },
     "StarterPlayer": {
