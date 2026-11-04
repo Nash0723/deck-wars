@@ -30,19 +30,21 @@ CardData.MaxEnergy = 8
 CardData.MaxHand = 8
 CardData.DeckSize = 30
 CardData.MaxCopies = 3
--- The tile board: 5 columns wide, 6 rows deep. Each player owns the 3 rows nearest them
--- and summons creatures on their back 2 rows.
-CardData.Cols = 5
+-- The board: 4 lanes (columns) and 6 rows, 3 for each player: Backline (nearest you), Midline and
+-- Frontline. Rows are counted from player 1's side: rows 1-3 are player 1's, 4-6 player 2's.
+-- Behind each player's Backline is their building row: one building slot per lane (row 0 for
+-- player 1, row Rows + 1 for player 2). Creatures summon on your Backline and Midline.
+CardData.Cols = 4
 CardData.Rows = 6
 CardData.HomeRows = 3
 CardData.SummonRows = 2
+CardData.Lines = { "Backline", "Midline", "Frontline" } -- your rows, from your edge to the middle
 -- A creature standing anywhere in the enemy's half (their 3 rows) can attack the enemy hero.
 CardData.HeroAttackRows = 3
 -- Going first or second. The first player starts with 4 cards and the second with 5.
 -- Everyone draws a card at the start of every turn, except the first player on their very
--- first turn. In bot-vs-bot games (Hard) the first player won about 61% when they also drew
--- on turn one, and 45-50% without it (45% in the last 1,080 games). Giving the second
--- player a Spare Battery instead didn't help (still 61%).
+-- first turn (on the old 5 x 6 board the first player won about 61% of bot games when they also
+-- drew on turn one, and 45-50% without it).
 CardData.FirstTurnDraw = false -- true: the first player also draws on their very first turn
 CardData.SecondPlayerCard = nil -- put a card id here (like "spare_battery") to give the second player a bonus card
 
@@ -157,18 +159,18 @@ CardData.Cards = {
 	mystery_box = { id = "mystery_box", name = "Mystery Box", type = "Spell", family = "Any", cost = 3, text = "Add 2 random cards to your hand. They cost 1 less", rarity = "Mythic", keywords = {} },
 	earthquake_dance = { id = "earthquake_dance", name = "Earthquake Dance", type = "Spell", family = "Any", cost = 6, text = "Deal 3 damage to every creature", rarity = "Mythic", keywords = {} },
 	total_chaos = { id = "total_chaos", name = "Total Chaos", type = "Spell", family = "Any", cost = 5, text = "Every creature jumps to a random empty tile and the terrain changes", rarity = "Legendary", keywords = {} },
-	spiked_fence = { id = "spiked_fence", name = "Spiked Fence", type = "Building", family = "Any", cost = 1, atk = 0, hp = 4, text = "At the start of your turn, deal 1 damage to each enemy creature next to it", rarity = "Common", keywords = {} },
-	bouncy_castle = { id = "bouncy_castle", name = "Bouncy Castle", type = "Building", family = "Any", cost = 2, atk = 0, hp = 3, text = "Your creatures next to it have Sturdy", rarity = "Common", keywords = {} },
-	snack_bar = { id = "snack_bar", name = "Snack Bar", type = "Building", family = "Snack", cost = 2, atk = 0, hp = 4, text = "At the start of your turn, heal your creatures next to it 2", rarity = "Common", keywords = {} },
-	bunny_burrow = { id = "bunny_burrow", name = "Bunny Burrow", type = "Building", family = "Critter", cost = 2, atk = 0, hp = 3, text = "You can summon creatures on empty tiles next to it", rarity = "Rare", keywords = {} },
-	wind_turbine = { id = "wind_turbine", name = "Wind Turbine", type = "Building", family = "Weather", cost = 2, atk = 0, hp = 4, text = "Your creatures next to it have Fast", rarity = "Rare", keywords = {} },
-	lemonade_stand = { id = "lemonade_stand", name = "Lemonade Stand", type = "Building", family = "Any", cost = 2, atk = 0, hp = 3, text = "Gain 1 extra energy each turn (doesn't stack)", rarity = "Rare", keywords = {} },
-	spooky_crypt = { id = "spooky_crypt", name = "Spooky Crypt", type = "Building", family = "Spooky", cost = 2, atk = 0, hp = 4, text = "Your creatures next to it have Haunt", rarity = "Rare", keywords = {} },
-	disco_cactus = { id = "disco_cactus", name = "Disco Cactus", type = "Building", family = "Any", cost = 3, atk = 0, hp = 4, text = "At the start of your turn, Roll: your creatures next to it get +1 attack, or heal 2", rarity = "Epic", keywords = {} },
-	charging_station = { id = "charging_station", name = "Charging Station", type = "Building", family = "Robo", cost = 3, atk = 0, hp = 4, text = "Your creatures next to it have +1 attack", rarity = "Epic", keywords = {} },
-	scrap_catapult = { id = "scrap_catapult", name = "Scrap Catapult", type = "Building", family = "Junk", cost = 3, atk = 0, hp = 4, text = "At the start of your turn, deal 2 damage to a random enemy creature", rarity = "Epic", keywords = {} },
-	haunted_arcade = { id = "haunted_arcade", name = "Haunted Arcade", type = "Building", family = "Any", cost = 4, atk = 0, hp = 5, text = "At the start of your turn, spawn a 1/1 Ghost with Haunt on an empty tile next to it", rarity = "Mythic", keywords = {} },
-	rocket_lunchbox = { id = "rocket_lunchbox", name = "Rocket Lunchbox", type = "Building", family = "Any", cost = 5, atk = 0, hp = 6, text = "At the start of your turn, deal 2 damage to the enemy hero", rarity = "Legendary", keywords = {} },
+	spiked_fence = { id = "spiked_fence", name = "Spiked Fence", type = "Building", family = "Any", cost = 2, atk = 0, hp = 5, text = "At the start of your turn, deal 1 damage to the nearest enemy creature in its lane", rarity = "Common", keywords = {}, area = "lane" },
+	bouncy_castle = { id = "bouncy_castle", name = "Bouncy Castle", type = "Building", family = "Any", cost = 3, atk = 0, hp = 4, text = "Your Frontline creatures have Sturdy", rarity = "Common", keywords = {}, area = "Frontline" },
+	snack_bar = { id = "snack_bar", name = "Snack Bar", type = "Building", family = "Snack", cost = 3, atk = 0, hp = 5, text = "At the start of your turn, heal your Backline creatures 2", rarity = "Common", keywords = {}, area = "Backline" },
+	bunny_burrow = { id = "bunny_burrow", name = "Bunny Burrow", type = "Building", family = "Critter", cost = 2, atk = 0, hp = 4, text = "You can summon creatures anywhere in its lane on your half. When built, a 1/1 Pigeon hops into its lane", rarity = "Rare", keywords = {}, area = "lane" },
+	wind_turbine = { id = "wind_turbine", name = "Wind Turbine", type = "Building", family = "Weather", cost = 3, atk = 0, hp = 4, text = "Your creatures in its lane have Fast. At the start of your turn, Soak the nearest enemy creature in its lane", rarity = "Rare", keywords = {}, area = "lane" },
+	lemonade_stand = { id = "lemonade_stand", name = "Lemonade Stand", type = "Building", family = "Any", cost = 3, atk = 0, hp = 4, text = "Gain 1 extra energy each turn (doesn't stack)", rarity = "Rare", keywords = {}, area = "any" },
+	spooky_crypt = { id = "spooky_crypt", name = "Spooky Crypt", type = "Building", family = "Spooky", cost = 3, atk = 0, hp = 5, text = "Your creatures in its lane have Haunt", rarity = "Rare", keywords = {}, area = "lane" },
+	disco_cactus = { id = "disco_cactus", name = "Disco Cactus", type = "Building", family = "Any", cost = 3, atk = 0, hp = 4, text = "At the start of your turn, Roll: your Midline creatures get +1 attack, or heal 2", rarity = "Epic", keywords = {}, area = "Midline" },
+	charging_station = { id = "charging_station", name = "Charging Station", type = "Building", family = "Robo", cost = 3, atk = 0, hp = 5, text = "Your creatures in its lane have +1 attack (Robos +2)", rarity = "Epic", keywords = {}, area = "lane" },
+	scrap_catapult = { id = "scrap_catapult", name = "Scrap Catapult", type = "Building", family = "Junk", cost = 4, atk = 0, hp = 5, text = "At the start of your turn, deal 2 damage to the nearest enemy creature in its lane (a random enemy creature if its lane is clear)", rarity = "Epic", keywords = {}, area = "lane" },
+	haunted_arcade = { id = "haunted_arcade", name = "Haunted Arcade", type = "Building", family = "Any", cost = 4, atk = 0, hp = 5, text = "At the start of your turn, a 1/1 Ghost with Haunt appears in its lane on your half", rarity = "Mythic", keywords = {}, area = "lane" },
+	rocket_lunchbox = { id = "rocket_lunchbox", name = "Rocket Lunchbox", type = "Building", family = "Any", cost = 6, atk = 0, hp = 6, text = "At the start of your turn, a rocket flies up its lane: 3 damage to the first enemy creature in its way, the rest hits the enemy hero", rarity = "Legendary", keywords = {}, area = "lane" },
 	captain_confetti = { id = "captain_confetti", name = "Captain Confetti", type = "Creature", family = "Critter", cost = 6, atk = 5, hp = 5, text = "Zoom. When played, give each of your creatures a random keyword", rarity = "Secret", keywords = {Zoom = true} },
 	omega_microwave = { id = "omega_microwave", name = "Omega Microwave", type = "Creature", family = "Robo", cost = 9, atk = 8, hp = 10, text = "Sturdy. At the start of your turn, deal 3 damage to every enemy creature", rarity = "Secret", keywords = {Sturdy = true} },
 	-- Tokens (made by other cards, not in packs)

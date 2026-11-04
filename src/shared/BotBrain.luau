@@ -44,7 +44,9 @@ end
 
 local function unitValue(m, u)
 	if u.kind == "building" then
-		return 3 + u.hp * 0.5
+		-- Buildings are pricey and keep working every turn: worth about what they cost.
+		local def = CardData.Cards[u.id]
+		return 1.5 + (def and def.cost or 2) * 1.1 + u.hp * 0.35
 	end
 	local atk = m:attackOf(u)
 	local v = atk * 1.6 + u.hp * 1.0 + 1.5
@@ -185,10 +187,10 @@ local function boardScore(m, p, careful)
 	-- Scrap on the board is worth something to a Junk deck (its creatures pick it up).
 	local scrap = m:scrapTotal()
 	if scrap > 0 then
-		if me.family == "Junk" then
+		if table.find(me.themes or { me.family }, "Junk") then
 			s += scrap * 0.7
 		end
-		if them.family == "Junk" then
+		if table.find(them.themes or { them.family }, "Junk") then
 			s -= scrap * 0.7
 		end
 	end

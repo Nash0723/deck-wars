@@ -1,6 +1,8 @@
 -- Deck Wars match server.
 -- Runs every match with the MatchEngine, so players can't cheat from their own screen.
--- Matches against a bot on the 5 x 6 tile board. PvP comes in step 3.
+-- Matches against a bot on the 4-lane board (3 rows per side plus a building row). PvP comes later.
+-- You play one of your own decks (built at the Deck Shelf from the cards you own) or borrow
+-- one of the six practice decks.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +15,8 @@ local CardData = require(Shared:WaitForChild("CardData"))
 local Rng = require(Shared:WaitForChild("Rng"))
 local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
 local Settings = require(Shared:WaitForChild("Settings"))
+local DeckRules = require(Shared:WaitForChild("DeckRules"))
+local PlayerDecks = require(game:GetService("ServerScriptService"):WaitForChild("PlayerDecks"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MatchEvent = Remotes:WaitForChild("MatchEvent") -- server -> client: board updates
@@ -277,20 +281,37 @@ end
 -- Starting a match
 ---------------------------------------------------------------------------
 
-local function startBotMatch(player, deckKey, difficulty)
+-- options.slot = one of your saved decks, or options.deck = a practice deck's key ("Snack"...).
+local function startBotMatch(player, options)
 	if matches[player] then
 		return
 	end
-	local mine = StarterDecks[deckKey]
-	if not mine or not DIFFICULTIES[difficulty] then
+	local difficulty = options.difficulty
+	if not DIFFICULTIES[difficulty] then
 		return
+	end
+	local mySetup, myThemes
+	if options.slot ~= nil then
+		local setup, why = PlayerDecks.setupFor(player, options.slot)
+		if not setup then
+			MenuAction:FireClient(player, "MatchRefused", type(why) == "string" and why or "That deck can't be played yet")
+			return
+		end
+		mySetup, myThemes = setup, setup.themes
+	else
+		local practice = StarterDecks[options.deck]
+		if not practice then
+			return
+		end
+		mySetup = DeckRules.setupFor(DeckRules.fromPractice(practice))
+		myThemes = mySetup.themes
 	end
 	local seed = math.floor(now() * 1000) % 2147483647
 	local rng = Rng.new(seed)
-	-- The bot plays one of the other five themed decks.
+	-- The bot plays one of the practice decks, never one of your own themes.
 	local others = {}
 	for _, key in ipairs(StarterDecks.Order) do
-		if key ~= deckKey then
+		if not table.find(myThemes, key) then
 			table.insert(others, key)
 		end
 	end
@@ -298,8 +319,8 @@ local function startBotMatch(player, deckKey, difficulty)
 	local human = rng:int(1, 2) -- coin flip for who goes first
 	local bot = 3 - human
 	local setups = {}
-	setups[human] = { deck = mine.cards, hero = mine.hero, family = mine.family }
-	setups[bot] = { deck = botDeck.cards, hero = botDeck.hero, family = botDeck.family }
+	setups[human] = mySetup
+	setups[bot] = DeckRules.setupFor(DeckRules.fromPractice(botDeck))
 
 	local info = {
 		player = player,
@@ -497,7 +518,25 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 		entry.values = Settings.sanitize(options)
 		entry.dirty = true
 	elseif what == "StartBotMatch" and type(options) == "table" then
-		startBotMatch(player, options.deck, options.difficulty)
+		startBotMatch(player, { difficulty = options.difficulty, deck = type(options.deck) == "string" and options.deck or nil, slot = type(options.slot) == "number" and options.slot or nil })
+	elseif what == "GetDecks" then
+		local snap = PlayerDecks.snapshot(player)
+		if snap then
+			MenuAction:FireClient(player, "Decks", snap)
+		end
+	elseif what == "SaveDeck" and type(options) == "table" then
+		local ok, problems = PlayerDecks.saveDeck(player, options.slot, options.deck)
+		MenuAction:FireClient(player, "DeckSaved", { slot = options.slot, ok = ok, problems = problems })
+		local snap = PlayerDecks.snapshot(player)
+		if snap then
+			MenuAction:FireClient(player, "Decks", snap)
+		end
+	elseif what == "DeleteDeck" and type(options) == "table" then
+		PlayerDecks.deleteDeck(player, options.slot)
+		local snap = PlayerDecks.snapshot(player)
+		if snap then
+			MenuAction:FireClient(player, "Decks", snap)
+		end
 	elseif what == "LeaveMatch" then
 		local info = matches[player]
 		if info then
@@ -506,11 +545,23 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 	end
 end)
 
+-- New players get the starter collection (4 starter characters and the Starter Deck).
+local function welcome(player)
+	task.spawn(function()
+		pcall(PlayerDecks.ensureStarter, player)
+	end)
+end
+Players.PlayerAdded:Connect(welcome)
+for _, player in ipairs(Players:GetPlayers()) do
+	welcome(player)
+end
+
 Players.PlayerRemoving:Connect(function(player)
 	local info = matches[player]
 	if info then
 		endMatch(info, "left")
 	end
+	PlayerDecks.forget(player)
 	local entry = playerSettings[player]
 	if entry then
 		playerSettings[player] = nil

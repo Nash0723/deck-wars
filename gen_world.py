@@ -1,7 +1,8 @@
 # Generates src/world/MenuRoom.model.json: the cozy game room with all stations and the duel table.
 # Props are built with modelkit (same kit as the creatures) and converted to Rojo model JSON.
 # Names the scripts rely on: Stations/<DuelTable|DeckShelf|PackParty|ShopCounter|TrophyWall|Radio>,
-# DuelTable/Seat_Near, Seat_Far, Board/Tile_<column 1-5>_<row 1-6> (row 1 nearest Seat_Near), Hero_<side>,
+# DuelTable/Seat_Near, Seat_Far, Board/Tile_<column 1-4>_<row 1-6> (row 1 nearest Seat_Near), building slots
+# Board/Tile_<column>_0 (near) and Tile_<column>_7 (far), Hero_<side>,
 # HeroGlow_<side>, Energy_<side>_<1-8>, Deck_<side>, Discard_<side>, TableLamp,
 # Structure/FireLight, PackParty/MachineBase, DiscoBall, DiscoTile, PartyLight*, StringLight, and "Sign" billboards.
 import json, math
@@ -308,24 +309,38 @@ structure.append({"Name": "SpawnLocation", "ClassName": "SpawnLocation", "Proper
     "Transparency": 1, "CanCollide": False, "Neutral": True, "Duration": 0}})
 
 # ---------------------------------------------------------------------------
-# Duel table (center): a 5 x 6 board of tiles
+# Duel table (center): 4 lanes x 6 rows of tiles, and a row of building slots behind each side
 # ---------------------------------------------------------------------------
 # Tiles are numbered from the near chair: Tile_<column>_<row>, column 1 on the left,
-# row 1 nearest the near chair. The client turns the board around for whoever sits far.
-COLS, ROWS = 5, 6
-PITCH = 2.4          # distance between tile centers
-TILE = 2.16          # tile size; the rest is the groove between tiles
+# row 1 nearest the near chair. Row 0 is the near building row, row 7 the far one.
+# The client turns the board around for whoever sits far.
+# The tiles sit edge to edge with only a hairline seam, so a lane of the same terrain reads as
+# one continuous strip of ground (the seam is the subtle tile outline).
+COLS, ROWS = 4, 6
+PITCH_X = 2.6        # distance between lane centers
+PITCH = 2.4          # distance between row centers
+SEAM = 0.07          # the hairline between tiles
+TILE_W, TILE_D = PITCH_X - SEAM, PITCH - SEAM
+SLOT_GAP = 0.42      # gap between a Backline and its building row
+SLOT_D = 1.95        # depth of a building slot
 TOP = 4.0            # table top surface
 FELT_TOP = 4.1
 TW, TD = 25.0, 22.0  # table top size (x, z)
 HX, HZ = -8.75, 3.9  # hero pedestals (x, distance from the middle line)
 CHAIR_Z = 13.7
-BW, BD = COLS * PITCH, ROWS * PITCH  # 12 x 14.4
+BW, BD = COLS * PITCH_X, ROWS * PITCH  # 10.4 x 14.4 (tiles only)
+SLOT_Z = BD / 2 + SLOT_GAP + SLOT_D / 2   # distance of the building rows from the middle line
+BD_ALL = 2 * (SLOT_Z + SLOT_D / 2)        # depth with the building rows
 TILE_Y = FELT_TOP + 0.22  # tile center height (tile top at FELT_TOP + 0.32)
 
 
 def tile_xz(wc, wr):
-    return ((wc - (COLS + 1) / 2) * PITCH, ((ROWS + 1) / 2 - wr) * PITCH)
+    x = (wc - (COLS + 1) / 2) * PITCH_X
+    if wr == 0:
+        return (x, SLOT_Z)
+    if wr == ROWS + 1:
+        return (x, -SLOT_Z)
+    return (x, ((ROWS + 1) / 2 - wr) * PITCH)
 
 
 t = Model("DuelTable")
@@ -353,15 +368,22 @@ for (sx, sz, x, z) in [(2 * ix, 0.12, 0, iz), (2 * ix, 0.12, 0, -iz), (0.12, 2 *
     t.blk("Inlay", (sx, 0.02, sz), (x, FELT_TOP + 0.01, z), BRASS, mat="Metal")
 
 # the board: a dark bed for the grooves, a wooden frame, and a brass line across the middle
-t.blk("BoardBed", (BW + 0.3, 0.12, BD + 0.3), (0, FELT_TOP + 0.06, 0), (46, 36, 32), mat="Wood")
-fz, fx = BD / 2 + 0.38, BW / 2 + 0.38
-for (sx, sz, x, z) in [(BW + 1.5, 0.46, 0, fz), (BW + 1.5, 0.46, 0, -fz), (0.46, BD + 0.3, fx, 0), (0.46, BD + 0.3, -fx, 0)]:
+t.blk("BoardBed", (BW + 0.3, 0.12, BD_ALL + 0.3), (0, FELT_TOP + 0.06, 0), (34, 28, 26), mat="Wood")
+fz, fx = BD_ALL / 2 + 0.38, BW / 2 + 0.38
+for (sx, sz, x, z) in [(BW + 1.5, 0.46, 0, fz), (BW + 1.5, 0.46, 0, -fz), (0.46, BD_ALL + 0.3, fx, 0), (0.46, BD_ALL + 0.3, -fx, 0)]:
     t.blk("BoardFrame", (sx, 0.4, sz), (x, FELT_TOP + 0.2, z), OAK, mat="Wood", refl=0.04)
 for (x, z) in [(-fx, -fz), (fx, -fz), (-fx, fz), (fx, fz)]:
     t.cyl("FrameCap", 0.16, 0.62, (x, FELT_TOP + 0.44, z), BRASS, mat="Metal", refl=0.15)
 t.blk("HalfwayLine", (BW + 0.2, 0.04, 0.12), (0, FELT_TOP + 0.14, 0), BRASS, mat="Metal", refl=0.2)
 for sx in (-1, 1):
     t.blk("HalfwayMark", (0.5, 0.06, 0.5), (sx * fx, FELT_TOP + 0.42, 0), BRASS, mat="Metal", R=rot(y=45), refl=0.2)
+# a thin brass rail between each side's tiles and its building row, and small lane studs on the frame
+for sz in (-1, 1):
+    t.blk("BuildRail", (BW + 0.2, 0.05, 0.08), (0, FELT_TOP + 0.15, sz * (BD / 2 + SLOT_GAP / 2)), BRASS, mat="Metal", refl=0.2)
+for wc in range(1, COLS + 1):
+    x = (wc - (COLS + 1) / 2) * PITCH_X
+    for sz in (-1, 1):
+        t.cyl("LaneStud", 0.06, 0.22, (x, FELT_TOP + 0.43, sz * fz), BRASS, mat="Metal", refl=0.2)
 
 # chairs
 def chair(m, z, facing):
@@ -421,10 +443,14 @@ plinths = []
 for wr in range(1, ROWS + 1):
     for wc in range(1, COLS + 1):
         x, z = tile_xz(wc, wr)
-        shade = 138 if (wc + wr) % 2 == 0 else 124
-        named[f"Tile_{wc}_{wr}"] = b.blk(f"Tile_{wc}_{wr}", (TILE, 0.2, TILE), (x, TILE_Y, z), (shade, shade - 8, shade - 20), mat="Slate")
-        # a dark plinth under every tile: a stepped edge that makes the tiles read as thick slabs
-        plinths.append(b.blk("TilePlinth", (TILE + 0.12, 0.14, TILE + 0.12), (x, FELT_TOP + 0.19, z), (44, 38, 36), mat="Slate"))
+        # one even surface: the client paints each tile with its lane's terrain
+        named[f"Tile_{wc}_{wr}"] = b.blk(f"Tile_{wc}_{wr}", (TILE_W, 0.2, TILE_D), (x, TILE_Y, z), (128, 120, 108), mat="Slate")
+for wr in (0, ROWS + 1):
+    for wc in range(1, COLS + 1):
+        x, z = tile_xz(wc, wr)
+        # a building slot: a low dark stone pad with a brass edge, a little lower than the tiles
+        plinths.append(b.blk("SlotTrim", (TILE_W - 0.1, 0.14, SLOT_D), (x, FELT_TOP + 0.13, z), (150, 118, 60), mat="Metal"))
+        named[f"Tile_{wc}_{wr}"] = b.blk(f"Tile_{wc}_{wr}", (TILE_W - 0.3, 0.16, SLOT_D - 0.2), (x, FELT_TOP + 0.17, z), (58, 52, 50), mat="Slate")
 for side, sz in (("Near", 1), ("Far", -1)):
     # hero pedestal on the left of each half
     hz = sz * HZ

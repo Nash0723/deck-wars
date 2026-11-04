@@ -1,11 +1,14 @@
 -- Deck Wars match engine (tile board).
 -- Pure game rules with no Roblox parts or GUIs, so the server runs it and tests can too.
 --
--- The board is a grid of tiles, CardData.Cols wide (5) and CardData.Rows deep (6).
--- Rows are counted from player 1's side: rows 1-3 are player 1's half, rows 4-6 player 2's.
--- Creatures are summoned on their owner's back 2 rows, walk 1 tile (2 if Fast) up, down,
+-- The board is a grid of tiles, CardData.Cols wide (4 lanes) and CardData.Rows deep (6).
+-- Rows are counted from player 1's side: rows 1-3 are player 1's half (Backline, Midline,
+-- Frontline), rows 4-6 player 2's (Frontline, Midline, Backline).
+-- Creatures are summoned on their owner's Backline and Midline, walk 1 tile (2 if Fast) up, down,
 -- left or right, and attack an enemy on one of the 8 tiles around them (2 tiles away if Ranged).
--- Buildings stand on a tile in their owner's half and help the creatures around them.
+-- Behind each Backline is a building row with one slot per lane: row 0 for player 1 and
+-- row Rows + 1 for player 2. Buildings stand there and help a lane (their column) or a row.
+-- Creatures never walk into a building row, but enemies close enough can attack a building.
 --
 -- Basic use:
 --   local match = MatchEngine.new({ deck = {...}, hero = "bonk", family = "Snack" }, { ... }, seed)
@@ -65,6 +68,29 @@ end
 local function tileOk(t)
 	return type(t) == "table" and onBoard(t.col, t.row)
 end
+
+-- The board plus both building rows (row 0 and row ROWS + 1).
+local function inGrid(col, row)
+	return type(col) == "number" and type(row) == "number" and col >= 1 and col <= COLS and row >= 0 and row <= ROWS + 1 and col % 1 == 0 and row % 1 == 0
+end
+
+-- Player p's building row: 0 behind player 1's Backline, ROWS + 1 behind player 2's.
+local function buildRowOf(p)
+	return p == 1 and 0 or ROWS + 1
+end
+
+-- Which of player p's rows `row` is: 1 = Backline, 2 = Midline, 3 = Frontline (nil if not p's half).
+local function lineOf(p, row)
+	if p == 1 then
+		if row >= 1 and row <= HOME_ROWS then
+			return row
+		end
+	elseif row > ROWS - HOME_ROWS and row <= ROWS then
+		return ROWS + 1 - row
+	end
+	return nil
+end
+local LINE_INDEX = { Backline = 1, Midline = 2, Frontline = 3 }
 
 -- Distance in tiles, counting diagonal steps as 1 (so "next to" means the 8 tiles around).
 local function dist(a, b)
@@ -132,6 +158,9 @@ end
 
 MatchEngine.other = other
 MatchEngine.dist = dist
+MatchEngine.buildRowOf = buildRowOf
+MatchEngine.lineOf = lineOf
+MatchEngine.inGrid = inGrid
 MatchEngine.inHalf = inHalf
 MatchEngine.backRowOf = backRowOf
 MatchEngine.canHitHeroFrom = canHitHeroFrom
@@ -164,7 +193,7 @@ function MatchEngine.new(setupA, setupB, seed)
 		self.rng:shuffle(deck)
 		self.players[p] = {
 			hero = setup.hero or "bonk",
-			family = setup.family or dominantFamily(setup.deck),
+			family = setup.family or (type(setup.themes) == "table" and setup.themes[1]) or dominantFamily(setup.deck),
 			hp = CardData.HeroMaxHp,
 			maxEnergy = 0,
 			energy = 0,
@@ -178,17 +207,31 @@ function MatchEngine.new(setupA, setupB, seed)
 			played = {}, -- [family] = cards of that family played this turn (for Combo)
 		}
 	end
-	-- Terrain: each player's back rows are their deck's home terrain.
-	-- The middle rows get one random terrain per column.
-	for col = 1, COLS do
-		local middle = self.rng:pick(CardData.Families)
-		for row = 1, ROWS do
-			if inSummonRows(1, row) then
-				self.terrain[col][row] = self.players[1].family
-			elseif inSummonRows(2, row) then
-				self.terrain[col][row] = self.players[2].family
-			else
-				self.terrain[col][row] = middle
+	-- Terrain: every lane of a player's half has the terrain the deck picked for it
+	-- (setup.lanes, left to right as seen from that player's chair). Without lanes, all four
+	-- lanes are the deck's own family. A creature on its family's terrain gets +1 attack.
+	for p, setup in ipairs({ setupA, setupB }) do
+		local pl = self.players[p]
+		pl.themes = {}
+		for _, fam in ipairs(type(setup.themes) == "table" and setup.themes or { pl.family }) do
+			if CardData.Terrains[fam] then
+				table.insert(pl.themes, fam)
+			end
+		end
+		if #pl.themes == 0 then
+			pl.themes = { pl.family }
+		end
+		pl.lanes = {}
+		for i = 1, COLS do
+			local fam = type(setup.lanes) == "table" and setup.lanes[i] or nil
+			pl.lanes[i] = CardData.Terrains[fam] and fam or pl.family
+		end
+		for col = 1, COLS do
+			local lane = p == 1 and pl.lanes[col] or pl.lanes[COLS + 1 - col]
+			for row = 1, ROWS do
+				if lineOf(p, row) then
+					self.terrain[col][row] = lane
+				end
 			end
 		end
 	end
@@ -230,7 +273,7 @@ function MatchEngine:clone(seed)
 	for col = 1, COLS do
 		c.scrap[col] = table.clone(self.scrap[col])
 		local srcCol, dstCol = self.grid[col], {}
-		for row = 1, ROWS do
+		for row = 0, ROWS + 1 do
 			local u = srcCol[row]
 			if u then
 				local nu = table.clone(u)
@@ -253,6 +296,8 @@ function MatchEngine:clone(seed)
 		np.discard = table.clone(pl.discard)
 		np.lost = table.clone(pl.lost)
 		np.played = table.clone(pl.played)
+		np.themes = table.clone(pl.themes)
+		np.lanes = table.clone(pl.lanes)
 		c.players[p] = np
 	end
 	return c
@@ -357,7 +402,7 @@ end
 ---------------------------------------------------------------------------
 
 function MatchEngine:at(col, row)
-	if not onBoard(col, row) then
+	if not inGrid(col, row) then
 		return nil
 	end
 	return self.grid[col][row]
@@ -367,10 +412,10 @@ function MatchEngine:isEmpty(col, row)
 	return onBoard(col, row) and self.grid[col][row] == nil
 end
 
--- Every creature and building, always in the same order (row by row).
+-- Every creature and building, always in the same order (row by row, building rows included).
 function MatchEngine:allUnits(kind)
 	local list = {}
-	for row = 1, ROWS do
+	for row = 0, ROWS + 1 do
 		for col = 1, COLS do
 			local u = self.grid[col][row]
 			if u and (kind == nil or u.kind == kind) then
@@ -396,7 +441,7 @@ function MatchEngine:findUnit(uid)
 		return nil
 	end
 	for col = 1, COLS do
-		for row = 1, ROWS do
+		for row = 0, ROWS + 1 do
 			local u = self.grid[col][row]
 			if u and u.uid == uid then
 				return u
@@ -441,6 +486,59 @@ function MatchEngine:countNear(col, row, owner, id)
 	return n
 end
 
+-- Player p's building with this card id standing in lane `col` (nil if none).
+function MatchEngine:laneBuilding(p, col, id)
+	local b = self.grid[col] and self.grid[col][buildRowOf(p)]
+	if b and b.kind == "building" and b.owner == p and b.id == id and b.hp > 0 then
+		return b
+	end
+	return nil
+end
+
+-- How many of player p's buildings with this id stand anywhere in their building row.
+function MatchEngine:buildingCount(p, id)
+	local n = 0
+	for col = 1, COLS do
+		if self:laneBuilding(p, col, id) then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Does a row building of c's owner reach c? (c must stand on that row of its owner's half.)
+function MatchEngine:rowBuildingHelps(c, id)
+	local def = CardData.Cards[id]
+	return lineOf(c.owner, c.row) == LINE_INDEX[def.area] and self:buildingCount(c.owner, id) > 0
+end
+
+-- The enemy creature nearest to player p's building row in lane `col`, looking up the lane.
+function MatchEngine:firstEnemyInLane(p, col)
+	local r0, r1, stepBy = 1, ROWS, 1
+	if p == 2 then
+		r0, r1, stepBy = ROWS, 1, -1
+	end
+	for row = r0, r1, stepBy do
+		local u = self.grid[col][row]
+		if u and u.owner ~= p and u.kind == "creature" and u.hp > 0 then
+			return u
+		end
+	end
+	return nil
+end
+
+-- Empty tiles of player p's half in lane `col`, Backline first.
+function MatchEngine:emptyLaneTiles(p, col)
+	local list = {}
+	for line = 1, HOME_ROWS do
+		local row = p == 1 and line or ROWS + 1 - line
+		if self:isEmpty(col, row) then
+			table.insert(list, { col = col, row = row })
+		end
+	end
+	return list
+end
+
 function MatchEngine:placeUnit(u, col, row)
 	assert(self.grid[col][row] == nil, "tile is taken")
 	u.col = col
@@ -473,11 +571,11 @@ function MatchEngine:hasKeyword(c, kw)
 		if c.family == "Critter" and self:countNear(c.col, c.row, c.owner, "sergeant_snail") > 0 then
 			return true
 		end
-		return self:countNear(c.col, c.row, c.owner, "bouncy_castle") > 0
+		return self:rowBuildingHelps(c, "bouncy_castle") -- Frontline
 	elseif kw == "Haunt" then
-		return self:countNear(c.col, c.row, c.owner, "spooky_crypt") > 0
+		return self:laneBuilding(c.owner, c.col, "spooky_crypt") ~= nil
 	elseif kw == "Fast" then
-		return self:countNear(c.col, c.row, c.owner, "wind_turbine") > 0
+		return self:laneBuilding(c.owner, c.col, "wind_turbine") ~= nil
 	end
 	return false
 end
@@ -490,7 +588,9 @@ function MatchEngine:attackOf(c)
 	if self.terrain[c.col][c.row] == c.family then
 		a += 1
 	end
-	a += self:countNear(c.col, c.row, c.owner, "charging_station")
+	if self:laneBuilding(c.owner, c.col, "charging_station") then
+		a += c.family == "Robo" and 2 or 1
+	end
 	a += c.power or 0
 	if self:hasKeyword(c, "Pack") then
 		a += math.min(PACK_MAX, self:packCount(c))
@@ -559,7 +659,8 @@ end
 function MatchEngine:attackTargets(u)
 	local list = {}
 	local range = self:rangeOf(u)
-	for row = math.max(1, u.row - range), math.min(ROWS, u.row + range) do
+	-- (the rows reach into the enemy's building row too: buildings can be hit)
+	for row = math.max(0, u.row - range), math.min(ROWS + 1, u.row + range) do
 		for col = math.max(1, u.col - range), math.min(COLS, u.col + range) do
 			local t = self.grid[col][row]
 			if t and t.owner ~= u.owner and t.hp > 0 then
@@ -570,8 +671,8 @@ function MatchEngine:attackTargets(u)
 	return list, canHitHeroFrom(u.owner, u.row)
 end
 
--- Tiles where player p may summon a creature: empty tiles on their back 2 rows,
--- plus empty tiles next to their Bunny Burrows.
+-- Tiles where player p may summon a creature: empty tiles on their Backline and Midline,
+-- plus their whole half of a lane with a Bunny Burrow.
 function MatchEngine:canSummonAt(p, col, row)
 	if not self:isEmpty(col, row) then
 		return false
@@ -579,11 +680,17 @@ function MatchEngine:canSummonAt(p, col, row)
 	if inSummonRows(p, row) then
 		return true
 	end
-	return self:countNear(col, row, p, "bunny_burrow") > 0
+	return inHalf(p, row) and self:laneBuilding(p, col, "bunny_burrow") ~= nil
 end
 
+-- Buildings go in your building row: an empty slot, or one of your own buildings (it is
+-- knocked down and replaced).
 function MatchEngine:canBuildAt(p, col, row)
-	return self:isEmpty(col, row) and inHalf(p, row)
+	if not inGrid(col, row) or row ~= buildRowOf(p) then
+		return false
+	end
+	local there = self.grid[col][row]
+	return there == nil or (there.owner == p and there.kind == "building")
 end
 
 function MatchEngine:summonTiles(p)
@@ -600,11 +707,10 @@ end
 
 function MatchEngine:buildTiles(p)
 	local list = {}
-	for row = 1, ROWS do
-		for col = 1, COLS do
-			if self:canBuildAt(p, col, row) then
-				table.insert(list, { col = col, row = row })
-			end
+	local row = buildRowOf(p)
+	for col = 1, COLS do
+		if self:canBuildAt(p, col, row) then
+			table.insert(list, { col = col, row = row })
 		end
 	end
 	return list
@@ -659,6 +765,15 @@ end
 
 function MatchEngine:build(p, col, row, id)
 	local def = CardData.get(id)
+	local old = self.grid[col][row]
+	if old then
+		-- Building over one of your own buildings knocks the old one down first.
+		self:removeUnit(old)
+		old.hp = 0
+		table.insert(self.players[p].discard, old.id)
+		self:emit({ type = "destroyed", player = p, uid = old.uid, col = col, row = row, replaced = true })
+		self:buildingRubble(old)
+	end
 	local u = {
 		uid = self:uid(),
 		id = id,
@@ -683,7 +798,21 @@ function MatchEngine:build(p, col, row, id)
 	}
 	self:placeUnit(u, col, row)
 	self:emit({ type = "build", player = p, uid = u.uid, card = id, col = col, row = row })
+	if id == "bunny_burrow" then
+		local spot = self:emptyLaneTiles(p, col)[1]
+		if spot then
+			self:spawn(p, spot.col, spot.row, "pigeon")
+		end
+	end
 	return u
+end
+
+-- A building that breaks leaves Scrap on the Backline tile in front of it.
+function MatchEngine:buildingRubble(b)
+	local row = b.owner == 1 and 1 or ROWS
+	if onBoard(b.col, row) then
+		self:dropScrap(b.col, row, 1)
+	end
 end
 
 function MatchEngine:giveKeyword(c, kw)
@@ -929,7 +1058,7 @@ function MatchEngine:resolvePops()
 			if u.kind == "building" then
 				table.insert(pl.discard, u.id)
 				self:emit({ type = "destroyed", player = p, uid = u.uid, col = u.col, row = u.row })
-				self:dropScrap(u.col, u.row, 1)
+				self:buildingRubble(u)
 			else
 				-- A raised creature only fades away when it pops again: no Ghost, no pop effects.
 				local faded = (u.raised and CardData.RaisedFades) or nil
@@ -1014,7 +1143,7 @@ function MatchEngine:startOfTurnAbility(p, u)
 				self:damageUnit(e, dmg, { player = p, creature = u })
 			end
 		end
-	elseif id == "microwave_mage" or id == "spiked_fence" then
+	elseif id == "microwave_mage" then
 		local targets = {}
 		for _, e in ipairs(self:unitsOf(enemy, "creature")) do
 			if dist(u, e) == 1 then
@@ -1024,13 +1153,28 @@ function MatchEngine:startOfTurnAbility(p, u)
 		if #targets > 0 then
 			self:emit({ type = "ability", uid = u.uid })
 			for _, e in ipairs(targets) do
-				self:damageUnit(e, 1, { player = p, creature = u.kind == "creature" and u or nil })
+				self:damageUnit(e, 1, { player = p, creature = u })
 			end
 		end
+	elseif id == "spiked_fence" then
+		-- Fires a spike up its lane at the nearest enemy creature.
+		local e = self:firstEnemyInLane(p, u.col)
+		if e then
+			self:emit({ type = "shot", uid = u.uid, target = e.uid })
+			self:damageUnit(e, 1, { player = p })
+		end
+	elseif id == "wind_turbine" then
+		local e = self:firstEnemyInLane(p, u.col)
+		if e and not e.soaked then
+			self:emit({ type = "ability", uid = u.uid })
+			self:soak(e)
+		end
 	elseif id == "snack_bar" or id == "disco_cactus" then
+		-- Row buildings: Snack Bar helps your Backline, Disco Cactus your Midline.
+		local line = id == "snack_bar" and 1 or 2
 		local friends = {}
 		for _, f in ipairs(self:unitsOf(p, "creature")) do
-			if dist(u, f) == 1 then
+			if lineOf(p, f.row) == line then
 				table.insert(friends, f)
 			end
 		end
@@ -1050,22 +1194,46 @@ function MatchEngine:startOfTurnAbility(p, u)
 			end
 		end
 	elseif id == "scrap_catapult" then
-		local e = self.rng:pick(self:unitsOf(enemy, "creature"))
+		local e = self:firstEnemyInLane(p, u.col) or self.rng:pick(self:unitsOf(enemy, "creature"))
 		if e then
 			self:emit({ type = "shot", uid = u.uid, target = e.uid })
 			self:damageUnit(e, 2, { player = p })
 		end
 	elseif id == "haunted_arcade" then
-		local spot = self.rng:pick(self:emptyNeighbors(u.col, u.row))
+		local spot = self.rng:pick(self:emptyLaneTiles(p, u.col))
 		if spot then
 			self:emit({ type = "ability", uid = u.uid })
 			local ghost = self:spawn(p, spot.col, spot.row, "ghost")
 			ghost.keywords.Haunt = true
 		end
 	elseif id == "rocket_lunchbox" then
-		self:emit({ type = "shot", uid = u.uid, target = "hero", targetPlayer = enemy })
-		self:damageHero(enemy, 2, p)
+		-- A rocket flies up its lane: 3 damage to the first enemy creature in its way, the rest hits the hero.
+		self:laneStrike(p, u.col, 3, u)
 	end
+end
+
+-- Something rolls or flies up lane `col` from player p's side: `amount` damage to the first
+-- enemy creature in its way, and whatever that creature can't soak up hits the enemy hero.
+-- (Granny Bolt's Strike and the Rocket Lunchbox.)
+function MatchEngine:laneStrike(p, col, amount, source)
+	local enemy = other(p)
+	local pl = self.players[p]
+	local first = self:firstEnemyInLane(p, col)
+	if source then
+		self:emit({ type = "shot", uid = source.uid, target = first and first.uid or "hero", targetPlayer = enemy })
+	end
+	local dmg = amount
+	if first then
+		local absorbed = math.min(dmg, math.max(first.hp, 0))
+		first.hp -= absorbed
+		self:emit({ type = "damage", uid = first.uid, amount = absorbed, hp = first.hp })
+		pl.dealt += absorbed
+		dmg -= absorbed
+		if dmg > 0 and source then
+			self:emit({ type = "shot", uid = source.uid, target = "hero", targetPlayer = enemy })
+		end
+	end
+	self:damageHero(enemy, dmg, p)
 end
 
 function MatchEngine:startTurn(p)
@@ -1078,7 +1246,7 @@ function MatchEngine:startTurn(p)
 	pl.played = {}
 	pl.maxEnergy = math.min(CardData.MaxEnergy, pl.maxEnergy + 1)
 	pl.energy = pl.maxEnergy
-	if self:countOnBoard(p, "lemonade_stand") > 0 then
+	if self:buildingCount(p, "lemonade_stand") > 0 then
 		pl.energy += 1
 	end
 	self:emit({ type = "turn", player = p, turn = self.turn, energy = pl.energy, maxEnergy = pl.maxEnergy })
@@ -1194,7 +1362,7 @@ function MatchEngine:attackWith(p, action)
 		self:resolvePops()
 		return true
 	end
-	if not tileOk(action.target) then
+	if type(action.target) ~= "table" or not inGrid(action.target.col, action.target.row) then
 		return false, "Pick something to attack"
 	end
 	local target = self:at(action.target.col, action.target.row)
@@ -1820,8 +1988,8 @@ function MatchEngine:playCard(p, action)
 			return false, "Pick a glowing tile on your side"
 		end
 	elseif def.type == "Building" then
-		if not tileOk(tile) or not self:canBuildAt(p, tile.col, tile.row) then
-			return false, "Pick an empty tile on your half"
+		if type(tile) ~= "table" or not self:canBuildAt(p, tile.col, tile.row) then
+			return false, "Pick a slot in your building row"
 		end
 	else
 		tile = nil
@@ -1881,28 +2049,8 @@ function MatchEngine:useBigMove(p, action)
 		end
 		pl.bigMoveUsed = true
 		self:emit({ type = "bigMove", player = p, hero = pl.hero, col = col })
-		-- The ball rolls from your side toward the enemy's edge and stops at the first enemy.
-		local first = nil
-		local r0, r1, step = 1, ROWS, 1
-		if p == 2 then
-			r0, r1, step = ROWS, 1, -1
-		end
-		for row = r0, r1, step do
-			local u = self.grid[col][row]
-			if u and u.owner ~= p and u.hp > 0 then
-				first = u
-				break
-			end
-		end
-		local dmg = 4
-		if first then
-			local absorbed = math.min(dmg, math.max(first.hp, 0))
-			first.hp -= absorbed
-			self:emit({ type = "damage", uid = first.uid, amount = absorbed, hp = first.hp })
-			pl.dealt += absorbed
-			dmg -= absorbed
-		end
-		self:damageHero(enemy, dmg, p)
+		-- The ball rolls from your side up the lane and stops at the first enemy creature.
+		self:laneStrike(p, col, 4, nil)
 	else
 		pl.bigMoveUsed = true
 		self:emit({ type = "bigMove", player = p, hero = pl.hero })

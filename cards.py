@@ -1,6 +1,7 @@
 # Source of truth for the Deck Wars card set (tile board version).
 # (id, name, type, family, cost, atk, hp, ability_text, rarity)
 # Types: Creature, Spell, Building. Buildings have 0 attack and never move.
+# The board: 4 lanes (columns), 3 rows per side (Frontline, Midline, Backline) and a building row behind each side.
 C=[
 ("jelly_bean_scout","Jelly Bean Scout","Creature","Snack",1,2,2,"Fast. Snack Time 1","Common"),
 ("pretzel_guard","Pretzel Guard","Creature","Snack",2,2,4,"Sturdy. Combo: heal your other Snacks 1","Common"),
@@ -57,18 +58,21 @@ C=[
 ("mystery_box","Mystery Box","Spell","Any",3,None,None,"Add 2 random cards to your hand. They cost 1 less","Mythic"),
 ("earthquake_dance","Earthquake Dance","Spell","Any",6,None,None,"Deal 3 damage to every creature","Mythic"),
 ("total_chaos","Total Chaos","Spell","Any",5,None,None,"Every creature jumps to a random empty tile and the terrain changes","Legendary"),
-("spiked_fence","Spiked Fence","Building","Any",1,0,4,"At the start of your turn, deal 1 damage to each enemy creature next to it","Common"),
-("bouncy_castle","Bouncy Castle","Building","Any",2,0,3,"Your creatures next to it have Sturdy","Common"),
-("snack_bar","Snack Bar","Building","Snack",2,0,4,"At the start of your turn, heal your creatures next to it 2","Common"),
-("bunny_burrow","Bunny Burrow","Building","Critter",2,0,3,"You can summon creatures on empty tiles next to it","Rare"),
-("wind_turbine","Wind Turbine","Building","Weather",2,0,4,"Your creatures next to it have Fast","Rare"),
-("lemonade_stand","Lemonade Stand","Building","Any",2,0,3,"Gain 1 extra energy each turn (doesn't stack)","Rare"),
-("spooky_crypt","Spooky Crypt","Building","Spooky",2,0,4,"Your creatures next to it have Haunt","Rare"),
-("disco_cactus","Disco Cactus","Building","Any",3,0,4,"At the start of your turn, Roll: your creatures next to it get +1 attack, or heal 2","Epic"),
-("charging_station","Charging Station","Building","Robo",3,0,4,"Your creatures next to it have +1 attack","Epic"),
-("scrap_catapult","Scrap Catapult","Building","Junk",3,0,4,"At the start of your turn, deal 2 damage to a random enemy creature","Epic"),
-("haunted_arcade","Haunted Arcade","Building","Any",4,0,5,"At the start of your turn, spawn a 1/1 Ghost with Haunt on an empty tile next to it","Mythic"),
-("rocket_lunchbox","Rocket Lunchbox","Building","Any",5,0,6,"At the start of your turn, deal 2 damage to the enemy hero","Legendary"),
+# Buildings stand in your building row (behind your Backline, one slot per lane) and never move.
+# "Its lane" = the column the building stands in, on both halves of the table.
+# Row buildings (Frontline / Midline / Backline) help one of your rows wherever they stand.
+("spiked_fence","Spiked Fence","Building","Any",2,0,5,"At the start of your turn, deal 1 damage to the nearest enemy creature in its lane","Common"),
+("bouncy_castle","Bouncy Castle","Building","Any",3,0,4,"Your Frontline creatures have Sturdy","Common"),
+("snack_bar","Snack Bar","Building","Snack",3,0,5,"At the start of your turn, heal your Backline creatures 2","Common"),
+("bunny_burrow","Bunny Burrow","Building","Critter",2,0,4,"You can summon creatures anywhere in its lane on your half. When built, a 1/1 Pigeon hops into its lane","Rare"),
+("wind_turbine","Wind Turbine","Building","Weather",3,0,4,"Your creatures in its lane have Fast. At the start of your turn, Soak the nearest enemy creature in its lane","Rare"),
+("lemonade_stand","Lemonade Stand","Building","Any",3,0,4,"Gain 1 extra energy each turn (doesn't stack)","Rare"),
+("spooky_crypt","Spooky Crypt","Building","Spooky",3,0,5,"Your creatures in its lane have Haunt","Rare"),
+("disco_cactus","Disco Cactus","Building","Any",3,0,4,"At the start of your turn, Roll: your Midline creatures get +1 attack, or heal 2","Epic"),
+("charging_station","Charging Station","Building","Robo",3,0,5,"Your creatures in its lane have +1 attack (Robos +2)","Epic"),
+("scrap_catapult","Scrap Catapult","Building","Junk",4,0,5,"At the start of your turn, deal 2 damage to the nearest enemy creature in its lane (a random enemy creature if its lane is clear)","Epic"),
+("haunted_arcade","Haunted Arcade","Building","Any",4,0,5,"At the start of your turn, a 1/1 Ghost with Haunt appears in its lane on your half","Mythic"),
+("rocket_lunchbox","Rocket Lunchbox","Building","Any",6,0,6,"At the start of your turn, a rocket flies up its lane: 3 damage to the first enemy creature in its way, the rest hits the enemy hero","Legendary"),
 ("captain_confetti","Captain Confetti","Creature","Critter",6,5,5,"Zoom. When played, give each of your creatures a random keyword","Secret"),
 ("omega_microwave","Omega Microwave","Creature","Robo",9,8,10,"Sturdy. At the start of your turn, deal 3 damage to every enemy creature","Secret"),
 ]

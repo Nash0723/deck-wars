@@ -38,6 +38,9 @@
       "MatchServer": {
         "$path": "src/server/MatchServer.server.luau"
       },
+      "PlayerDecks": {
+        "$path": "src/server/PlayerDecks.luau"
+      },
       "PullServer": {
         "$path": "src/pullserver/PullServer.server.luau"
       }

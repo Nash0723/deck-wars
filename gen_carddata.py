@@ -74,7 +74,24 @@ out.append('CardData.Keywords = { "Zoom", "Fast", "Ranged", "Sturdy", "Splash", 
 out.append('CardData.KeywordText = {\n\tZoom = "Can move and attack the turn it\'s played",\n\tFast = "Walks up to 2 tiles",\n\tRanged = "Attacks up to 2 tiles away",\n\tSturdy = "Takes 1 less damage",\n\tSplash = "Its attacks also hit enemies next to the target for 1",\n\tHaunt = "Leaves a 1/1 Ghost when it pops",\n\tPack = "+1 attack for each friendly Critter next to it (up to +2)",\n\tZap = "Deals 2 more damage to Soaked creatures",\n\tGrudge = "Gets 1 Power whenever another friendly creature pops",\n}')
 out.append('CardData.Heroes = {\n\tbonk = { id = "bonk", name = "Bonk", bigMove = "Hat Trick", text = "Pull a random spell from the hat. It costs 0.", target = nil },\n\tgranny_bolt = { id = "granny_bolt", name = "Granny Bolt", bigMove = "Strike", text = "Roll a bowling ball down a column: 4 damage to the first enemy in its way, leftover damage hits the hero.", target = "column" },\n}')
 out.append("CardData.HeroMaxHp = 20\nCardData.BigMoveCharge = 10\nCardData.MaxEnergy = 8\nCardData.MaxHand = 8\nCardData.DeckSize = 30\nCardData.MaxCopies = 3")
-out.append("-- The tile board: 5 columns wide, 6 rows deep. Each player owns the 3 rows nearest them\n-- and summons creatures on their back 2 rows.\nCardData.Cols = 5\nCardData.Rows = 6\nCardData.HomeRows = 3\nCardData.SummonRows = 2\n-- A creature standing anywhere in the enemy's half (their 3 rows) can attack the enemy hero.\nCardData.HeroAttackRows = 3\n-- Going first or second. The first player starts with 4 cards and the second with 5.\n-- Everyone draws a card at the start of every turn, except the first player on their very\n-- first turn. In bot-vs-bot games (Hard) the first player won about 61% when they also drew\n-- on turn one, and 45-50% without it (45% in the last 1,080 games). Giving the second\n-- player a Spare Battery instead didn't help (still 61%).\nCardData.FirstTurnDraw = false -- true: the first player also draws on their very first turn\nCardData.SecondPlayerCard = nil -- put a card id here (like \"spare_battery\") to give the second player a bonus card\n")
+out.append("""-- The board: 4 lanes (columns) and 6 rows, 3 for each player: Backline (nearest you), Midline and
+-- Frontline. Rows are counted from player 1's side: rows 1-3 are player 1's, 4-6 player 2's.
+-- Behind each player's Backline is their building row: one building slot per lane (row 0 for
+-- player 1, row Rows + 1 for player 2). Creatures summon on your Backline and Midline.
+CardData.Cols = 4
+CardData.Rows = 6
+CardData.HomeRows = 3
+CardData.SummonRows = 2
+CardData.Lines = { "Backline", "Midline", "Frontline" } -- your rows, from your edge to the middle
+-- A creature standing anywhere in the enemy's half (their 3 rows) can attack the enemy hero.
+CardData.HeroAttackRows = 3
+-- Going first or second. The first player starts with 4 cards and the second with 5.
+-- Everyone draws a card at the start of every turn, except the first player on their very
+-- first turn (on the old 5 x 6 board the first player won about 61% of bot games when they also
+-- drew on turn one, and 45-50% without it).
+CardData.FirstTurnDraw = false -- true: the first player also draws on their very first turn
+CardData.SecondPlayerCard = nil -- put a card id here (like "spare_battery") to give the second player a bonus card
+""")
 out.append(CHANTS)
 out.append("CardData.Cards = {")
 def entry(cid,name,typ,fam,cost,atk,hp,text,rar,token=False):
@@ -95,6 +112,9 @@ def entry(cid,name,typ,fam,cost,atk,hp,text,rar,token=False):
     if "Its attacks Soak" in text: fields.append("soaks = true")
     if cid in TARGET: fields.append(f"target = {lua_str(TARGET[cid])}")
     if cid in REQUIRED: fields.append("targetRequired = true")
+    if typ == "Building":
+        line = next((l for l in ("Frontline","Midline","Backline") if ("your " + l) in text.lower().replace(l.lower(), l)), None)
+        fields.append("area = " + lua_str(line or ("lane" if "lane" in text else "any")))
     if token: fields.append("token = true")
     return "\t" + cid + " = { " + ", ".join(fields) + " },"
 for c in C:

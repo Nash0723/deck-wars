@@ -31,9 +31,11 @@ end
 local function blank(seed)
 	local m = MatchEngine.new({ deck = filler(30), hero = "bonk" }, { deck = filler(30), hero = "granny_bolt" }, seed or 1)
 	for col = 1, COLS do
-		for row = 1, ROWS do
+		for row = 0, ROWS + 1 do
 			m.grid[col][row] = nil
-			m.terrain[col][row] = "Spooky"
+			if row >= 1 and row <= ROWS then
+				m.terrain[col][row] = "Spooky"
+			end
 		end
 	end
 	for p = 1, 2 do
@@ -85,16 +87,31 @@ do -- terrain gives +1 attack to the matching family
 	check(c.hp == 4 and c.maxHp == 4, "terrain does not change health")
 end
 
-do -- starting terrain: home rows use each deck's family, middle rows one random terrain per column
+do -- starting terrain: each lane of your half has the terrain your deck picked for it
 	local a, b = StarterDecks.Snack, StarterDecks.Robo
 	local m = MatchEngine.new({ deck = a.cards, hero = a.hero, family = a.family }, { deck = b.cards, hero = b.hero, family = b.family }, 5)
-	local ok = true
+	local ok = COLS == 4 and ROWS == 6
 	for col = 1, COLS do
-		ok = ok and m.terrain[col][1] == "Snack" and m.terrain[col][2] == "Snack"
-		ok = ok and m.terrain[col][5] == "Robo" and m.terrain[col][6] == "Robo"
-		ok = ok and m.terrain[col][3] == m.terrain[col][4]
+		for row = 1, 3 do
+			ok = ok and m.terrain[col][row] == "Snack" and m.terrain[col][row + 3] == "Robo"
+		end
 	end
-	check(ok, "home rows match the decks, middle rows match per column")
+	check(ok, "the board is 4 lanes x 6 rows; without lanes, your whole half is your family's terrain")
+	local m3 = MatchEngine.new(
+		{ deck = a.cards, hero = a.hero, themes = { "Snack", "Junk" }, lanes = { "Snack", "Junk", "Weather", "Critter" } },
+		{ deck = b.cards, hero = b.hero, themes = { "Robo" }, lanes = { "Robo", "Spooky", "Snack", "Junk" } },
+		5
+	)
+	local lanesOk = true
+	for col = 1, COLS do
+		for row = 1, 3 do
+			lanesOk = lanesOk and m3.terrain[col][row] == m3.players[1].lanes[col]
+			-- player 2's lanes are left to right from their own chair, so the board is mirrored
+			lanesOk = lanesOk and m3.terrain[col][row + 3] == m3.players[2].lanes[COLS + 1 - col]
+		end
+	end
+	check(lanesOk and m3.terrain[1][1] == "Snack" and m3.terrain[4][3] == "Critter" and m3.terrain[1][6] == "Junk" and m3.terrain[4][6] == "Robo", "lane terrains follow each deck's lanes, mirrored for player 2")
+	check(m3.players[1].family == "Snack" and m3.players[1].themes[2] == "Junk", "themes are kept, the first is the deck's family")
 	local m2 = MatchEngine.new({ deck = a.cards, hero = "bonk" }, { deck = b.cards, hero = "granny_bolt" }, 5)
 	check(m2.players[1].family == "Snack" and m2.players[2].family == "Robo", "family is worked out from the deck when not given")
 end
@@ -129,10 +146,11 @@ do -- walking: 1 tile, orthogonal, blocked by units; Fast walks 2
 	check(ok and c.col == 2 and c.row == 2 and m:at(2, 2) == c and m:at(3, 2) == nil, "walking moves the creature on the grid")
 	ok = m:act(1, { kind = "move", uid = c.uid, to = { col = 1, row = 2 } })
 	check(not ok, "a creature walks only once per turn")
-	local f = ready(m:spawn(1, 5, 1, "jelly_bean_scout")) -- Fast
+	local f = ready(m:spawn(1, 4, 1, "jelly_bean_scout")) -- Fast
 	_, list = m:reachable(f)
 	check(#list == 5, "Fast creature in a corner reaches 5 tiles (got " .. #list .. ")")
-	ok = m:act(1, { kind = "move", uid = f.uid, to = { col = 5, row = 3 } })
+	check(not m:reachable(f)[4 * 16 + 0], "nobody walks into the building row")
+	ok = m:act(1, { kind = "move", uid = f.uid, to = { col = 4, row = 3 } })
 	check(ok and f.row == 3, "Fast creature walks 2 tiles")
 	local e = hasEvent(m:takeEvents(), "move")
 	check(e and #e.path == 1, "move event carries the path")
@@ -155,13 +173,32 @@ do -- summoning sickness, Zoom, summon zone
 	check(m:act(2, { kind = "play", handUid = h2, tile = { col = 1, row = 5 } }), "player 2 summons on rows 5-6")
 end
 
-do -- Bunny Burrow lets you summon next to it; buildings only on your half
+do -- buildings go in your building row; Bunny Burrow lets you summon anywhere in its lane on your half
 	local m = blank()
 	local b = give(m, 1, "bunny_burrow")
-	check(not m:act(1, { kind = "play", handUid = b, tile = { col = 3, row = 4 } }), "can't build on the enemy half")
-	check(m:act(1, { kind = "play", handUid = b, tile = { col = 3, row = 3 } }), "build on your front row")
+	check(not m:act(1, { kind = "play", handUid = b, tile = { col = 3, row = 1 } }), "buildings don't go on the board")
+	check(not m:act(1, { kind = "play", handUid = b, tile = { col = 3, row = ROWS + 1 } }), "or in the enemy's building row")
+	check(#m:buildTiles(1) == 4 and m:buildTiles(1)[1].row == 0, "player 1 has 4 building slots in row 0")
+	check(m:act(1, { kind = "play", handUid = b, tile = { col = 3, row = 0 } }), "build in your building row")
+	local pigeon = m:at(3, 1)
+	check(pigeon and pigeon.id == "pigeon", "Bunny Burrow sends a Pigeon into its lane")
 	local h = give(m, 1, "tin_can_tom")
-	check(m:act(1, { kind = "play", handUid = h, tile = { col = 4, row = 4 } }), "summon next to a Bunny Burrow, even on row 4")
+	check(not m:act(1, { kind = "play", handUid = h, tile = { col = 2, row = 3 } }), "no Frontline summons outside the burrow's lane")
+	check(m:act(1, { kind = "play", handUid = h, tile = { col = 3, row = 3 } }), "summon on your Frontline in the burrow's lane")
+	local h2 = give(m, 1, "tin_can_tom")
+	check(not m:act(1, { kind = "play", handUid = h2, tile = { col = 3, row = 4 } }), "but never on the enemy half")
+	local m2 = blank()
+	m2.current = 2
+	local b2 = give(m2, 2, "spiked_fence")
+	check(not m2:act(2, { kind = "play", handUid = b2, tile = { col = 1, row = 0 } }), "player 2 can't build in player 1's row")
+	check(m2:act(2, { kind = "play", handUid = b2, tile = { col = 1, row = ROWS + 1 } }) and m2:at(1, ROWS + 1).id == "spiked_fence", "player 2 builds in row 7")
+	-- building over your own building knocks the old one down
+	local b3 = give(m2, 2, "bouncy_castle")
+	local oldUid = m2:at(1, ROWS + 1).uid
+	m2:takeEvents()
+	check(m2:act(2, { kind = "play", handUid = b3, tile = { col = 1, row = ROWS + 1 } }) and m2:at(1, ROWS + 1).id == "bouncy_castle", "build over your own building")
+	local d = hasEvent(m2:takeEvents(), "destroyed")
+	check(d and d.uid == oldUid and d.replaced and table.find(m2.players[2].discard, "spiked_fence"), "the old building goes to the discard pile")
 end
 
 ---------------------------------------------------------------- fighting
@@ -231,9 +268,12 @@ do -- Haunt leaves a Ghost on the same tile; Spooky Crypt gives Haunt
 	local g = m:at(2, 2)
 	check(g and g.id == "ghost", "Haunt leaves a Ghost on its tile")
 	local m2 = blank()
-	m2:build(1, 4, 2, "spooky_crypt")
+	m2:build(1, 4, 0, "spooky_crypt")
 	local t = m2:spawn(1, 4, 1, "tin_can_tom")
-	check(m2:hasKeyword(t, "Haunt"), "Spooky Crypt gives Haunt next to it")
+	local away = m2:spawn(1, 4, 5, "couch_golem")
+	local other = m2:spawn(1, 3, 1, "couch_golem")
+	check(m2:hasKeyword(t, "Haunt") and m2:hasKeyword(away, "Haunt"), "Spooky Crypt gives Haunt to your creatures in its lane, on both halves")
+	check(not m2:hasKeyword(other, "Haunt"), "but not in the lane next to it")
 	m2:damageUnit(t, 5, { player = 2 })
 	m2:resolvePops()
 	check(m2:at(4, 1) and m2:at(4, 1).id == "ghost", "crypt Haunt leaves a Ghost")
@@ -246,14 +286,20 @@ do -- Fog Bank -2 attack next to it; Charging Station +1; Wind Turbine Fast; Bou
 	check(m:attackOf(e) == 1, "Fog Bank takes 2 attack from enemies next to it")
 	local m2 = blank()
 	local c = stats(m2:spawn(1, 2, 2, "tin_can_tom"), 2, 2)
-	m2:build(1, 3, 3, "charging_station")
-	check(m2:attackOf(c) == 3, "Charging Station gives +1 attack next to it")
-	m2:build(1, 1, 3, "wind_turbine")
-	check(m2:hasKeyword(c, "Fast") and m2:speedOf(c) == 2, "Wind Turbine gives Fast next to it")
-	m2:build(1, 1, 1, "bouncy_castle")
-	check(m2:hasKeyword(c, "Sturdy"), "Bouncy Castle gives Sturdy next to it")
-	local far = stats(m2:spawn(1, 5, 1, "tin_can_tom"), 2, 2)
-	check(not m2:hasKeyword(far, "Sturdy") and m2:attackOf(far) == 2, "auras only reach the 8 tiles around")
+	local robo = stats(m2:spawn(1, 2, 4, "roomba_rex"), 2, 3)
+	m2:build(1, 2, 0, "charging_station")
+	check(m2:attackOf(c) == 3 and m2:attackOf(robo) == 4, "Charging Station: +1 attack in its lane, +2 for Robos")
+	local enemyRobo = stats(m2:spawn(2, 2, 5, "roomba_rex"), 2, 3)
+	check(m2:attackOf(enemyRobo) == 2, "only your own creatures get it")
+	local fastOne = stats(m2:spawn(1, 3, 2, "tin_can_tom"), 2, 2)
+	m2:build(1, 3, 0, "wind_turbine")
+	check(m2:hasKeyword(fastOne, "Fast") and m2:speedOf(fastOne) == 2 and not m2:hasKeyword(c, "Fast"), "Wind Turbine gives Fast in its lane only")
+	local front = stats(m2:spawn(1, 1, 3, "tin_can_tom"), 2, 2)
+	m2:build(1, 4, 0, "bouncy_castle")
+	check(m2:hasKeyword(front, "Sturdy") and not m2:hasKeyword(c, "Sturdy"), "Bouncy Castle gives your Frontline Sturdy, wherever it stands")
+	local p2front = stats(m2:spawn(2, 1, 4, "tin_can_tom"), 2, 2)
+	check(not m2:hasKeyword(p2front, "Sturdy"), "player 2's Frontline doesn't get it")
+	check(not m2:hasKeyword(robo, "Sturdy"), "a creature in the enemy's half is not on your Frontline")
 end
 
 do -- Burrito Bouncer hits back; Mushroom Witch; Rusty Cart gives Scrap
@@ -274,39 +320,98 @@ do -- Burrito Bouncer hits back; Mushroom Witch; Rusty Cart gives Scrap
 end
 
 ---------------------------------------------------------------- turn start
-do -- start of turn: Charge, Spiked Fence, Snack Bar, Scrap Catapult, Haunted Arcade, Rocket Lunchbox, Lemonade
+do -- start of turn: Charge, Spiked Fence, Snack Bar, Scrap Catapult, Haunted Arcade, Rocket Lunchbox, Lemonade, Wind Turbine
 	local m = blank()
 	local bug = stats(m:spawn(1, 1, 1, "bolt_bug"), 1, 2)
 	bug.chargeLeft = 2
-	m:build(1, 3, 3, "spiked_fence")
-	local victim = stats(m:spawn(2, 3, 4, "couch_golem"), 1, 7) -- next to the fence, Sturdy: 1 -> 0
-	local victim2 = stats(m:spawn(2, 4, 4, "skeleton_mascot"), 2, 2)
-	m:build(1, 5, 2, "snack_bar")
-	local hurt = stats(m:spawn(1, 5, 1, "pretzel_guard"), 2, 4)
+	m:build(1, 3, 0, "spiked_fence")
+	local victim = stats(m:spawn(2, 3, 5, "skeleton_mascot"), 2, 3) -- nearest enemy in the fence's lane
+	local behind = stats(m:spawn(2, 3, 6, "skeleton_mascot"), 2, 3) -- further up the lane
+	local side = stats(m:spawn(2, 2, 5, "skeleton_mascot"), 2, 3) -- another lane
+	m:build(1, 1, 0, "snack_bar")
+	local hurt = stats(m:spawn(1, 4, 1, "pretzel_guard"), 2, 4) -- Backline, other lane: row buildings don't care
 	hurt.hp = 1
-	m:build(1, 1, 3, "rocket_lunchbox")
-	m:build(1, 2, 2, "lemonade_stand")
-	m:build(1, 4, 1, "haunted_arcade")
+	local midHurt = stats(m:spawn(1, 4, 2, "pretzel_guard"), 2, 4) -- Midline: not healed
+	midHurt.hp = 1
+	m:build(1, 2, 0, "lemonade_stand")
+	m:build(1, 4, 0, "haunted_arcade")
 	local hp2 = m.players[2].hp
 	m:startTurn(1)
 	check(bug.power == 1 and bug.chargeLeft == 1 and m:attackOf(bug) == 2, "Charge gives 1 Power (+1 attack)")
-	check(victim.hp == 7 and victim2.hp == 1, "Spiked Fence hits enemies next to it (Sturdy blocks 1)")
-	check(hurt.hp == 3, "Snack Bar heals 2")
-	check(m.players[2].hp == hp2 - 2, "Rocket Lunchbox hits the enemy hero for 2")
+	check(victim.hp == 2 and behind.hp == 3 and side.hp == 3, "Spiked Fence hits only the nearest enemy creature in its lane")
+	check(hurt.hp == 3 and midHurt.hp == 1, "Snack Bar heals your Backline 2, not your Midline")
+	check(hurt.power == 1, "and Sweet Tooth gives the healed Snack Power")
 	check(m.players[1].energy == m.players[1].maxEnergy + 1, "Lemonade Stand gives 1 extra energy")
 	local ghosts = 0
 	for _, u in ipairs(m:unitsOf(1, "creature")) do
 		if u.id == "ghost" then
 			ghosts += 1
-			check(u.keywords.Haunt and m.dist(u, { col = 4, row = 1 }) == 1, "arcade Ghost has Haunt and stands next to it")
+			check(u.keywords.Haunt and u.col == 4 and u.row <= 3, "arcade Ghost has Haunt and appears in its lane on your half")
 		end
 	end
 	check(ghosts == 1, "Haunted Arcade spawns one Ghost")
+	check(m.players[2].hp == hp2, "nothing hit the hero")
 	local m2 = blank()
-	m2:build(1, 3, 3, "scrap_catapult")
-	local t = stats(m2:spawn(2, 3, 6, "couch_golem"), 1, 7) -- 3 tiles away, Sturdy: 2 -> 1
+	m2:build(1, 3, 0, "scrap_catapult")
+	local t = stats(m2:spawn(2, 3, 6, "couch_golem"), 1, 7) -- far up the lane, Sturdy: 2 -> 1
+	local other = stats(m2:spawn(2, 1, 4, "couch_golem"), 1, 7)
 	m2:startTurn(1)
-	check(t.hp == 6, "Scrap Catapult hits an enemy 3 tiles away for 2")
+	check(t.hp == 6 and other.hp == 7, "Scrap Catapult hits the nearest enemy in its lane, however far")
+	local m2b = blank()
+	m2b:build(1, 3, 0, "scrap_catapult")
+	local lone = stats(m2b:spawn(2, 1, 6, "skeleton_mascot"), 2, 5)
+	m2b:startTurn(1)
+	check(lone.hp == 3, "with its lane clear, Scrap Catapult hits a random enemy creature")
+	-- Rocket Lunchbox: 3 damage up its lane, the rest hits the hero
+	local m3 = blank()
+	m3:build(1, 2, 0, "rocket_lunchbox")
+	local hp = m3.players[2].hp
+	m3:startTurn(1)
+	check(m3.players[2].hp == hp - 3, "Rocket Lunchbox: a clear lane sends all 3 damage to the enemy hero")
+	local blocker = stats(m3:spawn(2, 2, 4, "tin_can_tom"), 2, 1)
+	hp = m3.players[2].hp
+	m3:startTurn(1)
+	check(blocker.hp <= 0 and m3.players[2].hp == hp - 2, "a 1-health creature in the way takes 1, the hero takes the other 2")
+	m3:resolvePops()
+	local wall = stats(m3:spawn(2, 2, 5, "couch_golem"), 1, 7)
+	hp = m3.players[2].hp
+	m3:startTurn(1)
+	check(wall.hp == 4 and m3.players[2].hp == hp, "a big creature soaks up the whole rocket")
+	-- Wind Turbine Soaks the nearest enemy in its lane
+	local m4 = blank()
+	m4:build(1, 1, 0, "wind_turbine")
+	local wet = stats(m4:spawn(2, 1, 4, "tin_can_tom"), 2, 3)
+	local dry = stats(m4:spawn(2, 2, 4, "tin_can_tom"), 2, 3)
+	m4:startTurn(1)
+	check(wet.soaked and not dry.soaked, "Wind Turbine Soaks the nearest enemy creature in its lane")
+	-- Disco Cactus works on your Midline
+	local m5 = blank()
+	m5:build(1, 1, 0, "disco_cactus")
+	local mid = stats(m5:spawn(1, 3, 2, "tin_can_tom"), 2, 3)
+	mid.hp = 1
+	local back = stats(m5:spawn(1, 3, 1, "tin_can_tom"), 2, 3)
+	back.hp = 1
+	m5:startTurn(1)
+	check((mid.hp == 3 or mid.atk == 3) and back.hp == 1 and back.atk == 2, "Disco Cactus: your Midline gets +1 attack or heals 2, nobody else")
+end
+
+do -- buildings can be attacked from close by; a broken building leaves Scrap in front of it
+	local m = blank()
+	local fence = m:build(2, 2, ROWS + 1, "spiked_fence")
+	local far = ready(stats(m:spawn(1, 2, 5, "tin_can_tom"), 2, 2))
+	local targets = m:attackTargets(far)
+	check(#targets == 0, "from 2 rows away a melee creature can't reach the building")
+	local near = ready(stats(m:spawn(1, 3, 6, "tin_can_tom"), 3, 2))
+	targets = m:attackTargets(near)
+	check(#targets == 1 and targets[1] == fence, "from the enemy's Backline it can hit a building diagonally in front of it")
+	local hp = near.hp
+	check(m:act(1, { kind = "attack", uid = near.uid, target = { col = 2, row = ROWS + 1 } }) and fence.hp == 2 and near.hp == hp, "the building takes the hit and doesn't hit back")
+	fence.hp = 1
+	ready(far)
+	local r = ready(stats(m:spawn(1, 1, 5, "drizzle_sprite"), 1, 2)) -- Ranged
+	check(m:act(1, { kind = "attack", uid = r.uid, target = { col = 2, row = ROWS + 1 } }), "Ranged reaches a building 2 rows away")
+	check(m:at(2, ROWS + 1) == nil and m:scrapAt(2, ROWS) == 1, "the broken building leaves 1 Scrap on the Backline tile in front of it")
+	check(not m:act(1, { kind = "move", uid = far.uid, to = { col = 2, row = ROWS + 1 } }), "nobody walks into the building row")
 end
 
 do -- Microwave Mage and Stormlord at turn start
@@ -316,7 +421,7 @@ do -- Microwave Mage and Stormlord at turn start
 	local far = stats(m:spawn(2, 1, 6, "skeleton_mascot"), 2, 2)
 	m:startTurn(1)
 	check(near.hp == 1 and far.hp == 2, "Microwave Mage hits only enemies next to it")
-	m:spawn(1, 5, 1, "stormlord_nimbus")
+	m:spawn(1, 4, 1, "stormlord_nimbus")
 	m:startTurn(1)
 	check(far.hp == 1, "Stormlord hits every enemy creature")
 end
@@ -344,15 +449,15 @@ do -- Terrain Shift changes a 3x3 patch; Total Chaos keeps everything on the boa
 	check(m:act(1, { kind = "play", handUid = ts, target = { col = 1, row = 1, terrain = "Robo" } }), "Terrain Shift played")
 	check(m.terrain[1][1] == "Robo" and m.terrain[2][2] == "Robo" and m.terrain[3][3] == "Spooky", "3x3 patch changed (clipped at the edge)")
 	for i = 1, 6 do
-		m:spawn(i % 2 + 1, (i % COLS) + 1, (i % 2 == 0) and 2 or 5, "tin_can_tom")
+		m:spawn(i % 2 + 1, (i % COLS) + 1, (i % 2 == 0) and (i > 4 and 1 or 2) or (i > 4 and 6 or 5), "tin_can_tom")
 	end
-	m:build(1, 5, 3, "spiked_fence")
+	m:build(1, 4, 0, "spiked_fence")
 	local before = #m:allUnits("creature")
 	local tc = give(m, 1, "total_chaos")
 	m:act(1, { kind = "play", handUid = tc })
 	local after = #m:allUnits("creature")
 	check(before == after, "Total Chaos keeps every creature")
-	check(m:at(5, 3) and m:at(5, 3).id == "spiked_fence", "buildings stay put")
+	check(m:at(4, 0) and m:at(4, 0).id == "spiked_fence", "buildings stay put")
 	local okGrid = true
 	for col = 1, COLS do
 		for row = 1, ROWS do
@@ -367,8 +472,8 @@ end
 
 do -- Junk King destroys every building; Escalator Wraith bounces; Laundry Bot cleanses
 	local m = blank()
-	m:build(1, 1, 1, "lemonade_stand")
-	m:build(2, 5, 6, "rocket_lunchbox")
+	m:build(1, 1, 0, "lemonade_stand")
+	m:build(2, 4, ROWS + 1, "rocket_lunchbox")
 	local k = give(m, 1, "the_junk_king")
 	m:act(1, { kind = "play", handUid = k, tile = { col = 3, row = 1 } })
 	check(#m:allUnits("building") == 0, "Junk King destroys every building")
@@ -403,10 +508,10 @@ do -- Mannequin Duke brings back the last loss next to it; Pigeon Squad spawns 2
 	check(back and m.dist(back, { col = 3, row = 1 }) == 1, "Duke brings back the Moth Mailman next to it")
 	local p = give(m, 1, "pigeon_squad")
 	m.players[1].energy = 10
-	m:act(1, { kind = "play", handUid = p, tile = { col = 5, row = 2 } })
+	m:act(1, { kind = "play", handUid = p, tile = { col = 4, row = 2 } })
 	local pigeons = 0
 	for _, u in ipairs(m:unitsOf(1, "creature")) do
-		if u.id == "pigeon" and m.dist(u, { col = 5, row = 2 }) == 1 then
+		if u.id == "pigeon" and m.dist(u, { col = 4, row = 2 }) == 1 then
 			pigeons += 1
 		end
 	end
@@ -458,7 +563,7 @@ do -- Hamster Wheel Hero, Sergeant Snail, Big Momma Moose, Captain Confetti
 	m:act(1, { kind = "play", handUid = mo, tile = { col = 4, row = 2 } })
 	check(mouse.atk == 2 and mouse.maxHp == 2, "Moose gives Critters +1/+1")
 	local cc = give(m, 1, "captain_confetti")
-	m:act(1, { kind = "play", handUid = cc, tile = { col = 5, row = 2 } })
+	m:act(1, { kind = "play", handUid = cc, tile = { col = 4, row = 1 } })
 	check(hasEvent(m:takeEvents(), "buff") ~= nil, "Captain Confetti hands out keywords")
 end
 
@@ -584,7 +689,7 @@ do -- Picnic (Snack): heals itself and your creatures next to it 2 for 2 energy
 	local m = blank()
 	local s = stats(ready(m:spawn(1, 2, 2, "pancake_paladin")), 3, 5)
 	local f = stats(m:spawn(1, 3, 3, "tin_can_tom"), 2, 4)
-	local far = stats(m:spawn(1, 5, 1, "tin_can_tom"), 2, 4)
+	local far = stats(m:spawn(1, 4, 1, "tin_can_tom"), 2, 4)
 	s.power = CardData.PowerMax
 	check(m:chantProblem(s) == "Nobody here needs it" and not m:act(1, { kind = "chant", uid = s.uid }), "no Picnic when nobody is hurt and the Snack is at full Power")
 	s.hp, f.hp, far.hp = 2, 1, 1
@@ -598,19 +703,19 @@ end
 
 do -- Scrap Toss (Junk): 1 damage to an enemy up to 2 tiles away, buildings too
 	local m = blank()
-	local j = ready(m:spawn(1, 2, 2, "tin_can_tom"))
-	local e = stats(m:spawn(2, 2, 4, "tin_can_tom"), 2, 3)
-	m:build(2, 4, 4, "spiked_fence")
-	m:spawn(2, 2, 5, "tin_can_tom")
+	local j = ready(m:spawn(1, 2, 5, "tin_can_tom")) -- deep in the enemy's half
+	local e = stats(m:spawn(2, 2, 3, "tin_can_tom"), 2, 3)
+	m:build(2, 4, ROWS + 1, "spiked_fence")
+	m:spawn(2, 2, 2, "tin_can_tom")
 	local aims = {}
 	for _, a in ipairs(m:listActions(1)) do
 		if a.kind == "chant" and a.uid == j.uid then
 			aims[a.target.col * 10 + a.target.row] = true
 		end
 	end
-	check(aims[24] and aims[44] and not aims[25], "Scrap Toss aims at enemies up to 2 tiles away, buildings too")
-	check(not m:act(1, { kind = "chant", uid = j.uid, target = { col = 2, row = 5 } }), "can't toss 3 tiles away")
-	check(m:act(1, { kind = "chant", uid = j.uid, target = { col = 2, row = 4 } }), "toss at an enemy 2 tiles away")
+	check(aims[23] and aims[47] and not aims[22], "Scrap Toss aims at enemies up to 2 tiles away, buildings in their building row too")
+	check(not m:act(1, { kind = "chant", uid = j.uid, target = { col = 2, row = 2 } }), "can't toss 3 tiles away")
+	check(m:act(1, { kind = "chant", uid = j.uid, target = { col = 2, row = 3 } }), "toss at an enemy 2 tiles away")
 	check(e.hp == 2, "Scrap Toss deals 1 damage")
 end
 
@@ -666,10 +771,10 @@ do -- Raise (Spooky): brings back your last creature that popped, next to it, wi
 	check(#spawns == 1 and spawns[1].raised == true and spawns[1].hp == 1, "spawn event says it was raised with 1 health")
 	check(m.players[1].energy == 8, "Raise costs 2 energy")
 	-- once per turn
-	local lost2 = m:spawn(1, 5, 1, "tin_can_tom")
+	local lost2 = m:spawn(1, 1, 1, "tin_can_tom")
 	m:damageUnit(lost2, 99, { player = 2 })
 	m:resolvePops()
-	local s2 = ready(m:spawn(1, 5, 3, "sheet_ghost"))
+	local s2 = ready(m:spawn(1, 1, 3, "sheet_ghost"))
 	check(m:chantProblem(s2) == "Only one Raise each turn" and not m:act(1, { kind = "chant", uid = s2.uid }), "only one Raise each turn")
 	-- it only comes back once
 	m:damageUnit(back, 99, { player = 2 })
@@ -681,11 +786,11 @@ do -- a raised creature only fades away when it pops again: no Ghost, no pop eff
 	local m = blank()
 	local s = ready(m:spawn(1, 3, 2, "skeleton_mascot"))
 	m:spawn(1, 1, 1, "mushroom_witch")
-	local mascot = m:spawn(1, 5, 1, "skeleton_mascot")
+	local mascot = m:spawn(1, 4, 1, "skeleton_mascot")
 	local enemyHp = m.players[2].hp
 	m:damageUnit(mascot, 99, { player = 2 })
 	m:resolvePops()
-	local ghost = m:at(5, 1)
+	local ghost = m:at(4, 1)
 	check(ghost and ghost.id == "ghost" and m.players[2].hp == enemyHp - 1, "a normal pop leaves a Ghost (Haunt) and the Mushroom Witch hits the enemy hero")
 	m:takeEvents()
 	check(m:act(1, { kind = "chant", uid = s.uid }), "Raise the Skeleton Mascot")
@@ -822,7 +927,7 @@ do -- Power: capped, Sweet Tooth (Snacks), Hot Sauce Imp, Grudge (Spooky), Uploa
 	local m3 = blank()
 	local r1 = m3:spawn(1, 2, 2, "roomba_rex")
 	local r2 = m3:spawn(1, 3, 3, "bolt_bug")
-	local far = m3:spawn(1, 5, 1, "bolt_bug")
+	local far = m3:spawn(1, 4, 1, "bolt_bug")
 	m3:addPower(r1, 2)
 	m3:damageUnit(r1, 9, { player = 2 })
 	m3:resolvePops()
@@ -897,18 +1002,16 @@ do -- Scrap: popped Junk leaves Scrap, Junk picks it up when it walks over it
 	m:damageUnit(tom, 9, { player = 2 })
 	m:resolvePops()
 	check(m:scrapAt(2, 3) == 2, "Tin Can Tom leaves 2 Scrap")
-	local fence = m:build(1, 3, 3, "spiked_fence")
+	local fence = m:build(1, 2, 0, "spiked_fence")
 	m:damageUnit(fence, 9, { player = 2 })
 	m:resolvePops()
-	check(m:scrapAt(3, 3) == 1, "a destroyed building leaves 1 Scrap")
+	check(m:scrapAt(2, 1) == 1, "a destroyed building leaves 1 Scrap on the Backline tile in front of it")
 	local v = m:viewFor(1)
 	check(#v.scrap == 2, "the view lists the Scrap")
-	local golem = stats(ready(m:spawn(1, 2, 1, "couch_golem")), 2, 6)
+	local golem = stats(ready(m:spawn(1, 1, 1, "couch_golem")), 2, 6)
 	golem.keywords.Fast = true
-	check(m:act(1, { kind = "move", uid = golem.uid, to = { col = 3, row = 2 } }) or true, "walk")
-	golem.moved = false
-	local ok = m:act(1, { kind = "move", uid = golem.uid, to = { col = 3, row = 3 } })
-	check(ok and m:scrapAt(3, 3) == 0 and golem.atk == 3 and golem.maxHp == 7, "a Junk creature picks up Scrap: +1/+1 each")
+	local ok = m:act(1, { kind = "move", uid = golem.uid, to = { col = 2, row = 1 } })
+	check(ok and m:scrapAt(2, 1) == 0 and golem.atk == 3 and golem.maxHp == 7, "a Junk creature picks up Scrap: +1/+1 each")
 	golem.moved = false
 	ok = m:act(1, { kind = "move", uid = golem.uid, to = { col = 2, row = 3 } })
 	check(ok and m:scrapAt(2, 3) == 0 and golem.atk == 5, "and picks up 2 more")
