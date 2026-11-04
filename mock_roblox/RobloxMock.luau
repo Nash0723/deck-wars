@@ -632,7 +632,7 @@ local EVENTS = {
 	Activated = true, MouseEnter = true, MouseLeave = true, MouseButton1Click = true, MouseButton1Down = true, MouseButton1Up = true, Completed = true,
 	OnServerEvent = true, OnClientEvent = true, CharacterAdded = true, PlayerRemoving = true, PlayerAdded = true,
 	InputBegan = true, InputEnded = true, RenderStepped = true, Heartbeat = true, Changed = true, ChildAdded = true,
-	Touched = true, Died = true,
+	Touched = true, Died = true, FocusLost = true, Focused = true,
 }
 
 local function defaultFor(t)
@@ -1083,6 +1083,14 @@ function methods.Sit(self, humanoid)
 	assert(rec(self).className == "Seat", "Sit on non-seat")
 	rec(self).props.Occupant = humanoid
 	rec(humanoid).props.SeatPart = self
+end
+-- BindableFunction:Invoke calls its OnInvoke callback right away.
+function methods.Invoke(self, ...)
+	local fn = rec(self).props.OnInvoke
+	if not fn then
+		error("Invoke: no OnInvoke callback on " .. rec(self).name, 2)
+	end
+	return fn(...)
 end
 function methods.FireServer(self, ...)
 	assert(rec(self).className == "RemoteEvent", "FireServer on " .. rec(self).className)

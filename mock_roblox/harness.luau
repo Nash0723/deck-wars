@@ -27,7 +27,8 @@ local StarterGui = M.service("StarterGui")
 local Lighting = M.service("Lighting")
 local StarterPlayer = M.service("StarterPlayer")
 local SoundService = M.service("SoundService")
-for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService }) do
+local ServerStorage = M.service("ServerStorage")
+for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService, ServerStorage }) do
 	s.Parent = game
 end
 
@@ -50,8 +51,18 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "DeckRules", "DeckBuilderUI", "ShopUI", "ShopCatalog", "Cosmetics" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
+end
+-- the deck saving module (no EconomyManager in this harness, so it keeps decks in memory)
+moduleFrom(SRC .. "server/PlayerDecks.luau", "PlayerDecks", ServerScriptService)
+local econRemotes = Instance.new("Folder")
+econRemotes.Name = "EconomyRemotes"
+econRemotes.Parent = ReplicatedStorage
+for _, n in ipairs({ "ShopAction", "EconomyEvent", "DevAction" }) do
+	local r = Instance.new("RemoteEvent")
+	r.Name = n
+	r.Parent = econRemotes
 end
 -- Pack Brawl (the Pack Party corner's pull cinematic)
 local pb = Instance.new("Folder")
@@ -322,9 +333,7 @@ for _, name in ipairs({ "Deck Shelf", "Pack Party", "Shop", "Trophy Wall", "Sett
 	M.advance(1.2)
 end
 local CardDataForCheck = makeEnv(clientScript, clientCache).require(ReplicatedStorage.DeckWars.CardData)
-check(find(function(d)
-	return d.ClassName == "TextLabel" and d.Text == "Collection (" .. #CardDataForCheck.List .. " cards)"
-end) == nil, "collection hides after Back")
+check(labelWithText("Your collection") == nil, "collection hides after Back")
 
 -- Click the Pack Party machine in 3D
 local machine = Workspace.MenuRoom.Stations.PackParty.MachineBase
@@ -424,15 +433,15 @@ do
 	end
 	check(SettingsMod.get("sfx") == 8, "settings start at the defaults (no saved settings in the mock)")
 	key(Enum.KeyCode.D)
-	check(labelWithText("Pick your deck") ~= nil and camNear(0, 16, 23), "D from the overview goes to the Duel Table")
+	check(labelWithText("Practice decks") ~= nil and camNear(0, 16, 23), "D from the overview goes to the Duel Table")
 	key(Enum.KeyCode.Right)
 	check(camNear(-9, 8, 0) and labelWithText("Deck Shelf") ~= nil, "Right goes on to the Deck Shelf")
 	key(Enum.KeyCode.A)
-	check(labelWithText("Pick your deck") ~= nil, "A goes back to the Duel Table")
+	check(labelWithText("Practice decks") ~= nil, "A goes back to the Duel Table")
 	key(Enum.KeyCode.Left)
 	check(camNear(-13, 6.2, -13) and labelWithText("Sound effects") ~= nil, "Left from the Duel Table wraps around to Settings")
 	key(Enum.KeyCode.D)
-	check(labelWithText("Pick your deck") ~= nil, "D from Settings wraps around to the Duel Table")
+	check(labelWithText("Practice decks") ~= nil, "D from Settings wraps around to the Duel Table")
 	key(Enum.KeyCode.A)
 	-- change a few settings
 	click(named("Toggle_actionCam"), "Action camera toggle")
@@ -457,10 +466,80 @@ do
 	click(named("ResetSettings"), "Reset to defaults")
 	check(SettingsMod.get("actionCam") == true and SettingsMod.get("speed") == "Normal" and named("Toggle_actionCam").Text == "On", "Reset puts the defaults back")
 	key(Enum.KeyCode.S)
-	check(camNear(0, 15, 22) and labelWithText("Pick your deck") == nil and labelWithText("Sound effects") == nil, "S goes back to the overview")
+	check(camNear(0, 15, 22) and labelWithText("Practice decks") == nil and labelWithText("Sound effects") == nil, "S goes back to the overview")
 	key(Enum.KeyCode.Down)
 	check(camNear(0, 15, 22), "Down at the overview stays put")
 	check(M.errors == errors0, "keyboard + settings: no script errors")
+end
+
+---------------------------------------------------------------------------
+-- Scenario 1d: the Deck Shelf (starter collection, building, saving and deleting a deck)
+---------------------------------------------------------------------------
+do
+	local errors0 = M.errors
+	local function named(name)
+		return find(function(d)
+			return d.Name == name
+		end)
+	end
+	local function textOf(name)
+		local g = named(name)
+		return g and g.Text or ""
+	end
+	click(buttonWithText("Deck Shelf"), "Deck Shelf")
+	M.advance(1.5)
+	check(labelWithText("Your collection") ~= nil, "the Deck Shelf shows your collection")
+	check(find(function(d)
+		return d.ClassName == "TextLabel" and string.find(d.Text, "cards found", 1, true) ~= nil and string.sub(d.Text, 1, 2) == "8 "
+	end) ~= nil, "a new player owns the 8 different starter cards")
+	check(labelWithText("Starter Deck") ~= nil, "the Starter Deck is in slot 1")
+	check(named("New_2") ~= nil and named("Edit_1") ~= nil, "slot 1 can be edited, slot 2 is empty")
+	click(named("New_2"), "+ New")
+	check(named("DeckName") ~= nil and textOf("DeckName") == "Deck 2", "the editor opens on a new deck")
+	click(named("Theme_Snack"), "Snack theme")
+	click(named("Theme_Critter"), "Critter theme")
+	click(named("Theme_Junk"), "Junk theme")
+	check(string.find(textOf("Note"), "at most 2 themes", 1, true) ~= nil, "a third theme is refused: " .. textOf("Note"))
+	check(string.find(textOf("Lane_1"), "Soda Swamp", 1, true) ~= nil and string.find(textOf("Lane_4"), "Pillow Peaks", 1, true) ~= nil, "the lanes split between the two themes")
+	click(named("Lane_1"), "lane 1")
+	check(string.find(textOf("Lane_1"), "Pillow Peaks", 1, true) ~= nil, "tapping a lane switches its terrain")
+	check(string.sub(textOf("Count"), 1, 7) == "Cards 0", "the new deck starts empty")
+	click(named("FillUp"), "Fill up")
+	check(string.sub(textOf("Count"), 1, 8) == "Cards 20", "Fill up adds 20 cards from the starter collection: " .. textOf("Count"))
+	check(textOf("Problems") == "✔ Ready to play", "the filled deck is ready: " .. textOf("Problems"))
+	click(named("Row_jelly_bean_scout"), "remove a Jelly Bean Scout")
+	check(string.sub(textOf("Count"), 1, 8) == "Cards 19" and string.find(textOf("Problems"), "Add 1 more card", 1, true) ~= nil, "taking a card out shows what is missing")
+	local add = named("Cell_jelly_bean_scout")
+	add = add and add:FindFirstChild("Add")
+	click(add, "add Jelly Bean Scout")
+	check(string.sub(textOf("Count"), 1, 8) == "Cards 20", "tapping a card in the pool adds it back")
+	click(add, "add a 4th Jelly Bean Scout")
+	check(string.sub(textOf("Count"), 1, 8) == "Cards 20" and textOf("Note") ~= "", "you can't add more copies than you own: " .. textOf("Note"))
+	local box = named("DeckName")
+	box.Text = "Sweet Mice"
+	box.FocusLost:Fire(true)
+	click(named("SaveDeck"), "Save")
+	M.advance(1)
+	check(string.find(textOf("Note"), "Saved", 1, true) ~= nil, "saving says so: " .. textOf("Note"))
+	check(labelWithText("Sweet Mice") ~= nil, "the saved deck shows in slot 2")
+	click(named("CloseEditor"), "close the editor")
+	check(labelWithText("Your collection") ~= nil, "closing the editor shows the collection again")
+	-- the Duel Table lists your ready decks
+	click(buttonWithText("Duel Table"), "Duel Table")
+	M.advance(1.5)
+	check(named("MyDeck_1") ~= nil and named("MyDeck_2") ~= nil, "the Duel Table lists your decks")
+	check(string.find(textOf("About"), "Snack + Critter", 1, true) ~= nil, "your first ready deck is picked: " .. textOf("About"))
+	-- delete slot 2 (tap twice)
+	click(buttonWithText("Deck Shelf"), "Deck Shelf")
+	M.advance(1.5)
+	click(named("Delete_2"), "delete (first tap)")
+	check(labelWithText("Sweet Mice") ~= nil, "one tap doesn't delete")
+	click(named("Delete_2"), "delete (second tap)")
+	M.advance(1)
+	check(labelWithText("Sweet Mice") == nil and labelWithText("Empty slot 2") ~= nil, "two taps delete the deck")
+	click(buttonWithText("Back"), "Back")
+	M.advance(1.5)
+	check(M.errors == errors0, "Deck Shelf: no script errors")
 end
 
 ---------------------------------------------------------------------------
@@ -687,6 +766,7 @@ local games = {
 	{ "Critter Crew", "Hard" },
 	{ "Haunted Mall", "Medium" },
 	{ "Robo Rumble", "Easy" },
+	{ "Starter Deck", "Medium" }, -- your own saved deck (slot 1)
 }
 for i, g in ipairs(games) do
 	startMatch(g[1], g[2])
@@ -998,6 +1078,13 @@ local ok = pcall(function()
 	MatchAction:FireServer({ kind = "defend" })
 	MatchAction:FireServer({ kind = "chant", uid = "x", target = { col = 99, row = 0 / 0 } })
 	MatchAction:FireServer({ kind = "chant", uid = 3, target = "nope" })
+	local MenuAction = remotes.MenuAction
+	MenuAction:FireServer("SaveDeck", { slot = "x", deck = { cards = { 1, 2, 3 } } })
+	MenuAction:FireServer("SaveDeck", { slot = 2, deck = { name = 5, themes = "Snack", cards = { "jelly_bean_scout", {} }, lanes = 7 } })
+	MenuAction:FireServer("SaveDeck", { slot = 0 / 0, deck = {} })
+	MenuAction:FireServer("SaveDeck", "nope")
+	MenuAction:FireServer("DeleteDeck", { slot = -1 })
+	MenuAction:FireServer("GetDecks", { 1, 2 })
 end)
 M.advance(2)
 check(ok, "server survives junk actions")

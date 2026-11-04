@@ -777,6 +777,17 @@ do
 	local ShopUI = require(Shared:WaitForChild("ShopUI"))
 	ShopUI.init({ makeCard = makeCard })
 	ShopUI.hud(ui.menuUI)
+	require(Shared:WaitForChild("DeckBuilderUI")).init({
+		make = make,
+		label = label,
+		button = button,
+		panel = panel,
+		makeCard = makeCard,
+		familyColor = familyColor,
+		menuUI = ui.menuUI,
+		BODY_FONT = BODY_FONT,
+		MenuAction = MenuAction,
+	})
 end
 
 
@@ -911,45 +922,104 @@ do
 		for _, child in ipairs(ui.stationBody:GetChildren()) do
 			child:Destroy()
 		end
-		if ui.collectionUI then
-			ui.collectionUI.Visible = false
-		end
+		require(Shared:WaitForChild("DeckBuilderUI")).hide()
 		require(Shared:WaitForChild("ShopUI")).close()
 	end
 
-	local chosenDeck = "Snack"
+	-- What you'll play: one of your own decks ({ slot = n }) or a practice deck ({ deck = key }).
+	local chosen = nil
 	local chosenDifficulty = "Medium"
+	local duelOpen = nil -- { refresh = fn, about = label } while the Duel Table panel is open
 
 	local function showDuelTablePanel()
 		clearBody()
 		ui.stationTitle.Text = "Duel Table"
-		make("UIListLayout", { Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, ui.stationBody)
-		label(ui.stationBody, "Pick your deck", { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 1 })
-		local grid = make("Frame", { Size = UDim2.new(1, 0, 0, 3 * 42 + 2 * 6), BackgroundTransparency = 1, LayoutOrder = 2 }, ui.stationBody)
+		local DeckBuilderUI = require(Shared:WaitForChild("DeckBuilderUI"))
+		local body = make("ScrollingFrame", { Name = "DuelList", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 6 }, ui.stationBody)
+		make("UIListLayout", { Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, body)
+		label(body, "My decks", { Size = UDim2.new(1, -8, 0, 22), LayoutOrder = 1 })
+		local mine = make("Frame", { Name = "MyDecks", Size = UDim2.new(1, -8, 0, 42), BackgroundTransparency = 1, LayoutOrder = 2 }, body)
+		make("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 42), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder }, mine)
+		label(body, "Practice decks", { Size = UDim2.new(1, -8, 0, 22), LayoutOrder = 3 })
+		local grid = make("Frame", { Size = UDim2.new(1, -8, 0, 3 * 42 + 2 * 6), BackgroundTransparency = 1, LayoutOrder = 4 }, body)
 		make("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 42), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
-		local about = label(ui.stationBody, "", { Size = UDim2.new(1, 0, 0, 58), Font = BODY_FONT, TextWrapped = true, TextScaled = true, TextColor3 = Color3.fromRGB(230, 225, 240), LayoutOrder = 3 })
+		local about = label(body, "", { Name = "About", Size = UDim2.new(1, -8, 0, 52), Font = BODY_FONT, TextWrapped = true, TextScaled = true, TextColor3 = Color3.fromRGB(230, 225, 240), LayoutOrder = 5 })
 		local deckButtons = {}
+		local mineButtons = {}
 		local diffButtons = {}
+		local function myDecks()
+			local snap = DeckBuilderUI.snapshot()
+			return snap and snap.decks or {}
+		end
 		local function refresh()
+			local decks = myDecks()
+			-- pick your first ready deck the first time (practice Snack if you have none)
+			if not chosen then
+				for _, d in ipairs(decks) do
+					if d.ok then
+						chosen = { slot = d.slot }
+						break
+					end
+				end
+			end
+			chosen = chosen or { deck = "Snack" }
+			for _, b in pairs(mineButtons) do
+				b:Destroy()
+			end
+			table.clear(mineButtons)
+			for i, d in ipairs(decks) do
+				local fam = familyColor(d.deck.themes[1] or "Snack")
+				local on = chosen.slot == d.slot
+				local b = button(mine, (d.ok and "" or "⚠ ") .. d.deck.name, nil, function()
+					chosen = { slot = d.slot }
+					refresh()
+				end, { Name = "MyDeck_" .. d.slot, LayoutOrder = i })
+				b.BackgroundColor3 = on and fam or fam:Lerp(Color3.fromRGB(40, 35, 60), d.ok and 0.65 or 0.85)
+				b.TextColor3 = on and BLACK or (d.ok and WHITE or Color3.fromRGB(190, 185, 205))
+				table.insert(mineButtons, b)
+			end
+			if #decks == 0 then
+				table.insert(mineButtons, label(mine, "No decks yet: build one at the Deck Shelf", { Font = BODY_FONT, TextColor3 = Color3.fromRGB(190, 185, 205) }))
+			end
+			mine.Size = UDim2.new(1, -8, 0, math.max(1, math.ceil(#decks / 2)) * 48 - 6)
 			for key, b in pairs(deckButtons) do
 				local fam = familyColor(StarterDecks[key].family)
-				b.BackgroundColor3 = key == chosenDeck and fam or fam:Lerp(Color3.fromRGB(40, 35, 60), 0.65)
-				b.TextColor3 = key == chosenDeck and BLACK or WHITE
+				b.BackgroundColor3 = chosen.deck == key and fam or fam:Lerp(Color3.fromRGB(40, 35, 60), 0.65)
+				b.TextColor3 = chosen.deck == key and BLACK or WHITE
 			end
 			for key, b in pairs(diffButtons) do
 				b.BackgroundColor3 = key == chosenDifficulty and Color3.fromRGB(240, 160, 50) or Color3.fromRGB(80, 80, 110)
 			end
-			local deck = StarterDecks[chosenDeck]
-			about.Text = deck.family .. " deck, hero " .. CardData.Heroes[deck.hero].name .. ". " .. (deck.blurb or "")
+			about.TextColor3 = Color3.fromRGB(230, 225, 240)
+			if chosen.slot then
+				local d
+				for _, x in ipairs(decks) do
+					if x.slot == chosen.slot then
+						d = x
+					end
+				end
+				if not d then
+					chosen = nil
+					return refresh()
+				end
+				local hero = CardData.Heroes[d.deck.hero]
+				about.Text = table.concat(d.deck.themes, " + ") .. " deck, " .. #d.deck.cards .. " cards, hero " .. (hero and hero.name or "?") .. "." .. (d.ok and "" or (" Not ready: " .. tostring(d.problems[1])))
+				if not d.ok then
+					about.TextColor3 = Color3.fromRGB(255, 200, 120)
+				end
+			else
+				local deck = StarterDecks[chosen.deck]
+				about.Text = "Practice: " .. deck.family .. " deck, hero " .. CardData.Heroes[deck.hero].name .. ". " .. (deck.blurb or "")
+			end
 		end
 		for i, key in ipairs(StarterDecks.Order) do
 			deckButtons[key] = button(grid, StarterDecks[key].name, nil, function()
-				chosenDeck = key
+				chosen = { deck = key }
 				refresh()
 			end, { LayoutOrder = i })
 		end
-		label(ui.stationBody, "Bot difficulty", { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 10 })
-		local row = make("Frame", { Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, LayoutOrder = 11 }, ui.stationBody)
+		label(body, "Bot difficulty", { Size = UDim2.new(1, -8, 0, 22), LayoutOrder = 10 })
+		local row = make("Frame", { Size = UDim2.new(1, -8, 0, 40), BackgroundTransparency = 1, LayoutOrder = 11 }, body)
 		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center }, row)
 		for _, d in ipairs({ "Easy", "Medium", "Hard" }) do
 			diffButtons[d] = button(row, d, nil, function()
@@ -957,61 +1027,46 @@ do
 				refresh()
 			end, { Size = UDim2.new(0.31, 0, 1, 0) })
 		end
-		button(ui.stationBody, "Sit down and play!", Color3.fromRGB(60, 180, 90), function()
-			MenuAction:FireServer("StartBotMatch", { deck = chosenDeck, difficulty = chosenDifficulty })
-		end, { Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 20 })
-		label(ui.stationBody, "The bot picks one of the other decks. Playing friends arrives in a later update.", {
-			Size = UDim2.new(1, 0, 0, 30),
+		button(body, "Sit down and play!", Color3.fromRGB(60, 180, 90), function()
+			if chosen and chosen.slot then
+				MenuAction:FireServer("StartBotMatch", { slot = chosen.slot, difficulty = chosenDifficulty })
+			else
+				MenuAction:FireServer("StartBotMatch", { deck = chosen and chosen.deck or "Snack", difficulty = chosenDifficulty })
+			end
+		end, { Name = "PlayButton", Size = UDim2.new(1, -8, 0, 52), LayoutOrder = 20 })
+		label(body, "The bot picks a practice deck of another theme. Playing friends arrives in a later update.", {
+			Size = UDim2.new(1, -8, 0, 30),
 			Font = BODY_FONT,
 			TextWrapped = true,
 			TextColor3 = Color3.fromRGB(200, 200, 220),
 			LayoutOrder = 21,
 		})
+		duelOpen = { refresh = refresh, about = about, body = body }
 		refresh()
+		DeckBuilderUI.request()
 	end
 
-	local function buildCollection()
-		ui.collectionUI = panel(ui.menuUI, UDim2.new(0.62, 0, 0.72, 0), UDim2.new(0, 24, 0.5, -10), Vector2.new(0, 0.5))
-		label(ui.collectionUI, "Collection (" .. #CardData.List .. " cards)", { Size = UDim2.new(1, -24, 0, 40), Position = UDim2.fromOffset(12, 8), TextColor3 = Color3.fromRGB(255, 220, 90) })
-		local scroll = make("ScrollingFrame", {
-			Size = UDim2.new(1, -24, 1, -60),
-			Position = UDim2.fromOffset(12, 52),
-			BackgroundTransparency = 1,
-			ScrollBarThickness = 8,
-			CanvasSize = UDim2.new(),
-			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		}, ui.collectionUI)
-		make("UIGridLayout", { CellSize = UDim2.fromOffset(130, 182), CellPadding = UDim2.fromOffset(12, 12) }, scroll)
-		make("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8) }, scroll)
-		for _, id in ipairs(CardData.List) do
-			makeCard(scroll, id, nil, CardData.Cards[id].rarity == "Secret" and "hidden" or nil)
-		end
+	do
+		local DeckBuilderUI = require(Shared:WaitForChild("DeckBuilderUI"))
+		DeckBuilderUI.onDecks(function()
+			if duelOpen and duelOpen.body.Parent then
+				duelOpen.refresh()
+			end
+		end)
+		MenuAction.OnClientEvent:Connect(function(what, data)
+			-- the server said no to the deck you picked (it changed since, or isn't finished)
+			if what == "MatchRefused" and duelOpen and duelOpen.body.Parent then
+				duelOpen.about.Text = "Can't play that deck: " .. tostring(data)
+				duelOpen.about.TextColor3 = Color3.fromRGB(255, 140, 140)
+			end
+		end)
 	end
 
+	-- The Deck Shelf: your collection, your decks and the deck editor (DeckBuilderUI).
 	local function showDeckShelfPanel()
 		clearBody()
 		ui.stationTitle.Text = "Deck Shelf"
-		if not ui.collectionUI then
-			buildCollection()
-		end
-		ui.collectionUI.Visible = true
-		local scroll = make("ScrollingFrame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 6 }, ui.stationBody)
-		make("UIListLayout", { Padding = UDim.new(0, 2) }, scroll)
-		for _, key in ipairs(StarterDecks.Order) do
-			local deck = StarterDecks[key]
-			label(scroll, deck.name .. " (" .. CardData.Heroes[deck.hero].name .. ")", { Size = UDim2.new(1, 0, 0, 28), TextColor3 = Color3.fromRGB(255, 200, 120) })
-			local counts, order = {}, {}
-			for _, id in ipairs(deck.cards) do
-				if not counts[id] then
-					table.insert(order, id)
-				end
-				counts[id] = (counts[id] or 0) + 1
-			end
-			for _, id in ipairs(order) do
-				label(scroll, counts[id] .. "x  " .. CardData.get(id).name, { Size = UDim2.new(1, 0, 0, 20), Font = BODY_FONT, TextXAlignment = Enum.TextXAlignment.Left })
-			end
-		end
-		label(scroll, "Building your own decks arrives in the next update.", { Size = UDim2.new(1, 0, 0, 36), Font = BODY_FONT, TextWrapped = true, TextColor3 = Color3.fromRGB(200, 200, 220) })
+		require(Shared:WaitForChild("DeckBuilderUI")).showShelf(ui.stationBody)
 	end
 
 	local function showComingSoon(title, text)
@@ -1138,9 +1193,7 @@ do
 		current = nil
 		markNav()
 		ui.stationPanel.Visible = false
-		if ui.collectionUI then
-			ui.collectionUI.Visible = false
-		end
+		require(Shared:WaitForChild("DeckBuilderUI")).hide()
 		require(Shared:WaitForChild("ShopUI")).close()
 		moveCamera("Overview")
 	end
@@ -5181,9 +5234,7 @@ local function enterMatch()
 	setStationSigns(false)
 	ui.menuUI.Visible = false
 	ui.stationPanel.Visible = false
-	if ui.collectionUI then
-		ui.collectionUI.Visible = false
-	end
+	require(Shared:WaitForChild("DeckBuilderUI")).hide()
 	require(Shared:WaitForChild("ShopUI")).close()
 	highlight.Enabled = false
 	ui.matchUI.Visible = true

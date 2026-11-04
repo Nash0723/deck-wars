@@ -15,12 +15,31 @@ if BAL_FIRSTDRAW ~= nil then -- try the game with or without the first player's 
 end
 local keys = StarterDecks.Order
 
+-- Per card: in how many games each player played it, and how many of those they won
+-- (BAL_CARDS = true prints one "CARD id games wins plays" line per card, for adding up runs).
+local cardStats = {}
 local function game(seed, a, b)
 	local m = MatchEngine.new({ deck = a.cards, hero = a.hero, family = a.family }, { deck = b.cards, hero = b.hero, family = b.family, extraCard = EXTRA }, seed)
 	local r = Rng.new(seed + 1)
+	local played = { {}, {} }
 	while not m.over do
 		m:act(m.current, BotBrain.chooseAction(m, m.current, DIFF, r))
-		m:takeEvents()
+		for _, e in ipairs(m:takeEvents()) do
+			if e.type == "play" and e.card and played[e.player] then
+				played[e.player][e.card] = (played[e.player][e.card] or 0) + 1
+			end
+		end
+	end
+	for p = 1, 2 do
+		for id, count in pairs(played[p]) do
+			local s = cardStats[id] or { games = 0, wins = 0, plays = 0 }
+			cardStats[id] = s
+			s.games += 1
+			s.plays += count
+			if m.winner == p then
+				s.wins += 1
+			end
+		end
 	end
 	return m.winner, m.turn
 end
@@ -70,3 +89,11 @@ for k, v in pairs(pair) do
 end
 table.sort(lines)
 print("  " .. table.concat(lines, ", "))
+if BAL_CARDS then
+	for _, id in ipairs(CardData.List) do
+		local s = cardStats[id]
+		if s then
+			print(string.format("CARD %s %d %d %d", id, s.games, s.wins, s.plays))
+		end
+	end
+end
