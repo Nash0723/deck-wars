@@ -27,7 +27,8 @@ local StarterGui = M.service("StarterGui")
 local Lighting = M.service("Lighting")
 local StarterPlayer = M.service("StarterPlayer")
 local SoundService = M.service("SoundService")
-for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService }) do
+local ServerStorage = M.service("ServerStorage")
+for _, s in ipairs({ Workspace, ReplicatedStorage, ServerScriptService, ServerStorage, Players, TweenService, UserInputService, RunService, Debris, StarterGui, Lighting, StarterPlayer, SoundService }) do
 	s.Parent = game
 end
 
@@ -50,14 +51,14 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 -- Pack Brawl (the Pack Party corner's pull cinematic)
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
 pb.Parent = ReplicatedStorage
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "PackParty" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local pullRemotes = Instance.new("Folder")
@@ -67,6 +68,16 @@ for _, n in ipairs({ "PullRequest", "PullResult" }) do
 	local r = Instance.new("RemoteEvent")
 	r.Name = n
 	r.Parent = pullRemotes
+end
+-- the economy's remotes (the Shop and wallet HUD wait for them; no economy server runs here,
+-- so the pull server uses its test wallet)
+local econRemotes = Instance.new("Folder")
+econRemotes.Name = "EconomyRemotes"
+econRemotes.Parent = ReplicatedStorage
+for _, n in ipairs({ "ShopAction", "EconomyEvent", "DevAction" }) do
+	local r = Instance.new("RemoteEvent")
+	r.Name = n
+	r.Parent = econRemotes
 end
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
@@ -326,15 +337,49 @@ check(find(function(d)
 	return d.ClassName == "TextLabel" and d.Text == "Collection (" .. #CardDataForCheck.List .. " cards)"
 end) == nil, "collection hides after Back")
 
--- Click the Pack Party machine in 3D
-local machine = Workspace.MenuRoom.Stations.PackParty.MachineBase
-M.raycastHook = function()
-	return { Instance = machine, Position = machine.Position }
+-- Click a pack on the Pack Shelf in 3D: from the overview it opens Pack Party
+local shelf = Workspace.MenuRoom.Stations.PackParty.PackShelf
+local function aimAt(part)
+	M.raycastHook = function()
+		return { Instance = part, Position = part.Position }
+	end
 end
+aimAt(shelf.ShelfPack_brawl.PackBody)
 UserInputService.InputBegan:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(300, 300, 0) }, false)
 M.advance(1.2)
-check(labelWithText("Pack Party") ~= nil, "clicking the prize machine opens Pack Party")
-M.raycastHook = nil
+check(labelWithText("Pack Party") ~= nil, "clicking the Pack Shelf opens Pack Party")
+do
+	local errors0 = M.errors
+	local env = makeEnv(clientScript, clientCache)
+	local PackShelf = env.require(ReplicatedStorage.PackBrawl.PackShelf)
+	local PackPartyM = env.require(ReplicatedStorage.PackBrawl.PackParty)
+	local nameLabel = find(function(d)
+		return d.Name == "PackName" and d:IsA("TextLabel")
+	end)
+	check(nameLabel and nameLabel.Text == "Brawl Pack", "the panel starts on the Brawl Pack")
+	local mascots = 0
+	for _, d in ipairs(shelf:GetChildren()) do
+		if string.sub(d.Name, 1, 7) == "Mascot_" then
+			mascots += 1
+		end
+	end
+	check(mascots == 6, "six mascot figurines stand on the shelf (" .. mascots .. ")")
+	-- hovering lifts a pack
+	local robo = shelf.ShelfPack_robo.PackBody
+	local y0 = robo.Position.Y
+	aimAt(robo)
+	M.advance(0.8)
+	check(PackShelf.state.hovered == "robo" and robo.Position.Y > y0 + 0.1, "the pack under the mouse lifts up")
+	-- clicking picks it: it comes forward off the shelf, the panel shows it
+	UserInputService.InputBegan:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(300, 300, 0) }, false)
+	M.advance(1)
+	check(PackPartyM.selected() == "robo" and nameLabel.Parent ~= nil and nameLabel.Text == "Overclock Pack", "clicking a pack on the shelf picks it (and keeps the same panel)")
+	local fwd = (robo.Position - PackShelf.state.packs.robo.home.Position)
+	check(fwd.Magnitude > 0.8, "the picked pack comes forward off the shelf")
+	-- the room's other stations still work from here
+	M.raycastHook = nil
+	check(M.errors == errors0, "Pack Shelf: no script errors")
+end
 
 ---------------------------------------------------------------------------
 -- Scenario 1b: open a pack in the Pack Party corner (Pack Brawl plays, then the reveal)
@@ -348,8 +393,15 @@ do
 		end
 	end
 	check(mainGui ~= nil, "Pack Party shows the pack buttons")
-	check(buttonWithText("Open 1 pack") ~= nil and buttonWithText("Open 10 packs") ~= nil, "Open 1 / Open 10 buttons show")
-	click(buttonWithText("Open 1 pack"), "Open 1 pack")
+	local function named(n)
+		return find(function(d)
+			return d.ClassName == "TextButton" and d.Name == n
+		end)
+	end
+	check(named("Open1") ~= nil and named("Open10") ~= nil and string.find(named("Open1").Text, "100", 1, true) ~= nil, "Open 1 / Open 10 buttons show their Gem prices")
+	local gems0 = player:GetAttribute("Gems")
+	check(gems0 == 1000, "the test wallet holds 1000 Gems (" .. tostring(gems0) .. ")")
+	click(named("Open1"), "Open 1")
 	M.advance(0.4)
 	-- the pack is in your hands first: tap it three times
 	local tease = playerGui:FindFirstChild("PackTease")
@@ -371,7 +423,7 @@ do
 	-- the room camera must not fight the cinematic's camera
 	local camBefore = camera.CFrame
 	M.advance(0.5)
-	check((camera.CFrame.Position - Vector3.new(9.5, 9.5, -9.5)).Magnitude > 50, "the cinematic has the camera (not the room camera)")
+	check((camera.CFrame.Position - Vector3.new(11.5, 9.4, -6.3)).Magnitude > 50, "the cinematic has the camera (not the room camera)")
 	local t = 0
 	while not playerGui:FindFirstChild("PackBrawlReveal") and t < 30 do
 		M.advance(0.5)
@@ -381,14 +433,19 @@ do
 	check(reveal ~= nil, string.format("the brawl reaches the card reveal (%.1f s)", t))
 	if reveal then
 		M.advance(1.5)
+		click(reveal:FindFirstChild("Tap"), "Tap (jumps to the stat card)")
+		M.advance(0.6)
+		check(reveal:FindFirstChild("StatCard", true) ~= nil, "the stat card shows")
 		click(reveal:FindFirstChild("Tap"), "Tap")
 		M.advance(1)
 	end
+	check(player:GetAttribute("Gems") == 900, "one Overclock pack cost 100 Gems")
 	check(playerGui:FindFirstChild("PackBrawlReveal") == nil, "the reveal closes")
 	check(Workspace:FindFirstChild("PackBrawlScene") == nil, "the Brawl Box is cleaned up")
 	check(mainGui and mainGui.Enabled == true, "the menu comes back after the reveal")
 	M.advance(2)
-	check((camera.CFrame.Position - Vector3.new(9.5, 9.5, -9.5)).Magnitude < 3, "the camera is back at the Pack Party corner")
+	check((camera.CFrame.Position - Vector3.new(11.5, 9.4, -6.3)).Magnitude < 3, "the camera is back at the Pack Party corner")
+	check(shelf.ShelfPack_robo.PackBody.Transparency < 0.5, "the opened pack is back on the shelf")
 	check(find(function(d)
 		return d.ClassName == "TextLabel" and string.sub(d.Text, 1, 10) == "Last pull:"
 	end) ~= nil, "the status line names the pulled card")

@@ -809,6 +809,16 @@ InstanceMT.__newindex = function(inst, key, value)
 		setParent(inst, value)
 		return
 	end
+	-- callbacks (BindableFunction.OnInvoke, RemoteFunction.OnServerInvoke / OnClientInvoke)
+	if (key == "OnInvoke" and r.className == "BindableFunction")
+		or ((key == "OnServerInvoke" or key == "OnClientInvoke") and r.className == "RemoteFunction") then
+		if value ~= nil and type(value) ~= "function" then
+			error(key .. " must be a function", 2)
+		end
+		r.callbacks = r.callbacks or {}
+		r.callbacks[key] = value
+		return
+	end
 	if key == "Position" and isA(r.className, "BasePart") then
 		checkType(r.className, key, "Vector3", value)
 		local cf = r.props.CFrame or CFrame.new()
@@ -949,10 +959,46 @@ function methods.GetPropertyChangedSignal(self, prop)
 	end
 	return r.changed[prop]
 end
-function methods.GetAttribute()
-	return nil
+-- Attributes: stored per instance, with GetAttributeChangedSignal like Roblox.
+local ATTR_TYPES = { ["nil"] = true, number = true, string = true, boolean = true, Color3 = true, Vector3 = true, Vector2 = true, UDim2 = true, UDim = true, CFrame = true, NumberRange = true }
+function methods.GetAttribute(self, name)
+	assert(type(name) == "string", "GetAttribute needs a string name")
+	local r = rec(self)
+	return r.attrs and r.attrs[name]
 end
-function methods.SetAttribute() end
+function methods.SetAttribute(self, name, value)
+	assert(type(name) == "string" and #name > 0 and #name <= 100, "SetAttribute: bad attribute name")
+	local t = M.typeof(value)
+	if not ATTR_TYPES[t] then
+		error("SetAttribute: " .. t .. " is not a supported attribute type", 2)
+	end
+	if t == "number" and value ~= value then
+		M.report("warning", "SetAttribute(" .. name .. ") with NaN")
+	end
+	local r = rec(self)
+	r.attrs = r.attrs or {}
+	local old = r.attrs[name]
+	r.attrs[name] = value
+	if old ~= value and r.attrSignals and r.attrSignals[name] then
+		r.attrSignals[name]:Fire()
+	end
+end
+function methods.GetAttributes(self)
+	local r = rec(self)
+	local out = {}
+	for k, v in pairs(r.attrs or {}) do
+		out[k] = v
+	end
+	return out
+end
+function methods.GetAttributeChangedSignal(self, name)
+	local r = rec(self)
+	r.attrSignals = r.attrSignals or {}
+	if not r.attrSignals[name] then
+		r.attrSignals[name] = newSignal(name .. "AttributeChanged")
+	end
+	return r.attrSignals[name]
+end
 function methods.GetFullName(self)
 	local parts = {}
 	local i = self
@@ -1083,6 +1129,15 @@ function methods.Sit(self, humanoid)
 	assert(rec(self).className == "Seat", "Sit on non-seat")
 	rec(self).props.Occupant = humanoid
 	rec(humanoid).props.SeatPart = self
+end
+function methods.Invoke(self, ...)
+	local r = rec(self)
+	assert(r.className == "BindableFunction", "Invoke on " .. r.className)
+	local cb = r.callbacks and r.callbacks.OnInvoke
+	if not cb then
+		error("BindableFunction \"" .. r.name .. "\" has no OnInvoke callback", 2)
+	end
+	return cb(...)
 end
 function methods.FireServer(self, ...)
 	assert(rec(self).className == "RemoteEvent", "FireServer on " .. rec(self).className)

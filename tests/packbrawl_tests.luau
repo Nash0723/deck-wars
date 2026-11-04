@@ -306,6 +306,90 @@ do
 	check(b.wingL and b.wingR and r.has.weapon, "captain confetti swings the spyglass with a wing")
 end
 
+
+-- Packs: the shelf's packs, their odds, prices and rolls
+do
+	local Packs = require("Packs")
+	check(#Packs.List == 7 and Packs.List[1].id == "brawl", "7 packs: the Brawl Pack first, then one per family")
+	local famSeen = {}
+	for _, def in ipairs(Packs.List) do
+		if def.family then
+			famSeen[def.family] = true
+			check(def.mascot and CardData.Cards[def.mascot] and CardData.Cards[def.mascot].family == def.family, def.id .. ": its mascot is one of its family's cards")
+			check(def.terrain ~= nil, def.id .. ": has a home terrain")
+		end
+		check(#def.color == 3 and #def.dark == 3 and #def.accent == 3, def.id .. ": has its colors")
+		-- exact card odds add up to 100 and every pack can give every tier
+		local map, list = Packs.cardOdds(def.id)
+		local total, tiers = 0, {}
+		for _, e in ipairs(list) do
+			total += e.chance
+			tiers[e.tier] = (tiers[e.tier] or 0) + e.chance
+			check(e.chance > 0, def.id .. ": " .. e.id .. " has a chance")
+			check(not CardData.Cards[e.id].token, def.id .. ": no tokens in packs (" .. e.id .. ")")
+			if def.family then
+				check(e.family == def.family or e.family == "Any" or e.tier == "Secret", def.id .. ": only its family, shared cards or a Secret (" .. e.id .. ")")
+			end
+		end
+		check(math.abs(total - 100) < 1e-6, def.id .. ": card odds add up to 100% (" .. total .. ")")
+		for _, t in ipairs(PullRates.Tiers) do
+			check(math.abs((tiers[t] or 0) - PullRates.Odds[t]) < 1e-6, def.id .. ": " .. t .. " keeps the shelf-wide rarity odds")
+		end
+	end
+	for _, f in ipairs(CardData.Families) do
+		check(famSeen[f], "a pack for the " .. f .. " family")
+	end
+	check(Packs.price(1) == 100 and Packs.price(10) == 900 and Packs.price(3) == nil, "prices: 100 Gems, 900 for 10, nothing else")
+	check(Packs.valid(nil) and Packs.valid("robo") and not Packs.valid("candy") and not Packs.valid(5), "pack ids are checked")
+	check(Packs.percent(55) == "55%" and Packs.percent(4.5) == "4.5%" and Packs.percent(0.3) == "0.3%" and Packs.percent(0.075) == "0.075%" and Packs.percent(1) == "1%", "percent labels")
+	-- a family's own card comes up 3 times in 4 (Common: both groups have cards)
+	local rng = Rng.new(7)
+	local rand = function()
+		return rng:next()
+	end
+	local own, n = 0, 20000
+	for _ = 1, n do
+		local id = Packs.pickCard("snack", "Common", rand)
+		if CardData.Cards[id].family == "Snack" then
+			own += 1
+		end
+	end
+	check(math.abs(own / n - Packs.ThemeShare) < 0.015, string.format("a Snack pack's Commons are Snack cards %.1f%% of the time (want 75%%)", own / n * 100))
+	-- simulated pulls match the published per-card odds
+	local map = Packs.cardOdds("critter")
+	local seen, pulls = {}, 60000
+	for _ = 1, pulls do
+		local r = Packs.roll("critter", 1, rand)
+		seen[r.cards[1]] = (seen[r.cards[1]] or 0) + 1
+	end
+	local worst = 0
+	for id, pct in pairs(map) do
+		local got = (seen[id] or 0) / pulls * 100
+		if pct >= 1 then
+			worst = math.max(worst, math.abs(got - pct) / pct)
+		end
+	end
+	check(worst < 0.12, string.format("60,000 Critter pulls land within 12%% of the shown odds for every card of 1%% or more (worst %.1f%%)", worst * 100))
+	-- 10 packs always hold an Epic or better; forced tiers; boosted odds
+	for _ = 1, 300 do
+		local r = Packs.roll("junk", 10, rand)
+		local best = PullRates.Rank[CardData.Cards[r.cards[r.best]].rarity]
+		check(best >= PullRates.Rank[PullRates.TenPullFloor], "10 Junk packs hold an Epic or better")
+		if best < PullRates.Rank[PullRates.TenPullFloor] then
+			break
+		end
+	end
+	local r = Packs.roll("weather", 1, rand, "Secret")
+	check(CardData.Cards[r.cards[1]].rarity == "Secret" and r.packId == "weather", "a forced Secret from the Weather pack (it has none of its own, so any Secret)")
+	r = Packs.roll(nil, 1, rand)
+	check(r.packId == "brawl", "no pack id means the Brawl Pack")
+	if PullRates.luckyOdds then
+		local lucky = PullRates.luckyOdds(2)
+		local m1, m2 = Packs.cardOdds("robo"), Packs.cardOdds("robo", lucky)
+		check(m2.omega_microwave > m1.omega_microwave * 1.9, "Luck boosts raise a themed pack's Secret chance too")
+	end
+end
+
 for t, nFake in pairs(fakeSeen) do
 	check(nFake > 0, "the fake ending shows up for " .. t)
 end

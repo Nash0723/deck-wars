@@ -76,7 +76,7 @@ local CAMS = {
 	SeatYou = { Vector3.new(0, 16, 12), Vector3.new(0, 4.2, 1.25), 48 }, -- your turn: leaning in, the board fills the screen
 	SeatOpp = { Vector3.new(0, 15.6, 13.4), Vector3.new(0, 4.0, -0.6), 52 }, -- the bot's turn: leaning back to watch it play
 	DeckShelf = { Vector3.new(-9, 8, 0), Vector3.new(-22, 6, 0) },
-	PackParty = { Vector3.new(9.5, 9.5, -9.5), Vector3.new(17, 5.2, -17.5) },
+	PackParty = { Vector3.new(11.5, 9.4, -6.3), Vector3.new(19.5, 6.0, -14.9) }, -- the Pack Shelf, left of the panel
 	ShopCounter = { Vector3.new(9, 8.5, 9), Vector3.new(16, 5.2, 17.5) },
 	TrophyWall = { Vector3.new(11, 9, 0), Vector3.new(23.5, 8, 0) },
 	Radio = { Vector3.new(-13, 6.2, -13), Vector3.new(-17.2, 3.6, -18.2) },
@@ -913,6 +913,8 @@ do
 			ui.collectionUI.Visible = false
 		end
 		require(Shared:WaitForChild("ShopUI")).close()
+		-- (Pack Party makes the panel taller; every other station uses the normal size)
+		ui.stationPanel.Size = UDim2.fromOffset(390, 480)
 	end
 
 	local chosenDeck = "Snack"
@@ -1025,14 +1027,17 @@ do
 			key = "PackParty",
 			name = "Pack Party",
 			show = function()
-				-- Pack Brawl: every pack is a fight in the Brawl Box, and the card you pulled wins it
+				-- The Pack Shelf: pick a pack (click it on the shelf, or use the arrows), then open
+				-- it. Every pack is a fight in the Brawl Box, and the card you pulled wins it.
 				clearBody()
 				ui.stationTitle.Text = "Pack Party"
-				label(ui.stationBody, "Every pack is a brawl! Creatures crash the ring and fight it out, and the card you pulled walks in last and wins. Rarer pulls bring bigger fights.", { Size = UDim2.new(1, 0, 0, 96), Font = BODY_FONT, TextWrapped = true, TextScaled = false, TextSize = 18, TextYAlignment = Enum.TextYAlignment.Top })
-				local status = label(ui.stationBody, "Hold the screen to fast-forward a fight.", { Name = "PackStatus", Size = UDim2.new(1, 0, 0, 44), Position = UDim2.fromOffset(0, 100), Font = BODY_FONT, TextWrapped = true, TextScaled = false, TextSize = 15, TextColor3 = Color3.fromRGB(200, 200, 220), TextYAlignment = Enum.TextYAlignment.Top })
-				local area = make("Frame", { Name = "PackArea", Size = UDim2.new(1, 0, 0, 160), Position = UDim2.fromOffset(0, 150), BackgroundTransparency = 1 }, ui.stationBody)
 				local PackParty = require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackParty"))
+				ui.stationPanel.Size = UDim2.fromOffset(390, RunService:IsStudio() and 600 or 550)
+				local area = make("Frame", { Name = "PackArea", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, ui.stationBody)
 				PackParty.mount(area, {
+					isActive = function()
+						return mode == "menu" and ui.stationPanel.Visible and area.Parent ~= nil
+					end,
 					onStart = function()
 						-- the cinematic takes over the camera and the screen until the reveal closes
 						mode = "pack"
@@ -1045,12 +1050,10 @@ do
 						gui.Enabled = true
 						lockPlayer()
 					end,
-					onStatus = function(text)
-						if status.Parent then
-							status.Text = text
-						end
-					end,
 				})
+				-- clicks and the mouse go to the shelf first (a pack under the mouse lifts up)
+				ui.onMenuClick = PackParty.clickAt
+				ui.onMenuHover = PackParty.hoverAt
 			end,
 		},
 		{
@@ -5050,6 +5053,9 @@ do
 		end
 		local pos = input.Position
 		if mode == "menu" then
+			if ui.onMenuClick and ui.onMenuClick(Vector2.new(pos.X, pos.Y)) then
+				return
+			end
 			local station = stationAt(Vector2.new(pos.X, pos.Y), true)
 			if station then
 				selectStation(station.Name)
@@ -5356,7 +5362,10 @@ do
 		if mode == "menu" then
 			local mouse = UserInputService:GetMouseLocation()
 			local station = stationAt(mouse)
-			if station then
+			if ui.onMenuHover and ui.onMenuHover(mouse) then
+				-- (a pack on the shelf is lifted instead)
+				highlight.Enabled = false
+			elseif station then
 				highlight.Adornee = station
 				highlight.Enabled = true
 				-- the hovered station glows with a soft gold pulse

@@ -151,7 +151,27 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 ## Pack Brawl: the pack-opening cinematic
 Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
 
-It is part of the main game: walk to the Pack Party corner (click the prize machine, or the Pack Party button) and press "Open 1 pack" or "Open 10 packs". While you test in Studio there is also one button per tier to preview that tier's cinematic (those only work in Studio, so live players can't force a Secret). During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP. Pulls are free and the collection is not saved yet (prices, currency and saving come with step 3).
+It is part of the main game: walk to the Pack Party corner (click the Pack Shelf, or the Pack Party button), pick a pack and press "Open 1" or "Open 10". While you test in Studio there is also one button per tier to preview that tier's cinematic (those only work in Studio or for developers, so live players can't force a Secret). During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP. Pulls cost Gems (see "The Pack Shelf" below).
+
+### The Pack Shelf
+The Pack Party corner has a lit display shelf with seven packs: the **Brawl Pack** (every card) on the top step, and one themed pack per family below it, each with a small figurine of that family's Legendary next to it:
+
+| Pack | Family | Mascot |
+|---|---|---|
+| Sugar Rush Pack | Snack | Queen Parfait |
+| Scrap Heap Pack | Junk | The Junk King |
+| Storm Front Pack | Weather | Stormlord Nimbus |
+| Burrow Bunch Pack | Critter | Big Momma Moose |
+| Midnight Mall Pack | Spooky | The Mannequin Duke |
+| Overclock Pack | Robo | Mega Blender Prime |
+
+Hover a pack and it lifts; click it (or use the arrows, the dots, or Q / E) and it comes forward off the shelf, its riser lights up and its mascot hops. The panel shows the pack's name, what's inside and the exact chance of every card (Roblox requires showing the odds of paid random items), plus your Gems. Every pack has the same rarity odds; a themed pack only changes which card of that rarity you get: 3 in 4 cards come from its family and 1 in 4 from the shared spells and buildings. If the family has no card of the rolled rarity (most have no Secret), the card comes from every card of that rarity, so a Secret can still turn up anywhere. Prices: 1 pack = 100 Gems, 10 packs = 900 Gems (and a 10-pull always holds an Epic or better).
+
+Opening: the chosen pack leaps off the shelf at the camera, you tap it open (the pack tease), the Pack Brawl plays, and then the best card gets its own reveal: the pack drops in, its top rips off with light pouring out, the card rises face down, flips, and slides aside for a **stat card** (rarity, family, terrain, Attack / Health / Cost bars that count up, keywords, ability text, how many you own). Tap once to jump to the finished stat card, tap again to close. A 10-pull then shows the fan of all ten cards.
+
+The server decides everything: it takes the Gems first (refunds them if anything fails), rolls the cards, saves them to your collection and only then tells the client what to show. It uses the economy's `EconomyManager` (ServerStorage > DeckWarsServer); if that isn't in the place, a test wallet gives everyone 1000 Gems per visit and nothing is saved.
+
+Where to tweak it: packs, names, colors, prices and the 75% family share are at the top of `src/packbrawl/Packs.luau` (keep one pack per line: `gen_world.py` reads it to color the shelf, so run `python3 gen_world.py` after changing colors). The shelf model is made by `gen_world.py` (`build_pack_shelf`, position `SHELF_AT`). Hover/selection motion: `src/packbrawl/PackShelf.luau`. The rip and stat card: `Reveal.single` and `Reveal.statCard` in `src/packbrawl/Reveal.luau`. `python3 preview/shelf.py` renders a rough picture of the corner.
 
 The separate test place still builds, for trying the cinematic on its own:
 

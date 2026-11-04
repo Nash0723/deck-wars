@@ -341,7 +341,7 @@ end
 local SFX_FOR_POWER = { "slap", "thud", "heavy" }
 
 H.pack = function(d, c)
-	local pack = d.arena:makePack(d.folder, c.at)
+	local pack = d.arena:makePack(d.folder, c.at, d.script.pack)
 	d.pack = pack
 	d.fx:anim(0.9, function(a)
 		local shake = a < 0.45 and math.sin(a * 90) * 0.12 * (a / 0.45) or 0
