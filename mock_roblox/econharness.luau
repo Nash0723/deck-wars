@@ -55,11 +55,11 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "PackParty" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local function remoteFolder(name, list)
@@ -179,6 +179,7 @@ local function lastEvent(kind)
 	return nil, 0
 end
 
+moduleFrom(SRC .. "server/PlayerDecks.luau", "PlayerDecks", ServerScriptService)
 runScript(SRC .. "server/MatchServer.server.luau", scriptIn(ServerScriptService, "Script", "MatchServer"), serverCache)
 runScript(SRC .. "pullserver/PullServer.server.luau", scriptIn(ServerScriptService, "Script", "PullServer"), serverCache)
 runScript(SRC .. "server/EconomyServer.server.luau", scriptIn(ServerScriptService, "Script", "EconomyServer"), serverCache)
@@ -318,6 +319,8 @@ check(labelStarting("⏳ New cards in") ~= nil, "the reset countdown shows")
 local coins0 = player:GetAttribute("Coins")
 local first = priceButtons()[1]
 local today = ShopCatalog.dailyCards(ShopCatalog.dayNumber(os.time()))
+-- (new players already own the starter collection, so count from what they had)
+local ownedBefore = Economy.ownsCard(player, today[1].id)
 click(first, "buy the first daily card")
 M.advance(0.5)
 
@@ -325,7 +328,7 @@ local res = lastEvent("result")
 check(res and res.ok, "buying a daily card works (" .. tostring(res and res.message) .. ")")
 check(player:GetAttribute("Coins") == coins0 - today[1].price, "the card's Coins were paid")
 check(buttonWithText("Bought ✓", false, window) ~= nil, "the tile now says Bought")
-check(Economy.ownsCard(player, today[1].id) == 1, "the card is in the saved collection")
+check(Economy.ownsCard(player, today[1].id) == ownedBefore + 1, "the card is in the saved collection (" .. ownedBefore .. " before)")
 
 -- Deck & Field: a board theme repaints the table
 click(named("Tab_cosmetics"), "Deck & Field tab")
