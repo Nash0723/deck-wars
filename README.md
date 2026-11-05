@@ -1,1 +1,394 @@
-# deck-wars
+# Deck Wars
+
+A 3D card battler for Roblox. You walk around a cozy game room, sit down at the Duel Table and fight on a board of 4 lanes (3 rows a side, plus a row of building slots behind each side) with decks you build from your own card collection, six themed practice decks (Snack, Junk, Weather, Critter, Spooky and Robo), 69 cards, combos and a bot with three difficulties.
+
+![The duel table](docs/table_preview.png)
+
+## Play it
+1. Get the newest place file: **[DeckWars.rbxlx](https://github.com/Nash0723/deck-wars/releases/latest/download/DeckWars.rbxlx)** (it is rebuilt automatically every time something is merged into `main`).
+2. Install Roblox Studio, sign in and double-click `DeckWars.rbxlx` (or in Studio: File > Open from File).
+3. Press **Play** (F5).
+
+You can also build the file yourself, see "Build it" below.
+
+## Working together
+This repo is the real home of the game. Everyone works on their own branch and changes reach `main` through a pull request (PR), so nobody overwrites anybody else's work.
+
+1. **Get the code (once):** `git clone https://github.com/Nash0723/deck-wars.git` and `cd deck-wars`. (Or, in GitHub Desktop: File > Clone repository.)
+2. **Start fresh each time:** `git checkout main` and `git pull`, then make a branch for your change: `git checkout -b my-change` (a short name like `new-spooky-card`).
+3. **Change things** in the files under `src/` (or the generators, see below). Don't edit the built `.rbxlx`: it is made from these files and is not kept in git.
+4. **Build and try it:** `rojo build default.project.json -o DeckWars.rbxlx`, open it in Studio and press Play. If you work with a Claude, it can run the tests too (see "Tests").
+5. **Save and share:** `git add -A`, `git commit -m "What I changed"`, `git push -u origin my-change`. GitHub then shows a button to **open a pull request**.
+6. **Review and merge:** the other person (or their Claude) looks at the PR, GitHub builds the game and runs the tests on it, and when it's green and you both agree, press **Merge**. Then everyone does step 2 again.
+
+Small tips: keep each PR about one thing, pull `main` often, and if two people change the same lines, GitHub will ask you to pick which version to keep (a "merge conflict"); ask your Claude to sort it out.
+
+**Changing in Studio instead of in files:** if you change a script or the room in Studio, the files in `src/` don't change by themselves. Either copy your script change into the matching file in `src/`, or connect Studio to the files with the Rojo plugin (`rojo serve` + the Rojo plugin in Studio) so they stay in sync. Changes to the room (`Workspace > MenuRoom`) come from `gen_world.py`, so tell your Claude what you changed and it can carry it over.
+
+## Build it
+You need [Rojo](https://rojo.space) once: `cargo install rojo --locked` (needs [Rust](https://rustup.rs)), or download it from Rojo's releases page. Then, in this folder:
+
+```
+rojo build default.project.json -o DeckWars.rbxlx
+```
+
+### Generators
+Some files in `src/` are made by Python scripts. Don't edit the made files by hand; change the script and run it again (needs Python 3 and `pip install -r requirements.txt`; the model and room checks also need Rojo installed with cargo, because they read Roblox's API list from it):
+
+| Run this | It makes | From |
+| --- | --- | --- |
+| `python3 gen_carddata.py` | `src/shared/CardData.luau` | `cards.py` (the card list) and the rules text in `gen_carddata.py` |
+| `python3 gen_models.py` | `src/shared/CreatureModelData.luau` | `models_*.py` and `modelkit.py` |
+| `python3 gen_world.py` | `src/world/MenuRoom.model.json` | `gen_world.py` |
+| `python3 mock_roblox/gen_world_lua.py src/world/MenuRoom.model.json mock_roblox/WorldData.luau` | the room for the simulated Studio | the room file |
+
+`preview/*.py` render rough pictures of the table and models with a small ray tracer (no Roblox needed).
+
+### Tests
+The tests run outside Roblox with a small Luau runner in `tools/luaurun` (needs Rust):
+
+```
+cargo build --release --manifest-path tools/luaurun/Cargo.toml
+tools/luaurun/target/release/luaurun tests/run_tests.luau src/shared                   # rules: 211 checks + 120 bot games, about 1 minute
+tools/luaurun/target/release/luaurun -D BAL_GAMES=60 bal/balance.luau src/shared         # deck balance, bot vs bot
+tools/luaurun/target/release/luaurun mock_roblox/harness.luau mock_roblox                # plays matches in a simulated Studio, about 8 minutes
+tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every rig and move
+tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
+tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl  # saves, session locks, Gems/Coins, Shop, boosts, Robux receipts
+tools/luaurun/target/release/luaurun tests/deck_tests.luau src/shared src/econ src/server src/packbrawl  # deck rules, the starter collection, saving decks
+tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the Shop, dev panel and saving in a simulated Studio
+```
+
+`-D NAME=VALUE` sets a setting before the script runs: `SOAK_GAMES` for the tests, `BAL_GAMES`, `BAL_DIFF`, `BAL_SEED`, `BAL_FIRSTDRAW` and `BAL_CARDS` (print how often each card was played and won) for the balance check.
+
+GitHub runs the rules tests, the Pack Brawl tests and the economy tests and builds both place files for every pull request (`.github/workflows/build.yml`).
+
+## Project layout
+| Path | What it is |
+| --- | --- |
+| `default.project.json` | The Rojo project: where each file goes in the Roblox place, plus the Lighting settings |
+| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes), DeckRules (what a deck may hold, the starter collection), DeckBuilderUI (the Deck Shelf) |
+| `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools), PlayerDecks (your saved decks and the starter grant) |
+| `src/econ/` | ServerStorage > DeckWarsServer: EconomyManager, ProfileStore (session-locked saves), DevAccess (who's a developer) |
+| `src/devcontrols/` | ServerStorage > DevControls: the developer panel, copied only to developers |
+| `src/client/` | StarterPlayerScripts > DeckWarsClient (menus, table, animations, camera) |
+| `src/world/` | Workspace > MenuRoom (made by `gen_world.py`) |
+| `cards.py`, `gen_*.py`, `models_*.py`, `modelkit.py` | Generators (see above) |
+| `tests/`, `bal/`, `mock_roblox/`, `tools/luaurun/` | Tests, balance check, the simulated Studio and the Luau runner |
+| `pullcinematic.project.json` | The separate Pack Brawl test place (`DeckWars_PullCinematic.rbxlx`) |
+| `src/packbrawl/` | ReplicatedStorage > PackBrawl: the pull cinematic (see "Pack Brawl" below) |
+| `src/pullserver/` | ServerScriptService > PullServer: rolls every pull (main game and test place) |
+| `src/pullclient/` | The test place's Pack Party test panel |
+| `assets/sounds/` | Our own Pack Brawl sounds (made by `tools/make_sounds.py`), ready to upload |
+| `docs/` | Pictures for this README |
+
+## How to play
+- In the menu room, click a station or a button at the bottom, or press **A / ←** and **D / →** to go to the station before or after (it wraps around; on a gamepad the D-pad or bumpers). **S / ↓** (or Backspace, gamepad B) goes back to the room view. The station you're at has its button lit up.
+- The **Settings** station (the radio) has: Sound effects and Music volume, Action camera, Camera lean, Screen shake (Off, Low, Full), Table speed (Slow, Normal, Fast), Pack fights (Full, or Quick = always fast-forwarded), Quality (High, or Low = no shadows or glow, for slower devices) and Background blur, plus Reset to defaults. In a match the **⚙ Settings** button opens the same options. Changes apply at once and are saved to your Roblox account.
+- At the **Deck Shelf** you see your collection and your deck slots. New players get the Starter Deck in slot 1. Press **+ New** or **Edit** to open the deck builder (see "Build your own decks" below).
+- Click the Duel Table (or its button). Pick one of your ready decks or a practice deck, and a bot difficulty, then press "Sit down and play!".
+- Each turn you get 1 more energy (up to 8) and draw a card. The first player starts with 4 cards and skips the draw on their very first turn; the second player starts with 5.
+- **Play a card:** click it in your hand. Gold tiles show where it can go, and a see-through copy of the card follows your mouse and glides onto the nearest one. Creatures go on your Backline or Midline (or anywhere in your half in a lane with your Bunny Burrow). Buildings go in the building slots behind your rows; a building helps its lane, or one of your rows, and while you aim it the tiles it would help light up. Building on top of your own building replaces it. Spells that need a target light up what they can hit.
+- **Command a creature:** your creatures that can still act glow green. Click one: blue tiles are where it can walk (1 tile, or 2 if it's Fast), green tiles are friends it can swap places with, and red ones are what it can hit (on the 8 tiles around it, or 2 tiles away if it's Ranged). The buttons under the message are its other commands: **🛡 Defend** (until your next turn it takes 1 less damage and hits back 1 harder) and its family chant (like **✨ Picnic · 2⚡**). A grey chant button tells you why it can't be used right now. When the creature stands in the enemy's half, the enemy hero's pedestal glows red, so click the hero to hit it. New creatures sleep (zZ) for a turn unless they have Zoom.
+- A creature can walk first and then attack, defend or chant. After it walks it stays picked, so you can give it its command right away.
+- In a fight both creatures hit each other. A Ranged creature hitting from 2 tiles away doesn't get hit back.
+- **Big Move:** once you've dealt 10 damage, the READY! button lights up. You can use it once per match.
+- Press **END TURN** when you're done. Right-click or press Cancel to stop aiming.
+- You win by bringing the enemy hero from 20 health to 0.
+
+| Family | Chant | Energy | What it does |
+| --- | --- | --- | --- |
+| Snack | Picnic | 2 | Heals itself and your creatures next to it 2 (Snacks get Power, even at full health) |
+| Junk | Scrap Toss | 1 | 1 damage to an enemy creature or building up to 2 tiles away |
+| Weather | Gust | 1 | Blows an enemy creature up to 2 tiles away 1 tile back and Soaks it. If something is in the way, it takes 1 damage instead |
+| Critter | Call a Friend | 2 | A 1/1 Pigeon flies in next to it |
+| Spooky | Raise | 2 | Brings back your last creature that popped, next to it, with 1 health. Once per turn. If it pops again, it just fades away |
+| Robo | Power Up | 1 | Gets 1 Power (+1 attack, up to 3) |
+
+## Change the speed
+| Setting | Where | Default |
+| --- | --- | --- |
+| Turn length | ServerScriptService > MatchServer, `TURN_SECONDS` | 90 |
+| Bot's pause before its turn | MatchServer, `BOT_TURN_START_PAUSE` | 1.5 |
+| Bot's pause before each action | MatchServer, `BOT_THINK_SECONDS` | play 2.0, move 1.2, attack 1.4, defend 1.0, chant 1.6 |
+| Speed of all table animations | players pick Slow / Normal / Fast in Settings; the numbers are `Settings.Pace` in ReplicatedStorage > DeckWars > Settings | Normal = 1.0 (Slow 1.3, Fast 0.75) |
+| Default settings for new players (volumes, action camera, shake, speed...) | ReplicatedStorage > DeckWars > Settings, `Settings.Defaults` | see the file |
+| Where the camera sits on your turn and on the bot's turn | DeckWarsClient, `SeatYou` and `SeatOpp` in the `CAMS` list near the top | position, the point it looks at, and the zoom (field of view) |
+
+## Change cards and rules
+- Every card's cost, attack, health and text is in ReplicatedStorage > DeckWars > CardData. What a card actually does lives in MatchEngine.
+- The combo numbers are near the top of CardData: `PowerMax` (most Power a creature can hold, 3), `SandwichBonus` (1), `SoakBonus` (1), `ZapBonus` (2), `PackMax` (most attack Pack can add, 2), `ScrapMax` (most Scrap on one tile, 3) and `ScrapGain` (+1/+1 per Scrap). `FamilyRules` and `RuleText` hold the help texts.
+- Going first: `FirstTurnDraw` in CardData (false = the first player skips their first draw; set it to true to undo that) and `SecondPlayerCard` (a card id to give the second player an extra card).
+- Board size and reach are at the top of the card list in CardData: `Cols` (lanes), `Rows`, `HomeRows` (your half), `SummonRows` (where creatures appear) and `HeroAttackRows` (how deep in the enemy half a creature must stand to hit the hero). Building slots are rows 0 and `Rows + 1` in MatchEngine.
+- Deck rules are in ReplicatedStorage > DeckWars > DeckRules: `MaxThemes` (2), `MinCards` (20), `MaxCards` (30), `MaxCopies` (3), `MaxCopiesByRarity` (1 Legendary, 1 Secret), `StarterCards` (what new players get) and `DefaultDeckSlots`.
+- Defend and the chants are in CardData too: `DefendArmor`, `DefendCounter`, `RaisedFades` and `Chants` (each family's chant: name, energy cost, amount, range and text). What each chant does is in MatchEngine (`chantWith`).
+- The six decks and their blurbs are in StarterDecks.
+
+## Change the lighting
+Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightness (now 0.14, 0.11, 0.10) and `ExposureCompensation` brightens or darkens everything (now -0.2; the last update had 0.25). If the board is too dark on your screen, raise ExposureCompensation a little (try 0). Under Lighting there are **Bloom** (glow), **ColorCorrection** (color and contrast) and **DepthOfField** (soft blur far away). The two table lamps (SpotLights over the board), the fireplace and the room lamps are lights inside Workspace > MenuRoom. The terrain colors are in DeckWarsClient (`TERRAIN_LOOK`), and the creature bases are made in `spawnUnit`.
+
+## Where things are in Studio
+| Place | What it is |
+| --- | --- |
+| ReplicatedStorage > DeckWars > CardData | Every card's numbers and text, the combo numbers and the board size. Edit here to rebalance |
+| ReplicatedStorage > DeckWars > MatchEngine | All the rules: walking, swapping, attacking, defending, chants, Power, Soak, Scrap, Sandwich, Combo, buildings, terrain and every card ability |
+| ReplicatedStorage > DeckWars > BotBrain | The bot (Easy, Medium, Hard). It walks, swaps, builds, defends, chants and picks its fights |
+| ReplicatedStorage > DeckWars > StarterDecks | The six themed 30-card decks |
+| ReplicatedStorage > DeckWars > CreatureModelData | The built-in 3D models, as data (made by `gen_models.py`) |
+| ReplicatedStorage > DeckWars > CreatureBuilder | Turns that data into Roblox models |
+| ServerScriptService > MatchServer | Runs matches on the server so nobody can cheat, runs the bot and the turn timer |
+| StarterPlayer > StarterPlayerScripts > DeckWarsClient | Menu room camera, menus, the match screen, the hand of cards, tile glows, clicking on the table, the command buttons, the action camera (`actionCam`), Scrap heaps (`scrapFx`) and all table animations |
+| Workspace > MenuRoom | The room. Move or restyle anything, but keep the names of the parts in Stations > DuelTable > Board (`Tile_1_1` to `Tile_4_6`, the building slots `Tile_1_0` to `Tile_4_0` and `Tile_1_7` to `Tile_4_7`, `Hero_Near`, `Energy_Near_1` and so on) |
+| ReplicatedStorage > CreatureModels | Empty folder for your own models (see below) |
+| ReplicatedStorage > DeckWars > ShopCatalog | Every price, reward, booster and Gem bundle (paste Developer Product ids here) |
+| ServerStorage > DeckWarsServer > DevAccess | Who gets the developer panel (UserIds and usernames) |
+| ServerScriptService > EconomyServer | Loads and saves players, runs the Shop, Robux purchases and the dev tools |
+
+## Use your own models
+Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
+
+## What was tested, and what wasn't
+- **Rules:** the rules engine passes 211 automatic checks, including new ones for Power, Sandwich, Combo, Soak and Zap, Scrap and the Titan discount, Pack, Grudge, Upload and the going-first rule, plus 120 bot-vs-bot games between the Easy, Medium and Hard bots with no errors, in which every card in the six decks got played.
+- **Balance (bot-vs-bot games on Hard, five rounds of 1,080 games):** the first combo version was lopsided (Critter Crew won only 31%, Sugar Rush 62% and Scrap Heap 60%), so cards were adjusted between rounds (see "Balance changes" above). In the final 1,080 games every deck won between 46% and 54%: Sugar Rush 51%, Scrap Heap 54%, Storm Front 52%, Critter Crew 49%, Haunted Mall 48% and Robo Rumble 46%. Scrap Heap against Storm Front is still the most one-sided pair (Scrap Heap wins 72%), so tell me if it feels unfair when you play it. With the old first-turn draw the first player won 61% (still 61% when the second player got a Spare Battery instead), so now they skip it; in the final games the first player won 45%.
+- **Simulated Studio:** the Studio scripts ran in a simulated Roblox that checks every property, enum and method name against Roblox's API list. It played 6 full matches through the real menus, buttons and table clicks, plus an idle match ended by the turn timer, leaving mid-match and junk data from a cheating client, and replayed every animation on a real board. New checks for this update: every combo animation (Power, Soak, Zap, Scrap, Upload, Sandwich, Combo, spell cast and heal) plays without errors, Scrap heaps show on their tile, the line under a creature shows ⚡ Power and 💧 Soaked, the log calls out a Combo, creatures stand on round bases, and the dark screen edges are on during a match. All 79 checks passed with 0 errors and 0 warnings.
+- It has **not** been opened in real Roblox Studio yet (that can't be done from here). The new lighting was judged with a rough preview render (`docs/table_preview.png`: the last version on top, this one below), not Roblox's own renderer, so brightness is the thing most likely to need a tweak. If the board looks too dark on your screen, raise Lighting > ExposureCompensation a little (see "Change the lighting"); if it's still too bright, lower it. If you see a red error in Studio's Output window, copy it to me.
+- Realistic lighting with shadows is heavier on old phones. If it runs slowly, set Lighting > PrioritizeLightingQuality to off.
+- **Settings update:** a new 12-step check in the simulated Studio walks the stations with A, D and the arrow keys (including wrapping around both ways), changes settings through the real buttons, checks they reach the server once (not on every click) and that the in-match window shows the same values, then Reset and S back to the room. The rules tests check that the server throws away bad saved settings. Saving to a DataStore can't run in the simulator, so test it in Studio: turn on Game Settings > Security > "Enable Studio Access to API Services", change a setting, stop, play again. Without that switch settings simply reset every time you play; nothing breaks.
+- **Models and board fights update:** every model was checked part by part for pieces buried inside bodies, and every fight rig was dumped before and after the overhaul (the only changes are the intended ones). In the simulated Studio two new checks replay a full round of fights on a real board: the creatures' arms, legs and heads really move (up to 0.73 studs from where they were built) and afterwards every part is back in place (9 creatures checked, worst 0.000 studs off). The simulator itself had a rounding bug that slowly bent any model it moved every frame until it flew apart; that is fixed in the simulator (real Roblox keeps its rotations clean), and the check now fails if any part ever ends up at an impossible spot. All 110 checks passed with 0 errors and 0 warnings, plus 232 rules checks, 6,283 Pack Brawl checks and the pull cinematic run. The fights have **not** been watched in real Studio yet, so tell me if a move looks off.
+- Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends comes later.
+
+
+## Pack Brawl: the pack-opening cinematic
+Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
+
+It is part of the main game: walk to the Pack Party corner (click the Pack Shelf, or the Pack Party button), pick a pack and press "Open 1" or "Open 10". While you test in Studio there is also one button per tier to preview that tier's cinematic (those only work in Studio or for developers, so live players can't force a Secret). During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP. Pulls cost Gems (see "The Pack Shelf" below).
+
+### The Pack Shelf
+The Pack Party corner has a lit display shelf with seven packs: the **Brawl Pack** (every card) on the top step, and one themed pack per family below it, each with a small figurine of that family's Legendary next to it:
+
+| Pack | Family | Mascot |
+|---|---|---|
+| Sugar Rush Pack | Snack | Queen Parfait |
+| Scrap Heap Pack | Junk | The Junk King |
+| Storm Front Pack | Weather | Stormlord Nimbus |
+| Burrow Bunch Pack | Critter | Big Momma Moose |
+| Midnight Mall Pack | Spooky | The Mannequin Duke |
+| Overclock Pack | Robo | Mega Blender Prime |
+
+Hover a pack and it lifts; click it (or use the arrows, the dots, or Q / E) and it comes forward off the shelf, its riser lights up and its mascot hops. The panel shows the pack's name, what's inside and the exact chance of every card (Roblox requires showing the odds of paid random items), plus your Gems. Every pack has the same rarity odds; a themed pack only changes which card of that rarity you get: 3 in 4 cards come from its family and 1 in 4 from the shared spells and buildings. If the family has no card of the rolled rarity (most have no Secret), the card comes from every card of that rarity, so a Secret can still turn up anywhere. Prices: 1 pack = 100 Gems, 10 packs = 900 Gems (and a 10-pull always holds an Epic or better).
+
+Opening: the chosen pack leaps off the shelf at the camera, you tap it open (the pack tease), the Pack Brawl plays, and then the best card gets its own reveal: the pack drops in, its top rips off with light pouring out, the card rises face down, flips, and slides aside for a **stat card** (rarity, family, terrain, Attack / Health / Cost bars that count up, keywords, ability text, how many you own). Tap once to jump to the finished stat card, tap again to close. A 10-pull then shows the fan of all ten cards.
+
+The server decides everything: it takes the Gems first (refunds them if anything fails), rolls the cards, saves them to your collection and only then tells the client what to show. It uses the economy's `EconomyManager` (ServerStorage > DeckWarsServer); if that isn't in the place, a test wallet gives everyone 1000 Gems per visit and nothing is saved.
+
+Where to tweak it: packs, names, colors, prices and the 75% family share are at the top of `src/packbrawl/Packs.luau` (keep one pack per line: `gen_world.py` reads it to color the shelf, so run `python3 gen_world.py` after changing colors). The shelf model is made by `gen_world.py` (`build_pack_shelf`, position `SHELF_AT`). Hover/selection motion: `src/packbrawl/PackShelf.luau`. The rip and stat card: `Reveal.single` and `Reveal.statCard` in `src/packbrawl/Reveal.luau`. `python3 preview/shelf.py` renders a rough picture of the corner.
+
+The separate test place still builds, for trying the cinematic on its own:
+
+```
+rojo build pullcinematic.project.json -o DeckWars_PullCinematic.rbxlx
+```
+
+### Real fights
+The creatures fight with moving parts: arms, legs, heads, tails and wings move on their own. They jab, cross, hook, uppercut and throw haymakers, swing whatever they hold (spears, wands, plungers, canes...), kick, stomp, headbutt and tail-whip. Some punches get blocked ("BLOCK!") or dodged with a duck, sway or sidestep ("MISS!"). A hit creature flinches or staggers; a knocked-out one flies off flailing and lands flat on its back. Every Epic, Mythic, Legendary and Secret creature has a named signature move (Rocket Punch, Cane Riposte, Antler Toss, Omega Rush...) for its big hits, and the winner cheers or flexes at the end.
+
+- `Rig.luau` splits each creature model into moving parts by its part names and where they sit, and works out shoulders, hips and necks. `Rig.Overrides` fixes odd shapes by hand.
+- `Moves.luau` has every move as keyframed poses, the signature moves (`Moves.Signatures`, keyed by card id), and which creature uses which move (`Moves.pickAttack`).
+- `Scripts.luau` adds a `swing` cue before every hit, timed so the blow lands exactly on the hit, plus `dodge` cues.
+- `luaurun -D IDS="toaster_knight,lightning_llama" preview/rig_poses.luau src/packbrawl src/shared > poses.log` then `python3 preview/brawl.py poses.log out/` draws creatures frozen mid-move, to check a rig without Studio.
+
+Rarity tiers are now Common, Rare, Epic, Mythic, Legendary, Secret (low to high), in the main game too. The old tiers moved up one name each (Uncommon became Rare, Rare became Epic, Legendary became Mythic, Mythic became Legendary), so no card got stronger or weaker.
+
+| File (in `src/packbrawl/`) | Job |
+| --- | --- |
+| `PackParty` | The Open 1 / Open 10 (and Studio-only tier preview) buttons; used by the main game's Pack Party corner and the test place |
+| `Rig`, `Moves` | Moving parts and fighting moves (see "Real fights") |
+| `PullRates` | Odds (Common 55%, Rare 27%, Epic 12%, Mythic 4.5%, Legendary 1.2%, Secret 0.3%) and the 10-pull Epic guarantee |
+| `Casting` | Who fights: 2 Common starters, crashers by tier, the "It's Not Over" fake ending (30% on Mythic and up) |
+| `Scripts` | The choreography of each tier as a list of timed cues |
+| `Director` | Plays the cues on one clock; skip, fast-forward and cleanup |
+| `Arena`, `Fighters`, `CamRig`, `Fx`, `Poses` | The Brawl Box, moving the creature models, the camera, effects, victory poses and ultimates |
+| `Sfx`, `Reveal` | Sound and the card reveal / 10-card fan |
+
+### Sounds
+All sounds were made from scratch for this project by `tools/make_sounds.py` (no samples), so you own them. Nash uploaded them to Roblox, and their ids are in the project files (SoundService > PackBrawlSounds in `default.project.json` and `pullcinematic.project.json`), so every build has sound. Music (`brawl`, `theme`) plays through its own SoundGroup so the Music and Sound effects settings work separately.
+
+To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pick a Creator Store sound, and paste its id into the matching `SoundId` in both project files (or in Studio, SoundService > PackBrawlSounds).
+
+### Where to tweak it
+- Lengths, who crashes in and when: `Scripts.luau` (one function per tier).
+- Odds: `PullRates.luau`. Fake ending chance: `Casting.FakeOutChance`.
+- Colors, bloom and camera shake per tier: `Kit.luau` (`TierColor`, `TierGrade`, `TierCamera`).
+- Tier preview buttons: on only in Studio. The test place forces them on with the `AllowTierPreview` attribute on ServerScriptService > PullServer.
+- A move looks wrong on one creature: tweak its keyframes in `Moves.luau`, or its rig in `Rig.Overrides`.
+
+`preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
+
+## Latest update: a 4-lane board with building rows, and decks you build yourself
+
+### The new board
+- Each side has **4 lanes** (columns) and **3 rows**: Frontline (next to the middle), Midline and Backline. Behind each side is a row of **4 building slots**. From your chair, top to bottom: their building slots, their Backline, Midline, Frontline, then your Frontline, Midline, Backline and your building slots.
+- Creatures are summoned on your Backline or Midline. A creature anywhere in the enemy half can hit their hero, and creatures can hit enemy buildings in reach. Buildings don't hit back.
+- **Lanes have terrain.** Your deck picks the terrain of each of your 4 lanes (from its themes). Creatures standing on their own family's terrain get +1 attack, so where you put things matters.
+- **Placing feels smooth:** while you aim a creature or building, a see-through copy of it follows your mouse over the table and glides onto the nearest gold tile, and when you play it the creature steps down onto the terrain. The tiles sit flush with thin seams, and only the tiles you can use glow.
+- **Buildings** go in the slots behind your rows, cost more, and work from there every turn. Lane buildings help or hit along their lane (on both halves), row buildings help one of your rows. A soft line in the building's color outlines the tiles it reaches, and hovering a slot or tile tells you what reaches it. Building on top of your own building replaces it (the old one leaves Scrap in front of the slot).
+
+| Building | Cost | What it does |
+| --- | --- | --- |
+| Spiked Fence | 2 | Start of your turn: 1 damage to the nearest enemy creature in its lane |
+| Bouncy Castle | 2 | Your Frontline creatures have Sturdy (a row building) |
+| Snack Bar | 2 | Start of your turn: heal your creatures in its lane 2 (Snacks get Power from it) |
+| Charging Station | 2 | Your creatures in its lane have +1 attack (Robos +2) |
+| Bunny Burrow | 3 | You can summon anywhere in its lane on your half; a Pigeon hops in when it's built |
+| Wind Turbine | 3 | Your creatures in its lane have Fast; Soaks the nearest enemy in its lane |
+| Lemonade Stand | 3 | +1 energy each turn (doesn't stack, works from any slot) |
+| Spooky Crypt | 3 | Your creatures in its lane have Haunt |
+| Disco Cactus | 3 | Roll: your Midline creatures get +1 attack, or heal 2 (a row building) |
+| Scrap Catapult | 4 | 2 damage to the nearest enemy in its lane (a random enemy if the lane is clear) |
+| Haunted Arcade | 5 | A 1/1 Ghost with Haunt appears in its lane on your half |
+| Rocket Lunchbox | 6 | A rocket flies up its lane: 3 damage to the first enemy creature, the rest hits the hero |
+
+### Your collection and your own decks
+- **New players** get a starter collection the first time they join: the 4 starter characters, Jelly Bean Scout and Pretzel Guard (Snack) and Pocket Mouse and Moth Mailman (Critter), 3 copies each, plus 8 simple neutral cards (2 Spare Battery, 2 Snack Break, 2 Wrong Turn, 2 Spiked Fence). That makes the 20-card **Starter Deck**, ready in deck slot 1. Everything else comes from packs and the Shop.
+- **The Deck Shelf** shows your collection (cards you haven't found are dark) and your deck slots (3 to start; more in the Shop). **+ New** or **Edit** opens the deck builder: name the deck, pick a hero, pick up to 2 themes and the terrain of each lane, then tap cards in your collection to add them and tap them in the list to take them out. **Fill up** adds cards you own until the deck has 20. The builder says what is still wrong ("Add 3 more cards", "You don't own enough of...") and shows ✔ Ready to play when the deck is legal. Unfinished decks can be saved, but only ready ones can be played.
+- **Deck rules:** 20 to 30 cards, cards from up to 2 themes plus any neutral cards, up to 3 copies of a card and 1 of each Legendary and Secret, and only cards you own. The server checks all of it again when you sit down, so a hacked client can't play cards it doesn't have.
+- **The Duel Table** lists your decks first, then the six practice decks. The bot picks a practice deck of another theme.
+- Decks are saved in the same profile as your Gems, Coins and cards (one save, so nothing can fight over it).
+
+### 2 themes or 4? Why 2
+There are 6 themes. With 2 per deck, every deck leans on its families' own rules (Sweet Tooth, Scrap, Soak, Pack, Grudge and Upload), there are 15 different pairs to discover, and the cards of each theme can be balanced against a small set of partners. With 4, a deck could take the best cards of two thirds of the whole game, the family rules would barely matter (you would rarely have enough of one family on the board for Pack, Grudge, Upload or a Combo), most strong decks would end up looking the same, and every new card would have to be balanced against far more combinations. So decks use at most 2 themes. It's one number if you want to try 4: `MaxThemes` in ReplicatedStorage > DeckWars > DeckRules.
+
+## Earlier update: Gems, Coins, the Shop and a developer panel
+
+### Two currencies
+- **💎 Gems** are the premium currency and open card packs at the Pack Party. You get them from Robux Gem bundles, the daily login, your first win of the day, level ups and a small daily Coin exchange.
+- **🪙 Coins** are earned by playing and spent in the Shop: single cards, deck slots, board themes, card backs, emotes and boosters.
+- New players start with 💎 300 and 🪙 500. The counters sit at the top right of the room; the pack shelf and other scripts can read them from the Player attributes `Gems` and `Coins`.
+- Every number (prices, rewards, starting money, odds boosts) is in `src/shared/ShopCatalog.luau`. Only the server's copy counts, so a hacked client can't change a price.
+
+### Earning
+| How | Coins | Gems | XP |
+| --- | --- | --- | --- |
+| Daily login (once per UTC day) | 150, +25 per streak day (up to 300 on day 7) | 15 (+60 on day 7 of a streak) | |
+| Bot match win (Easy / Medium / Hard) | 60 / 100 / 160 | first win of the day: 30 | 40 / 60 / 90 |
+| Bot match loss or draw | 20 / 30 / 45 | | 15 / 25 / 35 |
+| Level up (100 XP for level 2, +25 more per level) | 100 | 40 | |
+
+A match only pays if it lasted a minute and you took 3 turns, nothing for leaving, and 30 paid matches per day (so nobody farms the bot all night). The reward pops up once you've seen the last blow.
+
+### The Shop (Pickles' counter)
+Walk to the Shop counter and the Shop window opens with three tabs:
+1. **🃏 Daily Cards:** six cards for Coins (2 Common 120, 2 Rare 350, 1 Epic 900, 1 Mythic 2,400). Everyone sees the same six, they change at UTC midnight, each can be bought once a day, and the tile tells you how many you own. Legendary and Secret only come from packs.
+2. **🎨 Deck & Field:** board themes that repaint the duel table (Midnight Velvet, Royal Emerald, Ember Forge, Frost Glass for Coins, Starlight for Gems), card backs for every face-down card (Crimson Crest, Jade Lattice, Gold Foil, Void Spiral), emotes for the new 💬 button in matches (Bot Bonkers sometimes answers), and deck slots (3 to start, up to 10, 600 Coins each).
+3. **💎 Exchange & Boosts:** Robux Gem bundles, Coins → Gems (500 → 25, 3 times a day) and Gems → Coins (50 → 600), Lucky Charm / Lucky Horseshoe (the next 3 or 10 pack openings have 1.5x the chance of Epic and better; a 10-pack counts as one) and XP Snack / XP Feast (double match XP for 30 minutes or 2 hours).
+
+Anything that costs Gems needs a second tap ("Tap again"), so nobody spends Gems by accident.
+
+**To sell Gem bundles for Robux:** publish the game, then in the Creator Dashboard open the experience > Monetization > Developer Products, create one product per bundle (names and prices are in `ShopCatalog.GemBundles`), and paste each product id into `productId`. Until then the bundles show "Not on sale yet". Purchases are granted exactly once per receipt and only confirmed to Roblox after the new Gems are saved. Players in countries where paid random items are restricted don't get the Robux bundles (Gems open random packs) but can still earn Gems.
+
+### Saving
+One save per player in the DataStore `DeckWarsPlayer_v1`: Gems, Coins, XP and level, the card collection, deck slots, saved decks (for the deck builder), cosmetics, boosters, the daily shop and streak, and stats. It is **session-locked** like ProfileService (a small version of the same idea, written for this game, in `src/econ/ProfileStore.luau`): a server only writes a save it holds the lock on, a new server waits for the old one to let go, and a lock from a crashed server can be taken over after 4 minutes. That stops the classic bug where a player hops servers and their Gems get lost or doubled. It autosaves every minute, saves when you leave and when the server shuts down. If the save can't load, the player is asked to rejoin instead of playing on an empty save.
+
+In Studio saving needs Game Settings > Security > "Enable Studio Access to API Services". Without it the game still runs with a temporary save and shows a notice.
+
+### Developer panel (free rolls)
+Developers get a **DEV** tab on the left of the screen (F7 toggles it): free rolls of any rarity from Common to Secret, free 1 and 10 pulls at the real odds, +1,000 Gems, +10,000 Coins, 10 lucky pulls, "New shop day" and "Reset my save". The normal Pack Party buttons stay as they are, so true odds can still be tested.
+
+- Who's a developer: the usernames **DNash2307** and **donatjalt** (looked up to their UserIds when the server starts) and the experience owner. Paste the numeric UserIds into `DevAccess.UserIds` in `src/econ/DevAccess.luau` when you have them (roblox.com/users/**<UserId>**/profile); that skips the lookup.
+- The panel lives in ServerStorage, which players can't see, and the server only copies it to developers. Every dev button is checked against the UserId on the server again, so a hacked client firing the dev remote gets nothing (the server logs it).
+- Free rolls use the pack pull server: it honours `free` and a forced rarity only for developers (see the pack shelf update).
+
+### For other scripts
+`ServerStorage.DeckWarsServer.EconomyManager` (find it with `ServerStorage:FindFirstChild("EconomyManager", true)`):
+
+| Call | What it does |
+| --- | --- |
+| `getBalance(player, "Gems" or "Coins")` | the balance (waits for the save to load) |
+| `trySpend(player, currency, amount, reason)` | pays if the player has enough; true when paid. Whole numbers only |
+| `grant(player, currency, amount, reason)` | gives currency (refunds, rewards) |
+| `grantCards(player, { cardId, ... })` | adds cards to the saved collection; returns isNew, counts, uniqueOwned |
+| `getCollection(player)`, `ownsCard(player, id)`, `getDeckSlots(player)` | read the collection and deck slots |
+| `takePullLuck(player)` | once per paid pack opening: the luck multiplier (1 = none) for `PullRates.luckyOdds` |
+| `waitForData(player)` then `markDirty(player)` | the live save table (`data.decks`, `data.flags`) for the deck builder |
+| `matchReward(player, { result, difficulty, seconds, turns })` | pays a finished match (MatchServer calls it) |
+
+`ServerStorage.DeckWarsServer.DevAccess.isDev(player)` tells whether a player is a developer.
+
+## Earlier update: a catchier opening, a livelier menu and a pack you tap open
+
+### The opening
+Joining the game now shows a title screen over the card room while the camera drifts slowly across it. The screen fades in from black, DECK and WARS slide in from both sides and slam together (flash, shake, gold sparks), a light glint runs over the gold logo every few seconds, two random showcase creatures (Epic and up) turn on pools of light at the sides, and embers drift up. The gold PLAY button pulses; PLAY (or Enter, Space, gamepad A) sweeps the title away, the cinema bars slide off, and the camera flies from low over the table up to the room overview while the menu pops in piece by piece. Code: `src/shared/TitleScreen.luau`; camera spots `TitleFrom`, `TitleTo` and `Entrance` in the `CAMS` table at the top of DeckWarsClient.
+
+### A livelier menu
+- Every button grows a little under the mouse, squishes when pressed and springs back with a click sound.
+- The station buttons are darker with gold icons, and the station you are at gets a gold underline and a little bounce.
+- Station panels slide in from the right and their contents fade up one after another; hovering a station in the room gives it a soft pulsing glow.
+- The menu title uses the same gold logo look as the title screen.
+
+### Opening a pack
+Before the Pack Brawl, the pack rises into your hands. Tap it (or press Space) three times: each tap jolts it, cracks it, and light leaks out of the cracks. The light's color teases the pull ("EPIC OR BETTER"). It never promises more than you really got, and for Mythic and up it stops one tier short so the brawl can still surprise you. After the last tap the pack shakes and flies off into the ring, where the brawl picks it up. An untouched pack opens by itself after 5 seconds, and "Pack fights: Quick" needs only one tap. Code: `src/packbrawl/PackTease.luau` (`Taps`, `QuickTaps`, `AutoOpen`, and `capFor` for the tease rule).
+
+After the brawl the rarity name slams in above the card with sparks in its color (a flash for Epic and up, a confetti shower for Legendary and Secret), and the card hovers while you look at it. In a 10-pull the cards are dealt in one by one, and face-down Epic-and-up cards glow in their rarity color before you flip them.
+
+### The motion toolkit
+`src/shared/Juice.luau` holds the helpers all of this uses: `button` (bouncy buttons), `pop`, `popIn`, `popOut`, `wobble`, `breathe`, `bob`, `shine`, `confetti`, `stars`, `flash`, `shake`, `sunburst` and `sound`. Sounds reuse the Pack Brawl sounds already uploaded (pop, whoosh, thud, glass, charge, heavy, theme), so nothing new needs uploading, and they follow the Sound effects and Music volume settings. The board and the match rules are unchanged.
+
+## Earlier update: detailed models and real fights on the table
+
+### Every model rebuilt with more detail
+All 61 built-in models (creatures, buildings, heroes and the bot) were rebuilt from scratch with far more parts (about 7,700 in all), keeping each one's idea, colors and family style: stitched seams, rivets, laces, labels, badges, belts, patterned capes, painted faces with lids, teeth and cheeks. Their backs got the same care, since from your seat you mostly see your own creatures from behind (the mall cop's SECURITY jacket, the vending machine's vents, the hot sauce's barcode). A second pass moved details that were hidden inside bodies (sash badges, the pretzel twist, shoe laces, stripes, flowers, arcade buttons, the crypt door) onto the surfaces where you can see them.
+
+- The models are made by `gen_models.py` from the `models_*.py` files (helpers in `modelkit.py`), into `src/shared/CreatureModelData.luau`.
+- `python3 preview/sheet.py models_snack --only=jelly_bean_scout --size=500` draws a rough preview (add `--back` to see the back).
+
+### Punches and kicks on the table
+Creatures on the table now fight with their arms and legs, using the same moving parts and moves as Pack Brawl, instead of bumping into each other as one solid block:
+
+- Before an attack both creatures raise their guard. The attacker lunges in and throws a jab, cross, hook, uppercut, kick, haymaker or spin kick (bigger hits get bigger moves), swings what it holds, or headbutts, bumps, charges and tail-whips if it has no arms. The target flinches or staggers, or blocks when it is guarding.
+- When the target hits back, it takes the blow on its guard and punches straight back, and the attacker flinches.
+- Ranged creatures make a throwing motion as their shot leaves. Big creatures with long fronts (the moose) barely step forward, so the two bodies don't sink into each other.
+- **The twitch when two creatures clashed is fixed.** A creature used to jump to the first frame of each animation (out of its breathing, a glance aside or its crouched guard) and jump back into breathing afterwards. Now every animation eases in from wherever the creature is and eases back into breathing.
+- Your own models from ReplicatedStorage > CreatureModels keep moving as one piece (the game can't tell their arms from their legs).
+- In code: the `limbs` section of DeckWarsClient (`limbs.bind`, `limbs.guard`, `limbs.play`, `limbs.update`), and `attackAnimation`.
+
+## Combos and a calmer, heavier table
+
+### Cards that build up together
+You can still play simply: walk, attack, defend. But a player who plans can now grow a much stronger board. The ideas come from other games: Star Realms (cards of the same faction help each other), Slay the Spire (stacking buffs), Go and old Viking board games (surrounding an enemy), Into the Breach (pushing enemies into position) and auto-battlers like Teamfight Tactics (families that are stronger together).
+
+- **Power ⚡.** Counters that stay on a creature: +1 attack each, up to 3. Several cards and rules give it out. A creature's Power shows under its stats.
+- **Sandwich.** Attack an enemy that has one of your creatures right behind it (on the far side, in line with the attacker): +1 damage. While you aim, hovering the target says "Sandwich!" when it works.
+- **Combo.** Cards with "Combo:" on them get a bonus if you already played another card of the same family this turn. Example: Moth Mailman draws 1 card, or 2 with Combo. When a card in your hand is ready to combo, it gets a gold **COMBO** tag and a gold glow.
+- **Every family has its own way to grow:**
+
+| Family | Rule | How to use it |
+| --- | --- | --- |
+| Snack | **Sweet Tooth**: every heal gives a Snack 1 Power, even at full health | Heal all the time: Snack Time, Pancake Paladin, Pretzel Guard's Combo and the Picnic chant. Hot Sauce Imp gets 2 Power from every heal |
+| Junk | **Scrap**: Junk creatures and buildings leave Scrap on their tile when they pop. A Junk creature that steps on Scrap picks it up: +1/+1 for each | Tin Can Tom leaves 2 Scrap. Rusty Shopping Cart also picks up Scrap next to where it stops. Scrapheap Titan costs 1 less for each Scrap on the board (up to 3 less), so you choose: grow now, or save the Scrap for a cheap Titan |
+| Weather | **Soak** 💧: a Soaked creature takes 1 more damage from the next hit, then dries off | Soak first (Drizzle Sprite, Grumpy Cloud, Tornado Twins, the new Water Balloon spell, the Gust chant), then hit. Zap creatures (Lightning Llama, Bolt Bug, Microwave Mage) deal 2 more on top |
+| Critter | **Pack**: every Critter gets +1 attack for each friendly Critter next to it (up to +2) | Keep them together. Sergeant Snail gives the Critters next to it Sturdy |
+| Spooky | **Grudge**: Grudge creatures get 1 Power whenever another of your creatures pops | Skeleton Mascot and The Mannequin Duke grow as your side takes losses, and Haunt still leaves Ghosts |
+| Robo | **Upload**: when a Robo pops, its Power jumps to the Robo next to it with the least Power | Charge now gives Power at the start of your turns, and the Power Up chant gives Power |
+
+- **26 cards were rewritten** to use these rules, and there's a new spell: **Water Balloon** (1 energy: Soak an enemy creature and push it 1 tile back). It replaced Wrong Turn in Storm Front and Coin Flip Fury in Robo Rumble.
+- **Chant changes:** Picnic now costs 2 energy and gives Snacks Power even when nobody is hurt. Gust also Soaks what it blows. Power Up gives 1 Power (max 3).
+- **Balance changes** after 5,400 bot-vs-bot games: Drizzle Sprite is now 1/2, Grumpy Cloud 2/3 and Roomba Rex 2/3. Scrap Heap plays one Scrap Catapult and one Pothole fewer (a second Snack Break and a Wrong Turn instead), and Robo Rumble swapped Earthquake Dance, which hurt its own small robots, for Sneeze Storm.
+- **Going first:** with the combos the first player won 61% of bot games, so now the first player skips the draw on their very first turn (they still start with 4 cards and the second player with 5). In the final bot games the first player won 45%, much closer to even.
+- The deck picker's blurbs now say how each deck builds up.
+- **The bot plays with all of it.** It tries out its moves before it makes them, so it sees Combos, Sandwiches, Soak and Scrap.
+
+### A darker, heavier table
+- **Lighting:** the room is much darker (less ambient light, lower exposure, less glow, more contrast). The lamps over the table make a warm pool of light on the board while the rest of the room falls into shadow, and shadows are crisper.
+- **Tiles feel like stone slabs:** every tile sits on a dark plinth, so it has a thick, stepped edge.
+- **Terrain colors are deep and match each family's card color,** so you can see at a glance where your creatures get +1 attack: Soda Swamp is amber (Snack), Glitter Junkyard is rusty metal (Junk), Static Snowfield is deep ice blue (Weather), Pillow Peaks is soft moss green felt (Critter), Mushroom Mall is dusky purple tile (Spooky) and Lava Laundromat is grey steel plate (Robo).
+- **Every creature stands on a heavy round base,** like a painted miniature: dark stone with a thin ring in its side's color (blue for yours, red for the opponent's).
+- During a match the edges of the screen are softly darkened, so your eye goes to the board.
+
+### Less going on at once, more punch when it counts
+- **A quiet board:** creatures breathe slowly, glance around now and then and no longer hop. Hand cards rest still. Glows barely pulse. There are fewer particles everywhere, the purple screen flash on spells is gone, and the Big Move and Total Chaos flashes are much softer.
+- **Under each creature's stats, only what's going on right now:** ⚡ Power, 💧 Soaked, 🔋 Charge left, Bubble, zZ (just arrived) and 🛡 (guarding). Its keywords are on its card: hover the creature to see it. Hovering a creature or tile also explains its Power, Soak and Scrap.
+- **Hits land harder:** the target flashes white, a ring of light spreads at its feet, and everything holds for a split second (hit-stop) before the knock-back.
+- **Spells:** light gathers into a glowing orb over the caster's side of the table, then bursts.
+- **Heals:** a soft column of green light rises through the creature.
+- **The new rules have their own small moments:** a gold glint and "+1 ⚡" for Power, a splash of water for Soak, Scrap clattering onto a tile and flying into the Junk creature that picks it up, "Sandwich! +1" over the helper, and "Combo!" when a combo goes off.
+
