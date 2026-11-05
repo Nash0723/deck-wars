@@ -47,6 +47,8 @@ local function newProgress()
 		themesWon = {}, -- [family] = true once you've won with a deck using it
 		luckyPulls = 0,
 		prefs = {},
+		trophies = 0, -- the Trophy Road (Progression.TrophyRoad); never goes down
+		road = {}, -- ["<stop index>"] = true once claimed
 	}
 end
 
@@ -164,6 +166,17 @@ local function publish(player)
 				claimable += 1
 			end
 		end
+		-- the Trophy Road: trophies, which stops are claimed ("1,2,5") and how many are ready
+		local claimed = {}
+		for i, stop in ipairs(Progression.TrophyRoad) do
+			if p.road[tostring(i)] then
+				table.insert(claimed, tostring(i))
+			elseif p.trophies >= stop.at then
+				claimable += 1
+			end
+		end
+		player:SetAttribute("Trophies", p.trophies)
+		player:SetAttribute("RoadClaimed", table.concat(claimed, ","))
 		player:SetAttribute("QuestsReady", claimable)
 		for key, value in pairs(p.prefs or {}) do
 			player:SetAttribute("Pref" .. key, value)
@@ -327,6 +340,14 @@ function PlayerData.recordMatch(player, m)
 		d.stats.draws = (d.stats.draws or 0) + 1
 	end
 	out.streak = p.winStreak
+	-- Trophy Road: a match that went the distance earns trophies (a too-short one doesn't).
+	if note ~= "too short" then
+		local t = Progression.trophiesFor(m)
+		if t > 0 then
+			p.trophies += t
+			out.trophies = t
+		end
+	end
 	if coins > 0 then
 		d.coins = math.min(MAX, d.coins + coins)
 		d.stats.coinsEarned = (d.stats.coinsEarned or 0) + coins
@@ -429,6 +450,32 @@ function PlayerData.claimAchievement(player, id)
 	d.gems = math.min(MAX, d.gems + a.gems)
 	changed(player, "achievement")
 	return { gems = a.gems }
+end
+
+-- Claims stop `index` of the Trophy Road. Returns { gems, coins, cosmetic } or nil and a reason.
+function PlayerData.claimRoad(player, index)
+	local d = data(player)
+	local stop = type(index) == "number" and Progression.TrophyRoad[index]
+	if not d or not stop then
+		return nil, "no such stop"
+	end
+	local p = ensure(d, player.UserId)
+	local key = tostring(index)
+	if p.road[key] then
+		return nil, "already claimed"
+	end
+	if p.trophies < stop.at then
+		return nil, "not there yet"
+	end
+	p.road[key] = true
+	local out = { gems = stop.gems or 0, coins = stop.coins or 0, cosmetic = stop.cosmetic }
+	d.gems = math.min(MAX, d.gems + out.gems)
+	d.coins = math.min(MAX, d.coins + out.coins)
+	if stop.cosmetic and EconomyManager.grantCosmetic then
+		EconomyManager.grantCosmetic(player, stop.cosmetic)
+	end
+	changed(player, "road")
+	return out
 end
 
 -- Developer tools (Nash's dev panel "New day"): the daily reward, quests and the first-win

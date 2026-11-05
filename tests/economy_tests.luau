@@ -268,6 +268,27 @@ EconomyManager.grant(alice, "Gems", 5000)
 check(EconomyManager.buy(alice, "cosmetic", "emote_gg"), "buy an emote with Gems")
 check(EconomyManager.ownsCosmetic(alice, "emote_gg") and EconomyManager.ownsCosmetic(alice, "emote_hello"), "owned and default emotes")
 
+-- match backgrounds (kind "backdrop"): free ones, Shop ones, Trophy Road ones
+snap = EconomyManager.snapshot(alice)
+check(snap.equipped.backdrop == "bg_room", "a new player wears the Card Den")
+check(snap.owned.bg_room and snap.owned.bg_random, "Card Den and Surprise me are free")
+check(EconomyManager.equip(alice, "backdrop", "bg_random"), "wear Surprise me")
+check(not EconomyManager.equip(alice, "backdrop", "bg_candy"), "can't wear a background you don't own")
+check(not EconomyManager.equip(alice, "board", "bg_candy"), "a background isn't a board theme")
+EconomyManager.grant(alice, "Coins", 5000)
+ok = EconomyManager.buy(alice, "cosmetic", "bg_candy")
+snap = EconomyManager.snapshot(alice)
+check(ok and snap.owned.bg_candy and snap.equipped.backdrop == "bg_candy", "buying a background owns and wears it")
+local coinsBefore = EconomyManager.getBalance(alice, "Coins")
+local roadOk, roadMsg = EconomyManager.buy(alice, "cosmetic", "bg_fire")
+check(not roadOk and string.find(roadMsg, "Trophy Road", 1, true) ~= nil, "Trophy Road backgrounds can't be bought")
+check(EconomyManager.getBalance(alice, "Coins") == coinsBefore and not EconomyManager.snapshot(alice).owned.bg_fire, "the refused road buy cost nothing")
+check(EconomyManager.grantCosmetic(alice, "bg_fire"), "the road can give a background")
+check(not EconomyManager.grantCosmetic(alice, "bg_fire"), "only once")
+check(EconomyManager.equip(alice, "backdrop", "bg_fire"), "wear the road background")
+check(EconomyManager.snapshot(alice).equipped.backdrop == "bg_fire", "the snapshot says so")
+check(EconomyManager.equip(alice, "backdrop", "bg_room"), "back to the Card Den")
+
 -- deck slots
 for _ = ShopCatalog.DeckSlots.start + 1, ShopCatalog.DeckSlots.max do
 	check(EconomyManager.buy(alice, "deckslot"), "buy a deck slot")
@@ -451,7 +472,31 @@ end
 for _, c in ipairs(ShopCatalog.Cosmetics) do
 	check(not ids[c.id], "unique id " .. c.id)
 	ids[c.id] = true
-	check(c.default or priced(c), c.id .. " has a price")
+	check(c.default or c.road or priced(c), c.id .. " has a price")
+	if c.kind == "backdrop" then
+		local WORLDS = { Room = true, Random = true, Candy = true, Meadow = true, Ice = true, Fire = true, Space = true, Mall = true } -- (Backdrops.List)
+		check(WORLDS[c.backdrop or ""] == true, c.id .. " is a real world")
+	end
+	if c.road then
+		local onRoad = false
+		for _, stop in ipairs(require("Progression").TrophyRoad) do
+			onRoad = onRoad or stop.cosmetic == c.id
+		end
+		check(onRoad and not c.price, c.id .. " is on the Trophy Road and not for sale")
+	end
+end
+-- the road goes up, and every stop pays something real
+do
+	local Progression = require("Progression")
+	local last = 0
+	for i, stop in ipairs(Progression.TrophyRoad) do
+		check(stop.at > last, "Trophy Road stop " .. i .. " comes after the one before")
+		last = stop.at
+		check((stop.gems or 0) > 0 or (stop.coins or 0) > 0 or (stop.cosmetic and ShopCatalog.CosmeticById[stop.cosmetic] ~= nil), "Trophy Road stop " .. i .. " has a reward")
+	end
+	check(Progression.trophiesFor({ result = "win", difficulty = "Hard" }) > Progression.trophiesFor({ result = "win", difficulty = "Easy" }), "a Hard win earns more trophies than an Easy one")
+	check(Progression.trophiesFor({ result = "win", pvp = true }) == Progression.Trophies.pvpWin, "a win against people")
+	check(Progression.trophiesFor({ result = "loss" }) == Progression.Trophies.finish, "a loss still earns a trophy")
 end
 for _, b in ipairs(ShopCatalog.Boosts) do
 	check(priced(b), b.id .. " has a price")

@@ -478,6 +478,7 @@ function Match:finishIfOver()
 				mode = self.mode,
 				-- Coins: bot matches pay by the bot's difficulty, matches against people like Hard.
 				difficulty = hardest or "Hard",
+				pvp = hardest == nil, -- only people on the other side (Trophy Road pays more)
 				seconds = now() - (self.startedAt or now()),
 				turns = math.floor((m.seats[s].turns or 0)),
 				stats = stats,

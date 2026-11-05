@@ -70,7 +70,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient", "IdleTable", "BackdropPicker", "TrophyRoadUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
@@ -548,6 +548,119 @@ do
 end
 
 ---------------------------------------------------------------------------
+-- The Duel Table at rest (IdleTable) and match backgrounds at the Deck Shelf (BackdropPicker):
+-- the old tile board is gone, the lane board rests on the felt, the picker shows every world,
+-- a preview puts one up around the table (moving parts, the Pack Shelf stays dark), buying one
+-- wears it, and the Duel Table panel has no background row any more
+---------------------------------------------------------------------------
+local Backdrops = makeEnv(clientScript, clientCache).require(shared.Backdrops)
+local IdleTable = makeEnv(clientScript, clientCache).require(shared.IdleTable)
+local function shelfLit()
+	local lit = 0
+	for _, d in ipairs(Workspace.MenuRoom:GetDescendants()) do
+		if d:IsA("BasePart") and (d.Name == "PackBacklight" or d.Name == "RiserGlow") and d.Transparency < 1 then
+			lit += 1
+		end
+	end
+	return lit
+end
+do
+	local idle = Workspace:FindFirstChild("IdleTable")
+	check(idle ~= nil, "the Duel Table has its resting lane board")
+	local lanes, rings, figures = 0, 0, 0
+	for _, d in ipairs(idle and idle:GetChildren() or {}) do
+		if d.Name == "IdleLane" then
+			lanes += 1
+		elseif d.Name == "IdleRing" then
+			rings += 1
+		elseif d:IsA("Model") and string.sub(d.Name, 1, 9) == "Showcase_" then
+			figures += 1
+		end
+	end
+	check(lanes == 8 and rings == 16, "4 lanes a side with Front and Back spots (" .. lanes .. " lanes, " .. rings .. " rings)")
+	check(figures == 2, "two showcase creatures face off in the middle (" .. figures .. ")")
+	local tile = Workspace.MenuRoom.Stations.DuelTable:FindFirstChild("Tile_1_1", true)
+	check(tile and tile.Transparency == 1 and tile:GetAttribute("IdleTransparency") ~= nil, "the old 5x6 tile board is hidden (and remembers how it looked)")
+	local ring = idle and idle:FindFirstChild("IdleRing")
+	local t0 = ring and ring.Transparency
+	M.advance(1.2)
+	check(ring and ring.Transparency ~= t0, "the rings breathe")
+
+	-- the Duel Table panel: no background row
+	click(named("NavDuelTable"), "Duel Table station")
+	M.advance(1)
+	check(named("BackdropName") == nil and named("Backdrop") == nil, "no background picker on the Duel Table any more")
+
+	-- the Deck Shelf: the Match background button opens the worlds
+	click(named("NavDeckShelf"), "Deck Shelf station")
+	M.advance(1.5)
+	click(named("Backgrounds"), "Match background button")
+	M.advance(1)
+	local cards = findAll(function(d)
+		return d.ClassName == "Frame" and string.sub(d.Name, 1, 3) == "BG_"
+	end)
+	check(#cards == 8, "the picker shows all 8 backgrounds (" .. #cards .. ")")
+	local candy = named("BG_Candy")
+	check(candy and candy:FindFirstChild("Action") == nil and candy:FindFirstChild("Action", true) ~= nil, "Gumdrop Plaza has a buy button")
+	local fireCard = named("BG_Fire")
+	local fireAction = fireCard and fireCard:FindFirstChild("Action", true)
+	check(fireAction and string.find(fireAction.Text, "🏆", 1, true) ~= nil, "Ember Caldera shows its Trophy Road progress (" .. tostring(fireAction and fireAction.Text) .. ")")
+	check(Backdrops.choice == "Room", "a new player wears the Card Den")
+
+	-- preview Sunset Grasslands
+	local lit0 = shelfLit()
+	click(named("BG_Meadow") and named("BG_Meadow"):FindFirstChild("Preview", true), "preview Sunset Grasslands")
+	M.advance(2)
+	check(Backdrops.current() == "Meadow" and Workspace:FindFirstChild("MatchBackdrop") ~= nil, "the world goes up around the table")
+	local stationTitle = playerGui:FindFirstChild("StationTitle", true)
+	check(stationTitle ~= nil and not visible(stationTitle), "the menu steps aside")
+	check(named("PreviewBar") ~= nil, "the preview bar shows")
+	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the table keeps its lane board in the preview")
+	local world = Workspace.MatchBackdrop
+	local before = {}
+	for _, d in ipairs(world:GetChildren()) do
+		if d:IsA("BasePart") then
+			before[d] = d.CFrame
+		end
+	end
+	M.advance(1.5)
+	local moved = 0
+	for d, cf in pairs(before) do
+		if d.Parent and (d.CFrame.Position - cf.Position).Magnitude > 1e-3 then
+			moved += 1
+		end
+	end
+	check(moved >= 10, "the world has moving parts (" .. moved .. " moved)")
+	print("note shelf glow parts lit before the preview: " .. lit0)
+	check(shelfLit() == 0, "the Pack Shelf's glow stays off under the world (" .. shelfLit() .. " lit)")
+	click(named("NextWorld"), "next world")
+	M.advance(1.5)
+	check(Backdrops.current() ~= "Meadow" and Backdrops.current() ~= nil, "the arrows step through the worlds (" .. tostring(Backdrops.current()) .. ")")
+	-- buy Gumdrop Plaza from the preview bar
+	Economy.grant(player, "Coins", 5000)
+	M.advance(0.5)
+	local guardSteps = 0
+	while Backdrops.current() ~= "Candy" and guardSteps < 8 do
+		click(named("NextWorld"), "next world")
+		M.advance(1)
+		guardSteps += 1
+	end
+	check(Backdrops.current() == "Candy", "previewing Gumdrop Plaza")
+	click(named("PreviewBar") and named("PreviewBar"):FindFirstChild("Action"), "buy Gumdrop Plaza")
+	M.advance(1)
+	check(Economy.snapshot(player).owned.bg_candy == true, "the server sold it")
+	check(Backdrops.choice == "Candy", "and you wear it (" .. tostring(Backdrops.choice) .. ")")
+	click(named("EndPreview"), "back from the preview")
+	M.advance(1.5)
+	check(Backdrops.current() == nil and Workspace:FindFirstChild("MatchBackdrop") == nil, "the room is back")
+	check(named("StationTitle") ~= nil and visible(named("StationTitle")), "the menu is back")
+	check(shelfLit() == lit0, "the Pack Shelf lights up again as before (" .. shelfLit() .. " of " .. lit0 .. ")")
+	local wornCard = named("BG_Candy")
+	local wornAction = wornCard and wornCard:FindFirstChild("Action", true)
+	check(wornAction and string.find(wornAction.Text, "Wearing", 1, true) ~= nil, "the picker marks it as worn")
+end
+
+---------------------------------------------------------------------------
 -- A whole match against the bot through the merged client: the Duel Table panel, placing
 -- creatures on Front and Back spots, a Shift, BATTLE, the result and back to the room
 ---------------------------------------------------------------------------
@@ -564,6 +677,10 @@ do
 		waited += 0.5
 	end
 	check(S.view ~= nil, "the bot match starts")
+	M.advance(1)
+	check(Backdrops.current() == "Candy", "the match is played in the background you wear (" .. tostring(Backdrops.current()) .. ")")
+	check(Workspace:FindFirstChild("IdleTable") == nil, "the resting board makes way for the match board")
+	check(shelfLit() == 0, "no Pack Shelf glow in the world during the match (" .. shelfLit() .. " lit)")
 	local away = 0
 	for _, p in ipairs(RoomLife.props) do
 		for _, e in ipairs(p.parts) do
@@ -677,6 +794,46 @@ do
 	M.advance(16)
 	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "back at the Duel Table panel after the match")
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
+	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
+	check((player:GetAttribute("Trophies") or 0) > 0, "the match earned trophies (" .. tostring(player:GetAttribute("Trophies")) .. ")")
+end
+
+---------------------------------------------------------------------------
+-- The Trophy Road at the Trophy Wall: claim a stop, a background stop unlocks the world
+---------------------------------------------------------------------------
+do
+	local Progression = makeEnv(nil, serverCache).require(shared.Progression)
+	click(named("NavTrophyWall"), "Trophy Wall station")
+	M.advance(1)
+	check(named("TrophyRoad") ~= nil, "the Trophy Road box shows at the Trophy Wall")
+	check(#findAll(function(d)
+		return d.Name == "Bubble"
+	end) == #Progression.TrophyRoad, "every stop is on the road")
+	-- (jump ahead: pretend more matches were won)
+	local d = Economy.waitForData(player, 0)
+	d.progress.trophies = 60
+	player:SetAttribute("Trophies", 60) -- (what PlayerData.publish would say)
+	M.advance(0.3)
+	local coins0 = player:GetAttribute("Coins")
+	click(named("Stop1") and named("Stop1"):FindFirstChild("Bubble"), "claim the first stop")
+	M.advance(1)
+	check(player:GetAttribute("Coins") == coins0 + (Progression.TrophyRoad[1].coins or 0), "the first stop pays its Coins")
+	check(player:GetAttribute("RoadClaimed") == "1", "it's marked claimed (" .. tostring(player:GetAttribute("RoadClaimed")) .. ")")
+	click(named("Stop1") and named("Stop1"):FindFirstChild("Bubble"), "claim it again")
+	M.advance(1)
+	check(player:GetAttribute("Coins") == coins0 + (Progression.TrophyRoad[1].coins or 0), "a stop pays only once")
+	local meadowAt = nil
+	for i, stop in ipairs(Progression.TrophyRoad) do
+		if stop.cosmetic == "bg_meadow" then
+			meadowAt = i
+		end
+	end
+	click(named("Stop" .. meadowAt) and named("Stop" .. meadowAt):FindFirstChild("Bubble"), "claim Sunset Grasslands")
+	M.advance(1)
+	check(Economy.snapshot(player).owned.bg_meadow == true, "the road unlocked Sunset Grasslands")
+	click(named("Stop" .. (#Progression.TrophyRoad)) and named("Stop" .. (#Progression.TrophyRoad)):FindFirstChild("Bubble"), "try a stop that's far away")
+	M.advance(1)
+	check(not string.find(player:GetAttribute("RoadClaimed") or "", tostring(#Progression.TrophyRoad), 1, true), "a stop you haven't reached can't be claimed")
 end
 
 ---------------------------------------------------------------------------
