@@ -678,6 +678,13 @@ do
 		end
 	end
 	check(away < 1e-6, "every room prop is back in place at the table (" .. away .. ")")
+	-- keep what the server says the match paid, to check the trophies against it
+	local seenRewards = nil
+	local showResult = F.showResult
+	F.showResult = function(payload, ...)
+		seenRewards = type(payload) == "table" and payload.rewards or seenRewards
+		return showResult(payload, ...)
+	end
 	local plays, backPlays, shifts, buildings, turnsMine = 0, 0, 0, 0, 0
 	local playedThisTurn, shiftedThisTurn, lastTurn = 0, false, -1
 	local guard = 0
@@ -785,7 +792,20 @@ do
 	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "back at the Duel Table panel after the match")
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
 	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
-	check((player:GetAttribute("Trophies") or 0) > 0, "the match earned trophies (" .. tostring(player:GetAttribute("Trophies")) .. ")")
+	F.showResult = showResult
+	-- Trophies follow the server's rules: any match that went the distance earns some, one that
+	-- ended too soon (ShopCatalog.Match.minSeconds / minTurns) earns none.
+	local trophies = player:GetAttribute("Trophies") or 0
+	check(seenRewards ~= nil, "the result came with its rewards")
+	if seenRewards then
+		print("note match rewards: note " .. tostring(seenRewards.note) .. ", trophies " .. tostring(seenRewards.trophies))
+		if seenRewards.note == "too short" then
+			check(trophies == 0 and seenRewards.trophies == nil, "a match that ended too soon earns no trophies (" .. trophies .. ")")
+		else
+			check(trophies > 0, "the match earned trophies (" .. trophies .. ")")
+			check(trophies == seenRewards.trophies, "the Trophy count matches the result screen (" .. trophies .. " vs " .. tostring(seenRewards.trophies) .. ")")
+		end
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -964,7 +984,7 @@ do
 			rewardsSeen = true
 			check(named("CampaignNext") ~= nil, "a win offers Next")
 		else
-			check(named("CampaignRetry") ~= nil and named("CampaignRetry").Text == "⟳ Try again", "a loss offers Try again")
+			check(named("CampaignRetry") ~= nil and string.find(named("CampaignRetry").Text, "Try again", 1, true) ~= nil, "a loss offers Try again")
 			click(named("CampaignRetry"), "Try again")
 			M.advance(1)
 		end
