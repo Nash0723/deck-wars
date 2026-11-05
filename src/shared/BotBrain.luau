@@ -1,13 +1,10 @@
--- Deck Wars bot for the tile board.
--- Easy picks random moves (but still likes attacking).
--- Medium tries every legal action and keeps the one that leaves the best board. For a move it
---   also looks at the best attack the creature could make from its new tile.
--- Hard does the same, and also thinks about what the enemy could hit on their next turn.
--- Defend and chants are scored the same way: a braced creature next to enemies is worth a bit
--- more, and a chant's heal, damage, push, pigeon, raised creature or +1 attack shows up on the board.
--- The bot tries moves on copies of the match with fresh dice, so it can't see real rolls.
--- Combos: trying moves on copies shows it Combo and Sandwich bonuses; on top of that it values
--- Power (in attack), Grudge and Zap creatures, soaked enemies and Scrap for a Junk deck.
+-- The bot for the lane rules (Bot Bonkers, and empty seats in 2v2 and tournaments).
+-- Lanes have a Front and a Back row: the bot tries each free tile for a creature, and Shifts.
+--
+-- It picks one action at a time: it tries every legal move on a copy of the match, lets that
+-- copy fight its battle, scores what's left (hit points, creatures, how hard the enemy will hit
+-- back) and does the best one. When nothing beats fighting right away, it presses BATTLE.
+-- Easy plays a random card now and then; Medium is greedy but a bit sloppy; Hard is greedy.
 
 local function req(name)
 	if script then
@@ -16,276 +13,189 @@ local function req(name)
 	return require(name)
 end
 
-local Rng = req("Rng")
 local CardData = req("CardData")
-
-local ROWS = CardData.Rows
-local COLS = CardData.Cols
 
 local BotBrain = {}
 
-local HERO_ROWS = CardData.HeroAttackRows or 1
+local WIN = 1e6
 
--- Can player p's creature on this row hit the enemy hero?
-local function heroRow(p, row)
-	if p == 1 then
-		return row > ROWS - HERO_ROWS
-	end
-	return row <= HERO_ROWS
+local function creatureValue(m, u)
+	return m:attackOf(u) * 2 + m:healthOf(u) + (u.shield and 2 or 0)
 end
 
--- How far a creature has walked toward the enemy (0 on its own back row).
-local function advance(u)
-	if u.owner == 1 then
-		return u.row - 1
-	end
-	return ROWS - u.row
-end
-
-local function unitValue(m, u)
-	if u.kind == "building" then
-		-- Buildings are pricey and keep working every turn: worth about what they cost.
-		local def = CardData.Cards[u.id]
-		local v = 1.5 + (def and def.cost or 2) * 1.1 + u.hp * 0.35
-		-- A lane building is worth a bit more in a lane where things happen: its effects (heals,
-		-- shots, Haunt, Fast...) only reach that column. Turn-start effects don't show up when the
-		-- bot tries a move on a copy, so this nudges it toward the right slot.
-		if def and def.area == "lane" then
-			local busy = 0
-			for row = 1, ROWS do
-				local x = m:at(u.col, row)
-				if x and x.kind == "creature" then
-					busy += 1
-				end
-			end
-			v += 0.3 * math.min(busy, 4)
-		end
-		return v
-	end
-	local atk = m:attackOf(u)
-	local v = atk * 1.6 + u.hp * 1.0 + 1.5
-	if m:hasKeyword(u, "Sturdy") then
-		v += 1
-	end
-	if m:hasKeyword(u, "Ranged") then
-		v += 1
-	end
-	if m:hasKeyword(u, "Fast") then
-		v += 0.5
-	end
-	if m:hasKeyword(u, "Haunt") then
-		v += 1
-	end
-	if m:hasKeyword(u, "Grudge") then
-		v += 0.6
-	end
-	if m:hasKeyword(u, "Zap") then
-		v += 0.4
-	end
-	if u.bubble then
-		v += 1
-	end
-	if u.soaked then
-		v -= 0.8 -- the next hit on it deals more
-	end
-	v += u.chargeLeft * 0.8
-	if u.token then
-		v -= 0.5
-	end
-	return v
-end
-
--- Tiles a creature could reach on its next turn, ignoring whether it has moved already.
-local function nextTurnReach(m, u)
-	local speed = m:speedOf(u)
-	local out = { { col = u.col, row = u.row } }
-	local seen = { [u.col * 16 + u.row] = true }
-	local frontier = { out[1] }
-	for _ = 1, speed do
-		local nxt = {}
-		for _, n in ipairs(frontier) do
-			for _, d in ipairs({ { 0, 1 }, { 1, 0 }, { -1, 0 }, { 0, -1 } }) do
-				local c, r = n.col + d[1], n.row + d[2]
-				local k = c * 16 + r
-				if not seen[k] and m:isEmpty(c, r) then
-					seen[k] = true
-					local t = { col = c, row = r }
-					table.insert(out, t)
-					table.insert(nxt, t)
-				end
-			end
-		end
-		frontier = nxt
-	end
-	return out
-end
-
--- What player `attacker` could do on their next turn with the creatures on the board:
--- the biggest hit on each of the defender's units, and total damage to the defender's hero.
-local function threats(m, attacker)
-	local onUnit = {} -- [uid] = biggest single hit it could take
-	local hero = 0
-	for _, e in ipairs(m:unitsOf(attacker, "creature")) do
-		local atk = m:attackOf(e)
-		if atk > 0 then
-			local range = m:rangeOf(e)
-			local canHero = false
-			local reach = nextTurnReach(m, e)
-			for _, t in ipairs(reach) do
-				if heroRow(attacker, t.row) then
-					canHero = true
-				end
-			end
-			if canHero then
-				hero += atk
-			end
-			for _, u in ipairs(m:unitsOf(3 - attacker)) do
-				for _, t in ipairs(reach) do
-					if math.max(math.abs(t.col - u.col), math.abs(t.row - u.row)) <= range then
-						if (onUnit[u.uid] or 0) < atk then
-							onUnit[u.uid] = atk
-						end
-						break
-					end
-				end
-			end
-		end
-	end
-	return onUnit, hero
-end
-
-local function boardScore(m, p, careful)
+-- How good the match looks for `team` right now (higher is better).
+local function score(m, team)
+	local enemy = 3 - team
 	if m.over then
-		if m.winner == p then
-			return 1e6
-		elseif m.winner == 0 then
-			return 0
+		if m.winner == team then
+			return WIN
+		elseif m.winner == enemy then
+			return -WIN
 		end
-		return -1e6
+		return 0
 	end
-	local q = 3 - p
-	local me, them = m.players[p], m.players[q]
-	local s = (me.hp - them.hp) * 2.2
-	-- Low health is scarier than the raw difference suggests.
-	if me.hp <= 8 then
-		s -= (9 - me.hp) * 2.5
+	local mine, theirs = m.teams[team].hp, m.teams[enemy].hp
+	local s = (mine - theirs) * 6
+	-- A hero close to dying matters more.
+	s += math.max(0, 12 - theirs) * 3 - math.max(0, 12 - mine) * 3
+	for _, u in ipairs(m:allCreatures(team)) do
+		s += creatureValue(m, u)
 	end
-	if them.hp <= 8 then
-		s += (9 - them.hp) * 2.5
+	for _, u in ipairs(m:allCreatures(enemy)) do
+		s -= creatureValue(m, u)
 	end
-	for _, u in ipairs(m:allUnits()) do
-		local v = unitValue(m, u)
-		if u.kind == "creature" then
-			local atk = m:attackOf(u)
-			v += advance(u) * 0.2 * (1 + atk * 0.35)
-			if heroRow(u.owner, u.row) then
-				v += atk * 0.9 -- standing where it can hit the hero
-			end
-			if u.defending then
-				-- Braced (takes less damage, hits back harder): worth something while enemies are close.
-				for _, e in ipairs(m:unitsOf(3 - u.owner, "creature")) do
-					if math.max(math.abs(e.col - u.col), math.abs(e.row - u.row)) <= 2 then
-						v += 0.6
-						break
-					end
-				end
+	-- Buildings and cards in hand are worth a little.
+	for t = 1, 2 do
+		for _, l in ipairs(m.lanes[t]) do
+			if l.building then
+				s += (t == team) and 3 or -3
 			end
 		end
-		if u.owner == p then
-			s += v
-		else
-			s -= v
+	end
+	for _, seat in ipairs(m.seats) do
+		s += (seat.team == team and 1 or -1) * #seat.hand * 1.5
+	end
+	-- How much the enemy will hit our hero in their next battle (open lanes hurt).
+	local threat = 0
+	for _, u in ipairs(m:allCreatures(enemy)) do
+		local attacks = u.row == 1 or m:hasKeyword(u, "Ranged")
+		if attacks and not m:attackTarget(u) then
+			threat += m:attackOf(u)
 		end
 	end
-	s += #me.hand * 1.0 - #them.hand * 0.5
-	-- Scrap on the board is worth something to a Junk deck (its creatures pick it up).
-	local scrap = m:scrapTotal()
-	if scrap > 0 then
-		if table.find(me.themes or { me.family }, "Junk") then
-			s += scrap * 0.7
-		end
-		if table.find(them.themes or { them.family }, "Junk") then
-			s -= scrap * 0.7
-		end
-	end
-	if m:bigMoveReady(p) then
-		s += 3
-	end
-	if careful then
-		-- What could the enemy hit next turn? Units that would pop are worth less, and
-		-- open paths to our hero are dangerous.
-		local onUnit, heroHit = threats(m, q)
-		for _, u in ipairs(m:unitsOf(p)) do
-			local hit = onUnit[u.uid]
-			if hit then
-				local eff = hit
-				if m:hasKeyword(u, "Sturdy") then
-					eff -= 1
-				end
-				if u.defending then
-					eff -= CardData.DefendArmor or 1
-				end
-				if u.bubble then
-					eff = 0
-				end
-				if eff >= u.hp then
-					s -= unitValue(m, u) * 0.45
-				elseif eff > 0 then
-					s -= eff * 0.25
-				end
-			end
-		end
-		s -= heroHit * 1.3
-		if heroHit >= me.hp then
-			s -= 60
-		end
-		-- And our own chances next turn, worth a bit less since they move first.
-		local myOnUnit, myHero = threats(m, p)
-		s += myHero * 0.5
-		for _, e in ipairs(m:unitsOf(q)) do
-			local hit = myOnUnit[e.uid]
-			if hit and hit >= e.hp then
-				s += unitValue(m, e) * 0.15
-			end
-		end
+	s -= threat * 4
+	if threat >= mine then
+		s -= 5000
 	end
 	return s
 end
 
-local function simulate(match, p, action, rng)
-	local sim = match:clone(rng:int(1, 2147483646))
-	local ok = sim:act(p, action)
-	if not ok then
-		return nil
+-- Turns the grouped list from listActions into single concrete actions.
+local function expand(m, seat, list)
+	local out = {}
+	for _, a in ipairs(list) do
+		if a.kind == "play" then
+			local c = CardData.Cards[a.id]
+			if c.type == "Creature" or c.type == "Building" then
+				local team = m.seats[seat].team
+				local spots = {}
+				if c.type == "Creature" then
+					for _, t in ipairs(a.tiles or {}) do
+						local here = m:unitAt(team, t.lane, t.row)
+						-- Only play over your own creature if it's hurt or small.
+						if not here or (m:healthOf(here) <= 1 or m:attackOf(here) < c.atk - 1) then
+							table.insert(spots, t)
+						end
+					end
+				else
+					for _, lane in ipairs(a.lanes) do
+						if not m.lanes[team][lane].building then
+							table.insert(spots, { lane = lane })
+						end
+					end
+				end
+				for _, spot in ipairs(spots) do
+					if a.targets and #a.targets > 0 then
+						for k, t in ipairs(a.targets) do
+							if k > 4 then
+								break
+							end
+							table.insert(out, { kind = "play", handUid = a.handUid, lane = spot.lane, row = spot.row, target = t })
+						end
+					else
+						table.insert(out, { kind = "play", handUid = a.handUid, lane = spot.lane, row = spot.row })
+					end
+				end
+			elseif a.needsTarget then
+				for _, t in ipairs(a.targets) do
+					table.insert(out, { kind = "play", handUid = a.handUid, target = t })
+				end
+			else
+				table.insert(out, { kind = "play", handUid = a.handUid })
+			end
+		elseif a.kind == "spark" then
+			table.insert(out, { kind = "spark", uid = a.uid })
+		elseif a.kind == "shift" then
+			table.insert(out, { kind = "shift", uid = a.uid })
+		elseif a.kind == "bigmove" then
+			if a.targets then
+				for _, t in ipairs(a.targets) do
+					table.insert(out, { kind = "bigmove", target = t })
+				end
+			else
+				table.insert(out, { kind = "bigmove" })
+			end
+		end
 	end
-	return sim
+	return out
 end
 
--- Score after an action. For a move, also try the best attack the creature could make next.
-local function scoreAction(match, p, action, rng, careful)
-	local sim = simulate(match, p, action, rng)
-	if not sim then
-		return nil
+-- Tries an action on a copy, fights the battle, and scores the result.
+-- An action that gives magic (Spare Battery) is only worth what that magic buys, so for those
+-- it also tries the best card to play next (one step deeper, no further).
+local function tryAction(m, seat, action, seed, deeper)
+	local copy = m:clone(seed)
+	local team = m.seats[seat].team
+	if action.kind ~= "battle" then
+		local ok = copy:act(seat, action)
+		if not ok then
+			return nil
+		end
 	end
-	local best = boardScore(sim, p, careful)
-	if action.kind == "move" and not sim.over then
-		local u = sim:findUnit(action.uid)
-		if u and sim:canAttack(u) then
-			local targets, hero = sim:attackTargets(u)
-			local follow = {}
-			for _, t in ipairs(targets) do
-				table.insert(follow, { kind = "attack", uid = u.uid, target = { col = t.col, row = t.row } })
+	local gained = not copy.over and copy.current == seat and copy.seats[seat].magic > m.seats[seat].magic
+	local follow = nil
+	if gained and not deeper then
+		for _, a in ipairs(expand(copy, seat, copy:listActions(seat))) do
+			if a.kind == "play" then
+				local s = tryAction(copy, seat, a, seed, true)
+				if s and (not follow or s > follow) then
+					follow = s
+				end
 			end
-			if hero then
-				table.insert(follow, { kind = "attack", uid = u.uid, hero = true })
+		end
+	end
+	if not copy.over and copy.current == seat then
+		copy:act(seat, { kind = "battle" })
+	end
+	local s = score(copy, team)
+	return follow and math.max(s, follow) or s
+end
+
+-- Picks the next action for `seat`. rng: an Rng (only used for Easy and Medium's sloppiness).
+function BotBrain.chooseAction(m, seat, difficulty, rng)
+	local list = m:listActions(seat)
+	local actions = expand(m, seat, list)
+	if #actions == 0 then
+		return { kind = "battle" }
+	end
+	if difficulty == "Easy" then
+		-- Plays something random most of the time, then fights.
+		if rng and rng:chance(0.7) then
+			local plays = {}
+			for _, a in ipairs(actions) do
+				if a.kind == "play" then
+					table.insert(plays, a)
+				end
 			end
-			for _, a in ipairs(follow) do
-				local sim2 = simulate(sim, p, a, rng)
-				if sim2 then
-					local s2 = boardScore(sim2, p, careful)
-					if s2 > best then
-						best = s2
-					end
+			local pick = rng:pick(plays)
+			if pick then
+				return pick
+			end
+		end
+		return { kind = "battle" }
+	end
+	local seed = m.rng.state + 7
+	local best, bestScore = { kind = "battle" }, tryAction(m, seat, { kind = "battle" }, seed)
+	local margin = difficulty == "Medium" and 2 or 0.5
+	for _, a in ipairs(actions) do
+		if not (difficulty == "Medium" and a.kind == "spark" and rng and rng:chance(0.4)) then
+			local s = tryAction(m, seat, a, seed)
+			if s then
+				if difficulty == "Medium" and rng then
+					s += (rng:next() - 0.5) * 6
+				end
+				if s > bestScore + margin then
+					best, bestScore = a, s
 				end
 			end
 		end
@@ -293,45 +203,23 @@ local function scoreAction(match, p, action, rng, careful)
 	return best
 end
 
--- Returns the next action for player p. Call again after each action until it returns endturn.
-function BotBrain.chooseAction(match, p, difficulty, rng)
-	rng = rng or Rng.new()
-	local actions = match:listActions(p)
-	if #actions <= 1 then
-		return { kind = "endturn" }
-	end
-
-	if difficulty == "Easy" then
-		local attacks, others = {}, {}
-		for _, a in ipairs(actions) do
-			if a.kind == "attack" then
-				table.insert(attacks, a)
-			elseif a.kind ~= "endturn" then
-				table.insert(others, a)
-			end
-		end
-		if #attacks > 0 and rng:chance(0.6) then
-			return rng:pick(attacks)
-		end
-		if #others == 0 or rng:chance(0.18) then
-			return { kind = "endturn" }
-		end
-		return rng:pick(others)
-	end
-
-	local careful = difficulty == "Hard"
-	local best, bestScore = { kind = "endturn" }, boardScore(match, p, careful)
-	for _, a in ipairs(actions) do
-		if a.kind ~= "endturn" then
-			local score = scoreAction(match, p, a, rng, careful)
-			if score and score > bestScore + 0.05 then
-				best, bestScore = a, score
-			end
+-- Plays a whole turn for `seat` right away (tests and bot-only tournament matches).
+function BotBrain.playTurn(m, seat, difficulty, rng)
+	local guard = 0
+	while not m.over and m.current == seat and guard < 40 do
+		guard += 1
+		local a = BotBrain.chooseAction(m, seat, difficulty, rng)
+		local ok = m:act(seat, a)
+		if not ok then
+			m:act(seat, { kind = "battle" })
 		end
 	end
-	return best
+	if not m.over and m.current == seat then
+		m:act(seat, { kind = "battle" })
+	end
 end
 
-BotBrain.boardScore = boardScore
+BotBrain.score = score
+BotBrain.expand = expand
 
 return BotBrain
