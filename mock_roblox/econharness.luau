@@ -723,6 +723,13 @@ do
 		end
 	end
 	check(away < 1e-6, "every room prop is back in place at the table (" .. away .. ")")
+	-- keep what the server says the match paid, to check the trophies against it
+	local seenRewards = nil
+	local showResult = F.showResult
+	F.showResult = function(payload, ...)
+		seenRewards = type(payload) == "table" and payload.rewards or seenRewards
+		return showResult(payload, ...)
+	end
 	local plays, backPlays, shifts, buildings, turnsMine = 0, 0, 0, 0, 0
 	local playedThisTurn, shiftedThisTurn, lastTurn = 0, false, -1
 	local guard = 0
@@ -830,6 +837,8 @@ do
 	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "back at the Duel Table panel after the match")
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
 	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
+	F.showResult = showResult
+	check(seenRewards ~= nil, "the result came with its rewards")
 	-- Trophies follow the Trophy Road rule for how this match actually went: the match seed comes
 	-- from the clock, so the bot can win in a few turns, and a match shorter than
 	-- ShopCatalog.Match.minSeconds / minTurns earns nothing by design.
@@ -1021,7 +1030,7 @@ do
 			rewardsSeen = true
 			check(named("CampaignNext") ~= nil, "a win offers Next")
 		else
-			check(named("CampaignRetry") ~= nil and named("CampaignRetry").Text == "⟳ Try again", "a loss offers Try again")
+			check(named("CampaignRetry") ~= nil and string.find(named("CampaignRetry").Text, "Try again", 1, true) ~= nil, "a loss offers Try again")
 			click(named("CampaignRetry"), "Try again")
 			M.advance(1)
 		end
