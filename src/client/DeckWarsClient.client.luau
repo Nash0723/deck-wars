@@ -1842,7 +1842,7 @@ MatchScreen.init({
 		mode = m
 	end,
 	onEnterMatch = function()
-		-- The world around the table (picked on the Duel Table panel; "Tree Fort Den" keeps the room).
+		-- The world around the table (picked on the Duel Table panel; "Card Den" keeps the room).
 		local ok, used = pcall(Backdrops.apply, Backdrops.choice, room, duelTable)
 		if not ok then
 			warn("Background failed, keeping the room: " .. tostring(used))

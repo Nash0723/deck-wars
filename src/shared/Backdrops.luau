@@ -1,7 +1,7 @@
 -- Match backgrounds: the world around the Duel Table during a match.
 --
 -- You pick one on the Duel Table panel before you start ("Background"). It's only on your screen,
--- so everyone at a table can have their own. "Tree Fort Den" keeps the room. The others hide the
+-- so everyone at a table can have their own. "Card Den" keeps the room. The others hide the
 -- room (on your screen), build a themed world out of parts around the table and change the sky and
 -- lighting. When the match ends everything goes back exactly as it was.
 --
@@ -19,11 +19,11 @@ local function rgb(r, g, b)
 end
 
 Backdrops.List = {
-	{ key = "Room", name = "Tree Fort Den", emoji = "🏠", colors = { rgb(170, 120, 75), rgb(70, 45, 30) }, blurb = "The cozy room you start in." },
-	{ key = "Candy", name = "Candy Kingdom", emoji = "🍬", colors = { rgb(255, 120, 190), rgb(120, 230, 210) }, blurb = "A peppermint plaza, gumdrop hills, giant lollipops, a chocolate river and a candy castle under a rainbow." },
-	{ key = "Meadow", name = "Sunset Grasslands", emoji = "🌄", colors = { rgb(255, 150, 70), rgb(90, 190, 80) }, blurb = "Wildflower hills, a lily pond, fireflies and a giant tree fort at sunset." },
-	{ key = "Ice", name = "Ice Kingdom", emoji = "❄️", colors = { rgb(140, 220, 255), rgb(70, 60, 190) }, blurb = "A frozen lake, glowing ice crystals, snowmen, an ice castle and the northern lights." },
-	{ key = "Fire", name = "Fire Kingdom", emoji = "🌋", colors = { rgb(255, 160, 40), rgb(170, 20, 30) }, blurb = "An obsidian plaza in a ring of torches, lava rivers and smoking volcanoes." },
+	{ key = "Room", name = "Card Den", emoji = "🏠", colors = { rgb(170, 120, 75), rgb(70, 45, 30) }, blurb = "The cozy room you start in." },
+	{ key = "Candy", name = "Gumdrop Plaza", emoji = "🍬", colors = { rgb(255, 120, 190), rgb(120, 230, 210) }, blurb = "A peppermint plaza, gumdrop hills, giant lollipops, a chocolate river and a candy castle under a rainbow." },
+	{ key = "Meadow", name = "Sunset Grasslands", emoji = "🌄", colors = { rgb(255, 150, 70), rgb(90, 190, 80) }, blurb = "Wildflower hills, a lily pond, fireflies and a giant treehouse at sunset." },
+	{ key = "Ice", name = "Frostglass Lake", emoji = "❄️", colors = { rgb(140, 220, 255), rgb(70, 60, 190) }, blurb = "A frozen lake, glowing ice crystals, snowmen, an ice castle and the northern lights." },
+	{ key = "Fire", name = "Ember Caldera", emoji = "🌋", colors = { rgb(255, 160, 40), rgb(170, 20, 30) }, blurb = "An obsidian plaza in a ring of torches, lava rivers and smoking volcanoes." },
 	{ key = "Space", name = "Cosmic Void", emoji = "🌌", colors = { rgb(200, 90, 255), rgb(40, 50, 160) }, blurb = "A floating asteroid among ringed planets, nebulas and a sky full of stars." },
 	{ key = "Random", name = "Surprise me", emoji = "🎲", colors = { rgb(255, 210, 80), rgb(120, 90, 220) }, blurb = "A different world every match." },
 }
@@ -455,7 +455,7 @@ THEMES.Meadow = {
 }
 function THEMES.Meadow.build(rng)
 	B.ground(rgb(105, 180, 70), Enum.Material.Grass)
-	-- a worn patch of earth under the table, and stepping stones off towards the tree fort
+	-- a worn patch of earth under the table, and stepping stones off towards the treehouse
 	B.disc(0, 0, 0.05, 44, 0.05, rgb(150, 112, 70), Enum.Material.Ground)
 	B.disc(0, 0, 0.08, 38, 0.04, rgb(165, 125, 80), Enum.Material.Ground)
 	for i = 1, 11 do
@@ -510,7 +510,7 @@ function THEMES.Meadow.build(rng)
 		local p = spot(rng, 42, 140, 180)
 		roundTree(rng, p, rng:NextNumber(6, 11), rng:NextNumber() < 0.25 and BLOSSOM or GREENS)
 	end
-	-- the giant tree fort (west)
+	-- the giant treehouse (west)
 	local fort = CFrame.new(-120, 0, -75)
 	B.cyl(fort, 80, 20, rgb(110, 75, 45), Enum.Material.Wood)
 	for k = 0, 5 do
