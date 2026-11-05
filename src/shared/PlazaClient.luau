@@ -540,6 +540,50 @@ local function banner(e)
 	end
 end
 
+-- Secret (and Shiny) pulls in the chat, for everyone in every server. Your own pull waits until
+-- your pack opening is over, so the chat never spoils it.
+local function chatPost(e)
+	if not Plaza.chatWorthy(e) then
+		return
+	end
+	local card = CardData.Cards[e.card]
+	if not card then
+		return
+	end
+	local color = e.shiny and Color3.fromRGB(255, 236, 140) or (e.rarity == "Secret" and Color3.fromRGB(255, 110, 220)) or rarityColor(e.rarity)
+	local line = Plaza.chatLine(e, card.name, string.format("%02X%02X%02X", math.floor(color.R * 255 + 0.5), math.floor(color.G * 255 + 0.5), math.floor(color.B * 255 + 0.5)))
+	local ok = pcall(function()
+		local TextChatService = game:GetService("TextChatService")
+		local channels = TextChatService:FindFirstChild("TextChannels")
+		local general = channels and channels:FindFirstChild("RBXGeneral")
+		if not general then
+			error("no RBXGeneral")
+		end
+		general:DisplaySystemMessage(line)
+	end)
+	if not ok then
+		-- the old chat
+		pcall(function()
+			game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", { Text = string.gsub(line, "<[^>]+>", ""), Color = color })
+		end)
+	end
+	S.lastChat = line -- (for tests)
+end
+
+local function whenNotOpening(fn)
+	task.spawn(function()
+		local ok, PackParty = pcall(function()
+			return require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackParty"))
+		end)
+		local waited = 0
+		while ok and PackParty.isPlaying() and waited < 90 do
+			task.wait(0.5)
+			waited += 0.5
+		end
+		fn()
+	end)
+end
+
 ---------------------------------------------------------------------------
 -- The HUD, the booth editor and the pack panel
 ---------------------------------------------------------------------------
@@ -881,7 +925,15 @@ function PlazaClient.init(ctx)
 			S.boards = type(e.boards) == "table" and e.boards or {}
 			drawBoards()
 		elseif e.kind == "bigPull" then
-			banner(e)
+			if e.userId == player.UserId and not e.far then
+				whenNotOpening(function()
+					chatPost(e)
+					banner(e)
+				end)
+			else
+				chatPost(e)
+				banner(e)
+			end
 		elseif e.kind == "state" then
 			S.state = e
 			if S.editor then

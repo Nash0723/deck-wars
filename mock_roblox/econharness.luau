@@ -38,6 +38,16 @@ end
 M.service("ContentProvider").Parent = game -- (TableSounds preloads its sounds)
 M.service("SocialService").Parent = game -- (PartyScreen invites friends)
 M.service("GuiService").Parent = game
+do -- the chat (Secret pulls are posted in it)
+	local tcs = M.service("TextChatService")
+	tcs.Parent = game
+	local channels = Instance.new("Folder")
+	channels.Name = "TextChannels"
+	channels.Parent = tcs
+	local general = Instance.new("TextChannel")
+	general.Name = "RBXGeneral"
+	general.Parent = channels
+end
 M.service("ProximityPromptService").Parent = game -- (the Plaza's prompts)
 local camera = Instance.new("Camera")
 camera.Name = "Camera"
@@ -64,7 +74,7 @@ for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackArt", "PackOpen", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local function remoteFolder(name, list)
@@ -968,6 +978,29 @@ do
 	check(inHall, "the pull is on the Hall of Pulls")
 	check(friend:GetAttribute("BestRarity") == "Mythic", "the friend's best pull is remembered")
 	check(friend:GetAttribute("HubTitle") == Plaza.PullTitles.Mythic, "and earns a title (" .. tostring(friend:GetAttribute("HubTitle")) .. ")")
+	check(#M.chatLog == 0, "a Mythic pull isn't posted in the chat")
+
+	-- a Secret pull goes in everyone's chat (after the same wait)
+	local secret = nil
+	for _, id in ipairs(CardData.List) do
+		if CardData.Cards[id].rarity == "Secret" and not CardData.Cards[id].token then
+			secret = secret or id
+		end
+	end
+	if secret then
+		ServerScriptService.PullFeed:Fire(friend, { "jelly_bean_scout", secret })
+		M.advance(2)
+		check(#M.chatLog == 0, "the chat waits too, so it doesn't spoil the reveal")
+		M.advance(Plaza.FeedDelay)
+		local line = M.chatLog[#M.chatLog] or ""
+		check(string.find(line, "jaault", 1, true) and string.find(line, CardData.Cards[secret].name, 1, true) and string.find(line, "Secret", 1, true), "a Secret pull is posted in the chat: " .. line)
+		-- later: a Shiny card goes in the chat whatever its rarity
+		local n0 = #M.chatLog
+		ServerScriptService.PullFeed:Fire(friend, { { id = "jelly_bean_scout", shiny = true } })
+		M.advance(Plaza.FeedDelay + 1)
+		local sline = M.chatLog[#M.chatLog] or ""
+		check(#M.chatLog == n0 + 1 and string.find(sline, "Shiny", 1, true) ~= nil, "a Shiny pull is posted too: " .. sline)
+	end
 
 	-- leaderboards (no OrderedDataStore here: this server's players)
 	M.advance(Plaza.BoardSeconds)

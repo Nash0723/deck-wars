@@ -30,7 +30,8 @@ Plaza.HallSize = 10 -- big pulls on the Hall of Pulls
 Plaza.BoardSize = 10 -- names on each leaderboard
 Plaza.BoardSeconds = 120 -- how often the leaderboards are saved and read
 Plaza.CrossServerTopic = "DeckWarsBigPull"
-Plaza.CrossServerGap = 10 -- seconds between two cross-server messages from one server
+Plaza.CrossServerGap = 3 -- seconds between two cross-server messages from one server (later ones wait their turn)
+Plaza.ChatRarity = "Secret" -- this rarity (and any Shiny card, once they exist) is posted in everyone's chat
 
 Plaza.Boards = {
 	{ key = "Stars", name = "Campaign Stars", emoji = "★", store = "DeckWarsBoardStars_v1" },
@@ -235,15 +236,37 @@ function Plaza.setTitle(d, earned, title)
 	return true
 end
 
--- Is a pull of this card worth a banner? ("server", "cross" or nil)
-function Plaza.announceLevel(id)
+-- Is a pull of this card worth a banner? ("server", "cross" or nil). A Shiny card goes to every server.
+function Plaza.announceLevel(id, shiny)
 	local r = rarityOf(id)
-	if r >= (RANK[Plaza.CrossServerRarity] or math.huge) then
+	if shiny == true or r >= (RANK[Plaza.CrossServerRarity] or math.huge) then
 		return "cross"
 	elseif r >= (RANK[Plaza.BigPullRarity] or math.huge) then
 		return "server"
 	end
 	return nil
+end
+
+-- Does this big pull go in the chat? (e = { rarity, shiny })
+function Plaza.chatWorthy(e)
+	if type(e) ~= "table" then
+		return false
+	end
+	if e.shiny == true then
+		return true
+	end
+	local need = RANK[Plaza.ChatRarity] or math.huge
+	return (RANK[e.rarity] or 0) >= need
+end
+
+-- The chat line for a big pull (rich text), e = { name, card, rarity, shiny, far }.
+function Plaza.chatLine(e, cardName, hex)
+	local function esc(str)
+		return (string.gsub(tostring(str), "[<>&\"']", { ["<"] = "&lt;", [">"] = "&gt;", ["&"] = "&amp;", ['"'] = "&quot;", ["'"] = "&apos;" }))
+	end
+	local what = (e.shiny == true and "Shiny " or "") .. tostring(e.rarity or "")
+	local where = e.far and "🌍 " or "✨ "
+	return string.format('<font color="#%s"><b>%s%s</b> pulled a %s card: <b>%s</b>!</font>', hex or "FFFFFF", where, esc(e.name), esc(what), esc(cardName))
 end
 
 -- Booth i's spot, relative to Plaza.Origin: a ring facing the Pull Altar in the middle.

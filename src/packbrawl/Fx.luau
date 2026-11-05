@@ -266,7 +266,7 @@ function Fx:bigCard(pos, color, dur)
 	local card = part({ Name = "BigCard", Size = Vector3.new(9, 12.5, 0.3), Color = color, Material = Enum.Material.Neon, Transparency = 0.2 }, self.folder)
 	local back = part({ Name = "BigCardFace", Size = Vector3.new(8, 11.5, 0.32), Color = rgb(40, 30, 70) }, self.folder)
 	local g = make("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0, CanvasSize = Vector2.new(400, 560) }, back)
-	make("TextLabel", { Size = UDim2.fromScale(1, 0.3), Position = UDim2.fromScale(0, 0.35), BackgroundTransparency = 1, Text = "✦", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = color }, g)
+	make("TextLabel", { Size = UDim2.fromScale(1, 0.3), Position = UDim2.fromScale(0, 0.35), BackgroundTransparency = 1, Text = "★", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = color }, g)
 	local light = make("PointLight", { Range = 30, Brightness = 5, Color = color }, card)
 	self:anim(dur, function(a)
 		local y = 30 * (1 - Kit.outCubic(a)) + 6.5
