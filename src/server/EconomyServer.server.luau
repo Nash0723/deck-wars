@@ -149,11 +149,8 @@ local function onJoin(player)
 		end
 		return
 	end
-	local daily = EconomyManager.claimDaily(player)
+	-- (The daily reward is claimed on the Trophy Wall now: see ServerScriptService.PlayerData.)
 	sendSnapshot(player)
-	if daily then
-		EconomyEvent:FireClient(player, "daily", daily)
-	end
 	if memoryOnly then
 		EconomyEvent:FireClient(player, "notice", "Saving is off in this Studio test (turn on Studio Access to API Services to save).")
 	end
@@ -275,9 +272,12 @@ DevAction.OnServerEvent:Connect(function(player, what, a)
 		ok = EconomyManager.devNewDay(player)
 		msg = ok and "New shop day: daily cards, exchanges and the login reward reset." or "Save not loaded."
 		if ok then
-			local daily = EconomyManager.claimDaily(player)
-			if daily then
-				EconomyEvent:FireClient(player, "daily", daily)
+			-- the Trophy Wall's daily reward, quests and first-win bonus come back too
+			local pd = game:GetService("ServerScriptService"):FindFirstChild("PlayerData")
+			if pd then
+				pcall(function()
+					require(pd).debugNewDay(player)
+				end)
 			end
 		end
 	elseif what == "Luck" then

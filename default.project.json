@@ -16,6 +16,9 @@
         },
         "MenuAction": {
           "$className": "RemoteEvent"
+        },
+        "LobbyEvent": {
+          "$className": "RemoteEvent"
         }
       },
       "CreatureModels": {
@@ -58,6 +61,12 @@
       },
       "EconomyServer": {
         "$path": "src/server/EconomyServer.server.luau"
+      },
+      "MenuServer": {
+        "$path": "src/server/MenuServer.server.luau"
+      },
+      "PlayerData": {
+        "$path": "src/server/PlayerData.luau"
       }
     },
     "ServerStorage": {
@@ -322,7 +331,7 @@
     },
     "Workspace": {
       "MenuRoom": {
-        "$path": "src/world/MenuRoom.model.json"
+        "$path": "src/world/MenuRoom.rbxmx"
       }
     },
     "Lighting": {

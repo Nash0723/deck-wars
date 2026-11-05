@@ -23,6 +23,7 @@ local RunService = game:GetService("RunService")
 local PackBrawl = ReplicatedStorage:WaitForChild("PackBrawl")
 local PullRates = require(PackBrawl:WaitForChild("PullRates"))
 local Packs = require(PackBrawl:WaitForChild("Packs"))
+local CardData = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("CardData"))
 local remotes = ReplicatedStorage:WaitForChild("PullRemotes")
 local PullRequest = remotes:WaitForChild("PullRequest")
 local PullResult = remotes:WaitForChild("PullResult")
@@ -243,6 +244,24 @@ PullRequest.OnServerEvent:Connect(function(player, count, forcedTier, packId, fr
 			return
 		end
 		PullResult:FireClient(player, payload)
+		-- Achievements (Lucky Pull, Full Set) on the Trophy Wall. Dev forced-tier rolls don't count.
+		local pd = game:GetService("ServerScriptService"):FindFirstChild("PlayerData")
+		if pd then
+			pcall(function()
+				local best = payload.best
+				local rarity = type(best) == "table" and best.rarity or (type(best) == "string" and best) or nil
+				if rarity == nil then
+					for _, id in ipairs(payload.cards or {}) do
+						local cid = type(id) == "table" and id.id or id
+						local c = CardData.Cards[cid]
+						if c and (c.rarity == "Legendary" or c.rarity == "Secret") then
+							rarity = c.rarity
+						end
+					end
+				end
+				require(pd).notePull(player, rarity, forcedTier ~= nil)
+			end)
+		end
 	end)
 	busy[player] = nil
 	if not okAll then

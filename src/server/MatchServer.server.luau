@@ -18,10 +18,19 @@ local BotBrain = require(Shared:WaitForChild("BotBrain"))
 local StarterDecks = require(Shared:WaitForChild("StarterDecks"))
 local CardData = require(Shared:WaitForChild("CardData"))
 local Rng = require(Shared:WaitForChild("Rng"))
-local PullRates = require(Shared:WaitForChild("PullRates"))
+local ShopCatalog = require(Shared:WaitForChild("ShopCatalog"))
+local DeckRules = require(Shared:WaitForChild("DeckRules"))
+local PlayerDecks = require(script.Parent:WaitForChild("PlayerDecks"))
+-- Match rewards in Gems (one table in ShopCatalog.Match, next to Nash's Coins and anti-farming rules).
+local PullRates = {
+	WinGems = (ShopCatalog.Match and ShopCatalog.Match.winGems) or { Easy = 20, Medium = 35, Hard = 50 },
+	PvPWinGems = (ShopCatalog.Match and ShopCatalog.Match.pvpWinGems) or 40,
+	CupWinGems = (ShopCatalog.Match and ShopCatalog.Match.cupWinGems) or 150,
+	CupRunnerUpGems = (ShopCatalog.Match and ShopCatalog.Match.cupRunnerUpGems) or 50,
+}
 
--- Wins pay Gems through the save system. It's optional, so this script also runs without it
--- (like in the simulated Studio the tests use).
+-- Wins pay through the save system (PlayerData on Nash's profile). It's optional, so this script
+-- also runs without it (like in the simulated Studio the tests use).
 local playerDataModule = script.Parent:FindFirstChild("PlayerData")
 local PlayerData = playerDataModule and require(playerDataModule)
 
@@ -35,7 +44,7 @@ local LobbyEvent = Remotes:WaitForChild("LobbyEvent") -- server -> client: open 
 local TURN_SECONDS = 75 -- time you get for your turn (the clock pauses while animations play)
 local BOT_TURN_START_PAUSE = 1.2 -- the bot "looks at the board" before its first move
 -- Pause before each bot action, by kind.
-local BOT_THINK_SECONDS = { play = 1.6, spark = 1.2, bigmove = 1.8, battle = 1.0 }
+local BOT_THINK_SECONDS = { play = 1.6, spark = 1.2, shift = 1.0, bigmove = 1.8, battle = 1.0 }
 local BOT_MAX_ACTIONS = 40 -- safety: the bot battles after this many actions
 -- The server waits for every player's screen to finish animating before it moves on, but never
 -- longer than this (in case someone's game is lagging or closed).
@@ -84,8 +93,44 @@ local function now()
 	return workspace:GetServerTimeNow()
 end
 
-local function deckOk(key)
-	return type(key) == "string" and StarterDecks[key] ~= nil
+-- A deck is a practice deck's key ("Snack"...) or one of the player's saved decks: "s1", "s2"...
+local function savedSlot(key)
+	local n = type(key) == "string" and tonumber(string.match(key, "^s(%d+)$"))
+	return n
+end
+
+local function deckOk(key, player)
+	if type(key) ~= "string" then
+		return false
+	end
+	if StarterDecks[key] ~= nil then
+		return true
+	end
+	local slot = savedSlot(key)
+	if slot and (player == nil or PlayerDecks.setupFor(player, slot) ~= nil) then
+		return true
+	end
+	return false
+end
+
+-- The MatchEngine setup for a seat's deck: a saved deck (checked against what the player owns
+-- right now) or a practice deck, with its lane terrains and themes.
+local function setupForSeat(seat)
+	local slot = savedSlot(seat.deck)
+	if slot and seat.kind == "human" then
+		local setup = PlayerDecks.setupFor(seat.player, slot)
+		if setup then
+			return setup
+		end
+	end
+	local practice = StarterDecks[seat.deck] or StarterDecks.Snack
+	local ok, setup = pcall(function()
+		return DeckRules.setupFor(DeckRules.fromPractice(practice))
+	end)
+	if ok and setup then
+		return setup
+	end
+	return { deck = table.clone(practice.cards), hero = practice.hero, family = practice.family, themes = { practice.family } }
 end
 
 local function randomDeck(rng)
@@ -130,9 +175,10 @@ function Match.new(seats, opts)
 	self.seats = seats
 	local setups = {}
 	for i, seat in ipairs(seats) do
-		local deck = StarterDecks[seat.deck] or StarterDecks.Snack
 		seat.name = seat.name or (seat.kind == "human" and seat.player.DisplayName) or ("Bot Bonkers (" .. (seat.difficulty or "Medium") .. ")")
-		setups[i] = { deck = deck.cards, hero = deck.hero, family = deck.family, name = seat.name }
+		local setup = setupForSeat(seat)
+		seat.themes = setup.themes
+		setups[i] = { deck = setup.deck, hero = setup.hero, family = setup.family, lanes = setup.lanes, name = seat.name }
 		if seat.kind == "human" then
 			seat.seq = 0
 			seat.ack = 0
@@ -144,6 +190,7 @@ function Match.new(seats, opts)
 		end
 	end
 	self.engine = MatchEngine.new(setups, seed)
+	self.startedAt = now()
 	-- What each seat did, for daily quests: cards played by type, Sparks, enemy creatures popped.
 	self.stats = {}
 	for i in ipairs(seats) do
@@ -374,12 +421,24 @@ function Match:finishIfOver()
 			end
 			local stats = table.clone(self.stats[s])
 			stats.damage = m.seats[s].dealt or 0
+			local hardest = nil
+			local rank = { Easy = 1, Medium = 2, Hard = 3 }
+			for o, other in ipairs(self.seats) do
+				if other.kind == "bot" and m.seats[o].team ~= team and (rank[other.difficulty] or 0) > (rank[hardest] or 0) then
+					hardest = other.difficulty
+				end
+			end
 			local r = PlayerData and PlayerData.recordMatch and PlayerData.recordMatch(seat.player, {
 				result = result,
 				winGems = amount,
 				deck = seat.deck,
+				themes = seat.themes,
 				beatHard = beatHard,
 				mode = self.mode,
+				-- Coins: bot matches pay by the bot's difficulty, matches against people like Hard.
+				difficulty = hardest or "Hard",
+				seconds = now() - (self.startedAt or now()),
+				turns = math.floor((m.seats[s].turns or 0)),
 				stats = stats,
 			})
 			if r then
@@ -592,8 +651,8 @@ end
 local function playBotOnly(seats, seed)
 	local setups = {}
 	for i, seat in ipairs(seats) do
-		local deck = StarterDecks[seat.deck] or StarterDecks.Snack
-		setups[i] = { deck = deck.cards, hero = deck.hero, family = deck.family }
+		local setup = setupForSeat(seat)
+		setups[i] = { deck = setup.deck, hero = setup.hero, family = setup.family, lanes = setup.lanes }
 	end
 	local m = MatchEngine.new(setups, seed)
 	m.silent = true
@@ -729,7 +788,7 @@ local function createLobby(player, mode, deck)
 		mode = mode,
 		size = MODES[mode].size,
 		host = player,
-		slots = { { kind = "human", player = player, deck = deckOk(deck) and deck or "Snack" } },
+		slots = { { kind = "human", player = player, deck = deckOk(deck, player) and deck or "Snack" } },
 		started = false,
 	}
 	lobbies[lobby.id] = lobby
@@ -764,7 +823,7 @@ local function joinLobby(player, id, deck, slotWanted)
 		return
 	end
 	local slot = current and lobby.slots[current] or { kind = "human", player = player, deck = "Snack" }
-	if deckOk(deck) then
+	if deckOk(deck, player) then
 		slot.deck = deck
 	end
 	if target then
@@ -1130,7 +1189,7 @@ local function setSlot(player, slotIndex, what, value)
 		lobby.slots[slotIndex] = nil
 	elseif what == "botDifficulty" and slot and slot.kind == "bot" and DIFFICULTIES[value] then
 		slot.difficulty = value
-	elseif what == "botDeck" and slot and slot.kind == "bot" and deckOk(value) then
+	elseif what == "botDeck" and slot and slot.kind == "bot" and type(value) == "string" and StarterDecks[value] ~= nil then
 		slot.deck = value
 	elseif what == "kick" and slot and slot.kind == "human" and slot.player ~= player then
 		lobby.slots[slotIndex] = nil
@@ -1287,6 +1346,10 @@ function Cup.advance(lobby, r, k, winner)
 		if prizes and e.kind == "human" then
 			addGems(e.player, PullRates.CupWinGems or 150)
 		end
+		-- Cup Champion (achievement) counts every Cup won, bots or not.
+		if e.kind == "human" and e.player and e.player.Parent and PlayerData and PlayerData.noteCupWin then
+			pcall(PlayerData.noteCupWin, e.player)
+		end
 		-- The runner-up gets something too.
 		local final = cup.rounds[3][1]
 		local second = final.a == winner and final.b or final.a
@@ -1331,17 +1394,20 @@ local function cleanAction(raw)
 		if type(t) ~= "table" then
 			return nil
 		end
-		local team, lane = num(t.team), num(t.lane)
+		local team, lane, row = num(t.team), num(t.lane), num(t.row)
 		if not team or not lane then
 			return nil
 		end
-		return { team = team, lane = lane }
+		return { team = team, lane = lane, row = (row == 1 or row == 2) and row or nil }
 	end
 	local kind = raw.kind
 	if kind == "play" then
-		return { kind = "play", handUid = num(raw.handUid), lane = num(raw.lane), target = target(raw.target) }
+		local row = num(raw.row)
+		return { kind = "play", handUid = num(raw.handUid), lane = num(raw.lane), row = (row == 1 or row == 2) and row or nil, target = target(raw.target) }
 	elseif kind == "spark" then
 		return { kind = "spark", uid = num(raw.uid) }
+	elseif kind == "shift" then
+		return { kind = "shift", uid = num(raw.uid) }
 	elseif kind == "bigmove" then
 		return { kind = "bigmove", target = target(raw.target) }
 	elseif kind == "battle" or kind == "endturn" then
@@ -1372,16 +1438,34 @@ end)
 
 -- A match against Bot Bonkers. The bot plays one of the other five themed decks.
 startBotMatch = function(player, deck, difficulty)
-	if matches[player] or not deckOk(deck) or not DIFFICULTIES[difficulty] then
+	if matches[player] or not DIFFICULTIES[difficulty] then
+		return
+	end
+	if not deckOk(deck, player) then
+		local slot = savedSlot(deck)
+		local why = slot and select(2, PlayerDecks.setupFor(player, slot)) or "Pick a deck first"
+		LobbyEvent:FireClient(player, { kind = "toast", text = "That deck can't be played yet: " .. tostring(why) })
 		return
 	end
 	leaveLobby(player)
 	local rng = Rng.new(math.floor(now() * 1000) % 2147483647)
+	-- The bot plays a practice deck of a theme your deck doesn't use.
+	local mine = { [deck] = true }
+	local slot = savedSlot(deck)
+	if slot then
+		local setup = PlayerDecks.setupFor(player, slot)
+		for _, fam in ipairs(setup and setup.themes or {}) do
+			mine[fam] = true
+		end
+	end
 	local others = {}
 	for _, key in ipairs(StarterDecks.Order) do
-		if key ~= deck then
+		if not mine[key] then
 			table.insert(others, key)
 		end
+	end
+	if #others == 0 then
+		others = table.clone(StarterDecks.Order)
 	end
 	local human = { kind = "human", player = player, deck = deck }
 	local bot = { kind = "bot", difficulty = difficulty, deck = rng:pick(others) }
@@ -1404,7 +1488,7 @@ savePrefs = function(player, raw)
 		local v = raw[key]
 		if kind == "bool" and type(v) == "boolean" then
 			clean[key] = v
-		elseif kind == "deck" and deckOk(v) then
+		elseif kind == "deck" and deckOk(v, player) then
 			clean[key] = v
 		elseif kind == "difficulty" and DIFFICULTIES[v] then
 			clean[key] = v
@@ -1425,7 +1509,7 @@ end
 
 MenuAction.OnServerEvent:Connect(function(player, what, options)
 	options = type(options) == "table" and options or {}
-	if deckOk(options.deck) then
+	if deckOk(options.deck, player) then
 		lastDeck[player] = options.deck
 	end
 	if type(what) == "string" and (string.sub(what, 1, 5) == "Party" or what == "InvitedFriends" or what == "RequestParty") then

@@ -59,6 +59,13 @@ ShopCatalog.Match = {
 	minSeconds = 60,
 	minTurns = 3,
 	maxPaidPerDay = 30, -- matches that pay per UTC day (stops farming bots all night)
+	-- Gems for a win (the friend's rates), on top of the Coins above. A win against people pays
+	-- pvpWinGems; with a bot on the other side it pays like that bot (so Easy bots don't farm).
+	winGems = { Easy = 20, Medium = 35, Hard = 50 },
+	pvpWinGems = 40,
+	-- Cup (tournament) prizes when at least two real players entered.
+	cupWinGems = 150,
+	cupRunnerUpGems = 50,
 }
 
 -- XP needed to go from `level` to level + 1.

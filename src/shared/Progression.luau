@@ -54,18 +54,35 @@ Progression.Quests = {
 	{ id = "damage30", text = "Deal 30 damage to enemy heroes", kind = "damage", target = 30, gems = 40 },
 	{ id = "pops8", text = "Pop 8 enemy creatures", kind = "pop", target = 8, gems = 35 },
 	{ id = "hard1", text = "Beat a Hard bot", kind = "winHard", target = 1, gems = 60 },
-	{ id = "deckSnack", text = "Win with Sugar Rush", kind = "winDeck", deck = "Snack", target = 1, gems = 45 },
-	{ id = "deckJunk", text = "Win with Scrap Heap", kind = "winDeck", deck = "Junk", target = 1, gems = 45 },
-	{ id = "deckWeather", text = "Win with Storm Front", kind = "winDeck", deck = "Weather", target = 1, gems = 45 },
-	{ id = "deckCritter", text = "Win with Critter Crew", kind = "winDeck", deck = "Critter", target = 1, gems = 45 },
-	{ id = "deckSpooky", text = "Win with Haunted Mall", kind = "winDeck", deck = "Spooky", target = 1, gems = 45 },
-	{ id = "deckRobo", text = "Win with Robo Rumble", kind = "winDeck", deck = "Robo", target = 1, gems = 45 },
+	{ id = "deckSnack", text = "Win with a Snack deck", kind = "winDeck", deck = "Snack", target = 1, gems = 45 },
+	{ id = "deckJunk", text = "Win with a Junk deck", kind = "winDeck", deck = "Junk", target = 1, gems = 45 },
+	{ id = "deckWeather", text = "Win with a Weather deck", kind = "winDeck", deck = "Weather", target = 1, gems = 45 },
+	{ id = "deckCritter", text = "Win with a Critter deck", kind = "winDeck", deck = "Critter", target = 1, gems = 45 },
+	{ id = "deckSpooky", text = "Win with a Spooky deck", kind = "winDeck", deck = "Spooky", target = 1, gems = 45 },
+	{ id = "deckRobo", text = "Win with a Robo deck", kind = "winDeck", deck = "Robo", target = 1, gems = 45 },
 }
 Progression.QuestById = {}
 for _, q in ipairs(Progression.Quests) do
 	Progression.QuestById[q.id] = q
 end
 Progression.QuestsPerDay = 3
+
+-- Achievements: one-time goals on the Trophy Wall, claimed once each.
+-- kind: win (matches won), level (level reached), luckyPull (a Legendary or Secret pulled),
+-- themes (won with each of the 6 themes: a deck counts for every theme it uses), cup (Cups won),
+-- fullSet (own every card of one theme).
+Progression.Achievements = {
+	{ id = "first_win", name = "First Blood", text = "Win a match", kind = "win", target = 1, gems = 50 },
+	{ id = "level_10", name = "Level Ten", text = "Reach level 10", kind = "level", target = 10, gems = 100 },
+	{ id = "lucky_pull", name = "Lucky Pull", text = "Pull a Legendary or Secret card", kind = "luckyPull", target = 1, gems = 100 },
+	{ id = "six_themes", name = "Six Flavours", text = "Win with a deck of each of the 6 themes", kind = "themes", target = 6, gems = 150 },
+	{ id = "cup_champion", name = "Cup Champion", text = "Win a Cup", kind = "cup", target = 1, gems = 200 },
+	{ id = "full_set", name = "Full Set", text = "Own every card of one theme", kind = "fullSet", target = 1, gems = 250 },
+}
+Progression.AchievementById = {}
+for _, a in ipairs(Progression.Achievements) do
+	Progression.AchievementById[a.id] = a
+end
 
 -- Today's number (days since 1 January 1970, UTC). Daily things reset when it changes.
 function Progression.today(now)
@@ -116,7 +133,9 @@ function Progression.questGain(q, m)
 	elseif q.kind == "winHard" then
 		return (won and m.beatHard) and 1 or 0
 	elseif q.kind == "winDeck" then
-		return (won and m.deck == q.deck) and 1 or 0
+		-- a practice deck by its key, or one of your own decks that uses this theme
+		local themed = m.deck == q.deck or (type(m.themes) == "table" and table.find(m.themes, q.deck) ~= nil)
+		return (won and themed) and 1 or 0
 	end
 	return stats[q.kind] or 0
 end
