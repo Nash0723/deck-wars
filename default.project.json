@@ -1,0 +1,403 @@
+{
+  "name": "DeckWars",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "DeckWars": {
+        "$path": "src/shared"
+      },
+      "Remotes": {
+        "$className": "Folder",
+        "MatchEvent": {
+          "$className": "RemoteEvent"
+        },
+        "MatchAction": {
+          "$className": "RemoteEvent"
+        },
+        "MenuAction": {
+          "$className": "RemoteEvent"
+        },
+        "LobbyEvent": {
+          "$className": "RemoteEvent"
+        }
+      },
+      "CreatureModels": {
+        "$className": "Folder"
+      },
+      "PackBrawl": {
+        "$path": "src/packbrawl"
+      },
+      "PullRemotes": {
+        "$className": "Folder",
+        "PullRequest": {
+          "$className": "RemoteEvent"
+        },
+        "PullResult": {
+          "$className": "RemoteEvent"
+        }
+      },
+      "EconomyRemotes": {
+        "$className": "Folder",
+        "ShopAction": {
+          "$className": "RemoteEvent"
+        },
+        "EconomyEvent": {
+          "$className": "RemoteEvent"
+        },
+        "DevAction": {
+          "$className": "RemoteEvent"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "MatchServer": {
+        "$path": "src/server/MatchServer.server.luau"
+      },
+      "PlayerDecks": {
+        "$path": "src/server/PlayerDecks.luau"
+      },
+      "PullServer": {
+        "$path": "src/pullserver/PullServer.server.luau"
+      },
+      "EconomyServer": {
+        "$path": "src/server/EconomyServer.server.luau"
+      },
+      "MenuServer": {
+        "$path": "src/server/MenuServer.server.luau"
+      },
+      "PlayerData": {
+        "$path": "src/server/PlayerData.luau"
+      }
+    },
+    "ServerStorage": {
+      "DeckWarsServer": {
+        "$path": "src/econ"
+      },
+      "DevControls": {
+        "$className": "ScreenGui",
+        "$properties": {
+          "ResetOnSpawn": false,
+          "DisplayOrder": 50,
+          "ZIndexBehavior": "Sibling"
+        },
+        "DevPanel": {
+          "$path": "src/devcontrols/DevPanel.client.luau"
+        }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "DeckWarsClient": {
+          "$path": "src/client/DeckWarsClient.client.luau"
+        }
+      }
+    },
+    "SoundService": {
+      "PackBrawlSounds": {
+        "$className": "Folder",
+        "rip": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://83557103344050",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "pop": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://94689108514318",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "bonk": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://81805024256609",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "slap": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://84693354576677",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "thud": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://88909975591897",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "heavy": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://132601098890657",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "land": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://124850114514982",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "burrow": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://123725150410962",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "twang": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://139916381336958",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "whoosh": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://100665736050219",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "whistle": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://84785811647359",
+            "Volume": 0.35,
+            "Looped": false
+          }
+        },
+        "crater": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://98374356490750",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "beam": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://101419154107757",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "tick": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://138524947835152",
+            "Volume": 0.9,
+            "Looped": false
+          }
+        },
+        "boom": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://82163821934013",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "wind": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://126855995983888",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "choir": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://100721012259195",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "charge": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://113287237199231",
+            "Volume": 0.4,
+            "Looped": false
+          }
+        },
+        "glass": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://87290713299907",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "heartbeat": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://94134841339188",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "fakesting": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://105216738317928",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "brawl": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://79622349430069",
+            "Volume": 0.35,
+            "Looped": true
+          }
+        },
+        "theme": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://121628784114292",
+            "Volume": 0.6,
+            "Looped": false
+          }
+        },
+        "sting_Common": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://133452626697186",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Rare": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://105377393013061",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Epic": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://84551473334900",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Mythic": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://100979527676060",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Legendary": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://108733732641603",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        },
+        "sting_Secret": {
+          "$className": "Sound",
+          "$properties": {
+            "SoundId": "rbxassetid://103698051400343",
+            "Volume": 0.7,
+            "Looped": false
+          }
+        }
+      }
+    },
+    "Workspace": {
+      "MenuRoom": {
+        "$path": "src/world/MenuRoom.rbxmx"
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "LightingStyle": "Realistic",
+        "PrioritizeLightingQuality": true,
+        "Technology": "Future",
+        "ClockTime": 21,
+        "Brightness": 0.8,
+        "Ambient": [
+          0.14,
+          0.11,
+          0.1
+        ],
+        "OutdoorAmbient": [
+          0.07,
+          0.075,
+          0.11
+        ],
+        "ColorShift_Top": [
+          1.0,
+          0.86,
+          0.7
+        ],
+        "ColorShift_Bottom": [
+          0.2,
+          0.16,
+          0.14
+        ],
+        "EnvironmentDiffuseScale": 0.15,
+        "EnvironmentSpecularScale": 0.5,
+        "GlobalShadows": true,
+        "ShadowSoftness": 0.16,
+        "ExposureCompensation": -0.2,
+        "FogEnd": 100000
+      },
+      "Bloom": {
+        "$className": "BloomEffect",
+        "$properties": {
+          "Intensity": 0.16,
+          "Size": 18,
+          "Threshold": 2.4
+        }
+      },
+      "ColorCorrection": {
+        "$className": "ColorCorrectionEffect",
+        "$properties": {
+          "Brightness": -0.02,
+          "Contrast": 0.16,
+          "Saturation": -0.06,
+          "TintColor": [
+            1.0,
+            0.95,
+            0.88
+          ]
+        }
+      },
+      "DepthOfField": {
+        "$className": "DepthOfFieldEffect",
+        "$properties": {
+          "FarIntensity": 0.24,
+          "FocusDistance": 18,
+          "InFocusRadius": 16,
+          "NearIntensity": 0
+        }
+      }
+    }
+  }
+}

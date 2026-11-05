@@ -1,0 +1,90 @@
+# Builds DeckWars.rbxlx and runs the rules tests on every pull request and push.
+# On main it also puts the newest DeckWars.rbxlx on the "latest" release, so anyone can download it.
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ROJO_VERSION: 7.7.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rojo
+        run: |
+          curl -sSfL -o rojo.zip "https://github.com/rojo-rbx/rojo/releases/download/v${ROJO_VERSION}/rojo-${ROJO_VERSION}-linux-x86_64.zip"
+          unzip -q rojo.zip -d "$HOME/rojo-bin" && rm rojo.zip
+          echo "$HOME/rojo-bin" >> "$GITHUB_PATH"
+
+      - name: Build the place files
+        run: |
+          rojo build default.project.json -o DeckWars.rbxlx
+          rojo build pullcinematic.project.json -o DeckWars_PullCinematic.rbxlx
+
+      - name: Cache the Luau runner
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            tools/luaurun/target
+          key: luaurun-${{ runner.os }}-${{ hashFiles('tools/luaurun/Cargo.toml', 'tools/luaurun/Cargo.lock', 'tools/luaurun/src/**') }}
+
+      - name: Build the Luau runner
+        run: cargo build --release --locked --manifest-path tools/luaurun/Cargo.toml
+
+      - name: Check that every script compiles
+        run: tools/luaurun/target/release/luaurun --check src/shared/*.luau src/server/*.luau src/client/*.luau src/packbrawl/*.luau src/pullserver/*.luau src/pullclient/*.luau src/econ/*.luau src/devcontrols/*.luau tests/*.luau mock_roblox/*.luau
+
+      - name: Rules tests (two rows per lane, Shift, overkill, Ranged, plus 1v1 and 2v2 bot games)
+        run: tools/luaurun/target/release/luaurun tests/lane_tests.luau src/shared
+
+      - name: Deck rules tests (deck builder rules, saved decks, practice decks)
+        run: tools/luaurun/target/release/luaurun tests/deck_tests.luau src/shared src/server src/econ
+
+      - name: Pack Brawl tests (pull odds, casting, every card's fight script)
+        run: tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared
+
+      - name: Economy tests (session-locked saves, Gems/Coins, Shop, boosts, Robux receipts)
+        run: tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl
+
+      - name: The game in the simulated Studio (join, daily reward, Shop, dev panel, a full bot match, rewards, autosave)
+        run: |
+          tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox | tee econharness.log
+          grep -q "MOCK RESULT: 0 errors, 0 warnings" econharness.log
+
+      - name: Pack Brawl in the simulated Studio (every tier, skip, fast-forward, 10-pull)
+        run: |
+          tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl | tee pullharness.log
+          grep -q "MOCK RESULT: 0 errors, 0 warnings" pullharness.log
+
+      - name: Upload the place files
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckWars
+          path: |
+            DeckWars.rbxlx
+            DeckWars_PullCinematic.rbxlx
+
+      - name: Publish to the latest release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f latest
+          git push -f origin latest
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest DeckWars.rbxlx DeckWars_PullCinematic.rbxlx --clobber
+            gh release edit latest --title "Deck Wars (newest build)" --notes "Built from ${GITHUB_SHA::7} on main. Download DeckWars.rbxlx and open it in Roblox Studio." --latest
+          else
+            gh release create latest DeckWars.rbxlx DeckWars_PullCinematic.rbxlx --title "Deck Wars (newest build)" --notes "Built from ${GITHUB_SHA::7} on main. Download DeckWars.rbxlx and open it in Roblox Studio." --latest
+          fi

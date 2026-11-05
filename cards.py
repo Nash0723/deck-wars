@@ -1,0 +1,86 @@
+# Source of truth for the Deck Wars card set (tile board version).
+# (id, name, type, family, cost, atk, hp, ability_text, rarity)
+# Types: Creature, Spell, Building. Buildings have 0 attack and never move.
+# The board: 4 lanes (columns), 3 rows per side (Frontline, Midline, Backline) and a building row behind each side.
+C=[
+("jelly_bean_scout","Jelly Bean Scout","Creature","Snack",1,2,2,"Fast. Snack Time 1","Common"),
+("pretzel_guard","Pretzel Guard","Creature","Snack",2,2,4,"Sturdy. Combo: heal your other Snacks 1","Common"),
+("pancake_paladin","Pancake Paladin","Creature","Snack",3,3,5,"Snack Time 2. When played, heal your creatures next to it 2","Rare"),
+("hot_sauce_imp","Hot Sauce Imp","Creature","Snack",2,2,3,"Zoom. Gets 2 Power from every heal","Rare"),
+("spaghetti_hydra","Spaghetti Hydra","Creature","Snack",5,5,6,"Splash. Combo: gets 2 Power","Epic"),
+("burrito_bouncer","Burrito Bouncer","Creature","Snack",4,3,7,"Creatures that hit it take 1 damage back","Mythic"),
+("queen_parfait","Queen Parfait","Creature","Snack",7,5,8,"When played, fully heal your creatures. Snack Time 3","Legendary"),
+("tin_can_tom","Tin Can Tom","Creature","Junk",1,2,2,"When it pops, it leaves 2 Scrap","Common"),
+("couch_golem","Couch Golem","Creature","Junk",3,2,6,"Sturdy","Common"),
+("rusty_shopping_cart","Rusty Shopping Cart","Creature","Junk",2,2,2,"Fast. Also picks up Scrap from the tiles next to where it stops","Rare"),
+("dumpster_diver","Dumpster Diver","Creature","Junk",3,3,3,"When played, get back a random spell from your discard pile. Combo: pick up the Scrap next to it","Rare"),
+("glitter_gremlin","Glitter Gremlin","Creature","Junk",2,2,3,"Roll: Fast, Sturdy or +2 attack","Epic"),
+("scrapheap_titan","Scrapheap Titan","Creature","Junk",6,5,7,"Costs 1 less for each Scrap on the board (up to 3 less)","Mythic"),
+("the_junk_king","The Junk King","Creature","Junk",8,7,9,"Sturdy. When played, destroy every building on the board","Legendary"),
+("drizzle_sprite","Drizzle Sprite","Creature","Weather",1,1,2,"Ranged. Its attacks Soak","Common"),
+("grumpy_cloud","Grumpy Cloud","Creature","Weather",2,2,3,"When played, hit a random enemy creature for 1 and Soak it. Combo: Soak every enemy creature","Common"),
+("hailstone_hopper","Hailstone Hopper","Creature","Weather",3,3,2,"Fast. Splash. Combo: Zoom","Rare"),
+("fog_bank","Fog Bank","Creature","Weather",3,0,5,"Enemy creatures next to it have -2 attack","Rare"),
+("lightning_llama","Lightning Llama","Creature","Weather",4,4,3,"Zoom. Zap. Roll: 2 damage to a random enemy creature or the enemy hero","Epic"),
+("tornado_twins","Tornado Twins","Creature","Weather",5,4,4,"When played, blow every enemy creature 1 tile back and Soak them","Mythic"),
+("stormlord_nimbus","Stormlord Nimbus","Creature","Weather",7,6,6,"Ranged. At the start of your turn, deal 1 damage to all enemy creatures","Legendary"),
+("pocket_mouse","Pocket Mouse","Creature","Critter",1,1,2,"Fast. Zoom","Common"),
+("moth_mailman","Moth Mailman","Creature","Critter",2,2,2,"When played, draw a card. Combo: draw 2","Common"),
+("pillow_bunny","Pillow Bunny","Creature","Critter",2,1,3,"When played, give another friendly creature +0/+2. Combo: +1/+2","Rare"),
+("hamster_wheel_hero","Hamster Wheel Hero","Creature","Critter",3,2,3,"Fast. Combo: Zoom","Rare"),
+("pigeon_squad","Pigeon Squad","Creature","Critter",4,3,3,"When played, spawn two 1/1 Pigeons next to it","Epic"),
+("sergeant_snail","Sergeant Snail","Creature","Critter",4,2,7,"Sturdy. Your Critters next to it have Sturdy","Mythic"),
+("big_momma_moose","Big Momma Moose","Creature","Critter",7,6,7,"Zoom. When played, give your Critters +1/+1","Legendary"),
+("sheet_ghost","Sheet Ghost","Creature","Spooky",1,1,1,"Haunt. Combo: Zoom","Common"),
+("skeleton_mascot","Skeleton Mascot","Creature","Spooky",2,2,3,"Haunt. Grudge","Common"),
+("haunted_vending_machine","Haunted Vending Machine","Creature","Spooky",3,3,4,"When played, Roll: add a random 1-cost card to your hand. Combo: add 2","Rare"),
+("mushroom_witch","Mushroom Witch","Creature","Spooky",3,2,4,"When a friendly creature pops, deal 1 damage to the enemy hero","Rare"),
+("mall_cop_phantom","Mall Cop Phantom","Creature","Spooky",4,3,5,"Haunt. Enemy spells cost 1 more","Epic"),
+("escalator_wraith","Escalator Wraith","Creature","Spooky",5,4,5,"When played, return an enemy creature costing 3 or less to its owner's hand","Mythic"),
+("the_mannequin_duke","The Mannequin Duke","Creature","Spooky",7,5,6,"Haunt. Grudge. When played, bring back the last creature you lost next to it","Legendary"),
+("bolt_bug","Bolt Bug","Creature","Robo",1,1,2,"Charge 1. Zap","Common"),
+("roomba_rex","Roomba Rex","Creature","Robo",2,2,3,"Charge 1. Combo: gets 2 Power","Common"),
+("toaster_knight","Toaster Knight","Creature","Robo",3,2,3,"Fast. When played, deal 1 damage to a random enemy creature. Combo: 2 damage","Rare"),
+("laundry_bot_3000","Laundry Bot 3000","Creature","Robo",3,2,4,"Sturdy. When played, remove all buffs and Power from an enemy creature","Rare"),
+("microwave_mage","Microwave Mage","Creature","Robo",4,2,4,"Ranged. Zap. At the start of your turn, deal 1 damage to each enemy creature next to it","Epic"),
+("mecha_fridge","Mecha Fridge","Creature","Robo",6,4,8,"Sturdy. Charge 2","Mythic"),
+("mega_blender_prime","Mega Blender Prime","Creature","Robo",8,6,8,"When played, Roll: destroy a random enemy creature, or 4 damage to the enemy hero","Legendary"),
+("spare_battery","Spare Battery","Spell","Any",0,None,None,"Gain 1 energy this turn","Common"),
+("wrong_turn","Wrong Turn","Spell","Any",1,None,None,"Push an enemy creature 2 tiles back","Common"),
+("water_balloon","Water Balloon","Spell","Any",1,None,None,"Soak an enemy creature and push it 1 tile back","Common"),
+("snack_break","Snack Break","Spell","Any",2,None,None,"Heal your hero 4","Common"),
+("coin_flip_fury","Coin Flip Fury","Spell","Any",2,None,None,"Pick an enemy creature. 50%: deal 5 damage to it. 50%: deal 2 damage to your hero","Rare"),
+("sneeze_storm","Sneeze Storm","Spell","Any",3,None,None,"Deal 1 damage to every enemy creature","Rare"),
+("bubble_wrap","Bubble Wrap","Spell","Any",1,None,None,"A creature ignores the next damage it takes","Rare"),
+("pep_talk","Pep Talk","Spell","Any",2,None,None,"Give a creature +2/+2","Epic"),
+("terrain_shift","Terrain Shift","Spell","Any",2,None,None,"Change a tile and the tiles next to it to a terrain you pick","Epic"),
+("pothole","Pothole","Spell","Any",3,None,None,"Destroy an enemy creature with 3 or less attack","Epic"),
+("mystery_box","Mystery Box","Spell","Any",3,None,None,"Add 2 random cards to your hand. They cost 1 less","Mythic"),
+("earthquake_dance","Earthquake Dance","Spell","Any",6,None,None,"Deal 3 damage to every creature","Mythic"),
+("total_chaos","Total Chaos","Spell","Any",5,None,None,"Every creature jumps to a random empty tile and the terrain changes","Legendary"),
+# Buildings stand in your building row (behind your Backline, one slot per lane) and never move.
+# "Its lane" = the column the building stands in, on both halves of the table.
+# Row buildings (Frontline / Midline / Backline) help one of your rows wherever they stand.
+("spiked_fence","Spiked Fence","Building","Any",2,0,5,"At the start of your turn, deal 1 damage to the nearest enemy creature in its lane","Common"),
+("bouncy_castle","Bouncy Castle","Building","Any",2,0,4,"Your Frontline creatures have Sturdy","Common"),
+("snack_bar","Snack Bar","Building","Snack",2,0,4,"At the start of your turn, heal your creatures in its lane 2","Common"),
+("bunny_burrow","Bunny Burrow","Building","Critter",3,0,4,"You can summon creatures anywhere in its lane on your half. When built, a 1/1 Pigeon hops into its lane","Rare"),
+("wind_turbine","Wind Turbine","Building","Weather",3,0,4,"Your creatures in its lane have Fast. At the start of your turn, Soak the nearest enemy creature in its lane","Rare"),
+("lemonade_stand","Lemonade Stand","Building","Any",3,0,4,"Gain 1 extra energy each turn (doesn't stack)","Rare"),
+("spooky_crypt","Spooky Crypt","Building","Spooky",3,0,5,"Your creatures in its lane have Haunt","Rare"),
+("disco_cactus","Disco Cactus","Building","Any",3,0,4,"At the start of your turn, Roll: your Midline creatures get +1 attack, or heal 2","Epic"),
+("charging_station","Charging Station","Building","Robo",2,0,5,"Your creatures in its lane have +1 attack (Robos +2)","Epic"),
+("scrap_catapult","Scrap Catapult","Building","Junk",4,0,5,"At the start of your turn, deal 2 damage to the nearest enemy creature in its lane (a random enemy creature if its lane is clear)","Epic"),
+("haunted_arcade","Haunted Arcade","Building","Any",5,0,5,"At the start of your turn, a 1/1 Ghost with Haunt appears in its lane on your half","Mythic"),
+("rocket_lunchbox","Rocket Lunchbox","Building","Any",6,0,6,"At the start of your turn, a rocket flies up its lane: 3 damage to the first enemy creature in its way, the rest hits the enemy hero","Legendary"),
+("captain_confetti","Captain Confetti","Creature","Critter",6,5,5,"Zoom. When played, give each of your creatures a random keyword","Secret"),
+("omega_microwave","Omega Microwave","Creature","Robo",9,8,10,"Sturdy. At the start of your turn, deal 3 damage to every enemy creature","Secret"),
+]
+if __name__=="__main__":
+    from collections import Counter
+    print(len(C), Counter(c[8] for c in C), Counter(c[2] for c in C))
+    rows=["| Name | Type | Family | Cost | Atk/HP | Ability | Rarity |","| --- | --- | --- | --- | --- | --- | --- |"]
+    for c in C:
+        ah = "None" if c[5] is None else f"{c[5]}/{c[6]}"
+        rows.append(f"| {c[1]} | {c[2]} | {c[3]} | {c[4]} | {ah} | {c[7]} | {c[8]} |")
+    open("table.md","w").write("\n".join(rows))

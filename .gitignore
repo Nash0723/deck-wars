@@ -1,0 +1,29 @@
+# Built place files: build them from source with Rojo (see README)
+*.rbxlx
+*.rbxl
+*.rbxlx.lock
+*.rbxl.lock
+
+# Rust build output (tools/luaurun)
+target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Generator side files and preview renders
+table.md
+preview/*.png
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local backups of old versions
+backups/
