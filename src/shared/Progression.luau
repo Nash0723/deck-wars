@@ -84,6 +84,48 @@ for _, a in ipairs(Progression.Achievements) do
 	Progression.AchievementById[a.id] = a
 end
 
+-- The Trophy Road: every match you finish earns trophies (more for a win, more against tougher
+-- opponents); they never go down. Each stop on the road is claimed once at the Trophy Wall.
+-- Three match backgrounds can only be earned here (ShopCatalog cosmetics with road = true).
+-- Wins: about 6 trophies a match, so the first background comes after 8-10 wins.
+Progression.Trophies = {
+	win = { Easy = 4, Medium = 6, Hard = 9 },
+	pvpWin = 10, -- a win with only people on the other side
+	finish = 1, -- a loss or a draw that went the distance
+	cupWin = 25, -- on top of the final's win
+}
+-- Each stop: trophies needed, and the reward (gems / coins / a cosmetic id).
+Progression.TrophyRoad = {
+	{ at = 10, coins = 300 },
+	{ at = 25, gems = 50 },
+	{ at = 45, cosmetic = "bg_meadow" },
+	{ at = 70, coins = 600 },
+	{ at = 100, gems = 100 },
+	{ at = 140, cosmetic = "bg_fire" },
+	{ at = 190, coins = 1000 },
+	{ at = 250, gems = 150 },
+	{ at = 320, cosmetic = "bg_space" },
+	{ at = 400, gems = 250 },
+	{ at = 500, coins = 2500 },
+	{ at = 650, gems = 400 },
+}
+
+-- Trophies for one finished match. `m` is what PlayerData.recordMatch gets (plus m.pvp when no
+-- bot sat on the other side).
+function Progression.trophiesFor(m)
+	local T = Progression.Trophies
+	local n = 0
+	if m.result == "win" then
+		n = m.pvp and T.pvpWin or (T.win[m.difficulty] or T.win.Medium)
+		if m.cupWon then
+			n += T.cupWin
+		end
+	elseif m.result == "loss" or m.result == "draw" then
+		n = T.finish
+	end
+	return n
+end
+
 -- Today's number (days since 1 January 1970, UTC). Daily things reset when it changes.
 function Progression.today(now)
 	return math.floor((now or os.time()) / 86400)

@@ -65,7 +65,7 @@ local function familyColor(family)
 end
 
 -- Shared state, declared up here so every function below can use it.
-local mode = "title" -- "title", "menu", "match", "pack" (a pack opening, which moves the camera itself)
+local mode = "title" -- "title", "menu", "match", "pack" (a pack opening, which moves the camera itself), "preview" (trying a match background on)
 -- or "plaza" (walking around the Plaza as your avatar: Roblox's own camera and controls, see PlazaClient)
 local clock = 0 -- seconds since the script started (advanced every frame)
 local currentStation = nil -- the station whose panel is open
@@ -1144,6 +1144,8 @@ do
 		ui.stationTitle.Text = "Trophy Wall"
 		local body = make("ScrollingFrame", { Name = "TrophyList", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 6 }, ui.stationBody)
 		make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, body)
+		-- The Trophy Road on top: trophies from every match, rewards and three match backgrounds.
+		require(Shared:WaitForChild("TrophyRoadUI")).render(body, 0, { BODY_FONT = BODY_FONT, MenuAction = MenuAction })
 		local GOLD = Color3.fromRGB(255, 220, 110)
 		local DIM = Color3.fromRGB(185, 180, 205)
 		local READY = Color3.fromRGB(60, 170, 90)
@@ -1771,6 +1773,106 @@ local function showIntro(key)
 	return true
 end
 
+-- Match backgrounds: the world you wear (picked at the Deck Shelf, see BackdropPicker) and the
+-- ones you own (for "Surprise me") follow the save. Trying one on at the Deck Shelf puts it up
+-- around the table and floats the camera through it (mode "preview") until you go back.
+-- The Duel Table between matches is IdleTable's lane board at rest.
+do
+	local Cosmetics = require(Shared:WaitForChild("Cosmetics"))
+	local ShopUI = require(Shared:WaitForChild("ShopUI"))
+	local BackdropPicker = require(Shared:WaitForChild("BackdropPicker"))
+	local IdleTable = require(Shared:WaitForChild("IdleTable"))
+	local function packShelf(on)
+		pcall(function()
+			require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackShelf")).suspend(on)
+		end)
+	end
+	local function wear(eq)
+		local c = eq and ShopCatalog.CosmeticById[eq.backdrop or ""]
+		Backdrops.choice = (c and c.kind == "backdrop" and c.backdrop) or "Room"
+	end
+	Cosmetics.onChanged(wear)
+	wear(Cosmetics.equipped())
+	ShopUI.onSnapshot(function(s)
+		local keys = {}
+		for _, c in ipairs(ShopCatalog.Cosmetics) do
+			if c.kind == "backdrop" and c.backdrop ~= "Random" and c.backdrop ~= "Room" and (c.default or (type(s.owned) == "table" and s.owned[c.id])) then
+				keys[c.backdrop] = true
+			end
+		end
+		Backdrops.setOwned(keys)
+	end)
+	pcall(IdleTable.attach, duelTable)
+	ui.idleTable = IdleTable
+	-- a match background hides the room; the Pack Shelf stops lighting itself up under it
+	ui.pauseShelf = packShelf
+
+	local preview = { token = 0, station = nil }
+	function ui.previewBackdrop(key)
+		if mode ~= "menu" and mode ~= "preview" then
+			return false
+		end
+		local ok, used = pcall(Backdrops.apply, key, room, duelTable)
+		if not ok then
+			warn("Background preview failed: " .. tostring(used))
+			Backdrops.clear()
+			return false
+		end
+		if mode == "menu" then
+			preview.station = currentStation
+			mode = "preview"
+			ui.menuUI.Visible = false
+			ui.topGui.Enabled = false
+			setStationSigns(false)
+			hideCharacter(true)
+			highlight.Enabled = false
+			ui.setPointer(false)
+		end
+		packShelf(Backdrops.current() ~= nil)
+		preview.token += 1
+		local token = preview.token
+		local shot = Backdrops.intro()
+		camera.CameraType = Enum.CameraType.Scriptable
+		if shot then
+			glideCamera(shot.pos, shot.look, 1.6, shot.fov)
+			task.delay(1.6 * PACE, function()
+				if preview.token == token and mode == "preview" then
+					glideCamera(shot.pos + shot.drift * 1.8, shot.look, 18, shot.fov)
+				end
+			end)
+		else
+			glideCamera(CAMS.DuelTable[1], CAMS.DuelTable[2], 1.6)
+		end
+		return true
+	end
+	function ui.endBackdropPreview()
+		if mode ~= "preview" then
+			return
+		end
+		preview.token += 1
+		Backdrops.clear()
+		packShelf(false)
+		mode = "menu"
+		ui.menuUI.Visible = true
+		ui.topGui.Enabled = true
+		setStationSigns(true)
+		hideCharacter(false)
+		moveCamera(preview.station or "DeckShelf", false, 1.4)
+	end
+	-- pulled into a match while trying a world on (a party or a Cup): drop the preview quietly
+	function ui.cancelBackdropPreview()
+		if BackdropPicker.isPreviewing() then
+			BackdropPicker.cancel()
+		end
+		if mode == "preview" then
+			mode = "menu"
+		end
+		preview.token += 1
+		ui.topGui.Enabled = true
+	end
+	BackdropPicker.init({ BODY_FONT = BODY_FONT, preview = ui.previewBackdrop, endPreview = ui.endBackdropPreview })
+end
+
 -- Your settings: deck, bot difficulty, background, action camera, speed, and whether you've seen
 -- the how-to-play screen. The server keeps them as "Pref..." attributes on your Player and saves
 -- them with your cards; changes are sent a second after the last one. Something you change in
@@ -1891,14 +1993,16 @@ MatchScreen.init({
 		return Settings.get("sfx") / 8
 	end,
 	onEnterMatch = function(payload)
+		ui.cancelBackdropPreview()
+		ui.idleTable.setVisible(false) -- (the match board rises in its place)
 		-- Pulled into a match from the Plaza (a party or a Cup): back inside first.
 		local PlazaClient = require(Shared:WaitForChild("PlazaClient"))
 		if PlazaClient.isInside() then
 			PlazaClient.leave(true)
 		end
 		require(Shared:WaitForChild("CampaignUI")).hide()
-		-- The world around the table: a Campaign stage brings its own; otherwise the one picked on
-		-- the Duel Table panel ("Card Den" keeps the room).
+		-- The world around the table: a Campaign stage brings its own; otherwise the one you wear
+		-- (Deck Shelf > Match background; "Card Den" keeps the room).
 		local worldKey = (type(payload) == "table" and type(payload.backdrop) == "string" and Backdrops.ByKey[payload.backdrop]) and payload.backdrop or Backdrops.choice
 		local ok, used = pcall(Backdrops.apply, worldKey, room, duelTable)
 		if not ok then
@@ -1906,6 +2010,7 @@ MatchScreen.init({
 			Backdrops.clear()
 			used = "Room"
 		end
+		ui.pauseShelf(Backdrops.current() ~= nil)
 		-- Calm worlds: fewer, smaller, softer particles (snow and sparkles drifted right past the camera).
 		local world = workspace:FindFirstChild("MatchBackdrop")
 		if world then
@@ -1946,6 +2051,8 @@ MatchScreen.init({
 	end,
 	onExitMatch = function(lastMode)
 		Backdrops.clear()
+		ui.pauseShelf(false)
+		ui.idleTable.setVisible(true)
 		setStationSigns(true)
 		ui.menuUI.Visible = true
 		ui.matchTop.Visible = false
@@ -2323,6 +2430,8 @@ do
 			end
 		end
 		MatchScreen.update(dt)
+		Backdrops.update(dt) -- (the moving parts of a match world)
+		ui.idleTable.update(dt)
 		if not Backdrops.current() then
 			updateAmbience(dt) -- the room is hidden while a match background is up
 		end

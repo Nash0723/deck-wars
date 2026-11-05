@@ -131,6 +131,9 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 	elseif what == "ClaimAchievement" and type(options) == "table" then
 		local r = PlayerData.claimAchievement(player, options.id)
 		LobbyEvent:FireClient(player, { kind = "claimed", what = "achievement", ok = r ~= nil, id = options.id, gems = r and r.gems })
+	elseif what == "ClaimRoad" and type(options) == "table" then
+		local r = PlayerData.claimRoad and PlayerData.claimRoad(player, options.index)
+		LobbyEvent:FireClient(player, { kind = "claimed", what = "road", ok = r ~= nil, index = options.index, gems = r and r.gems, coins = r and r.coins, cosmetic = r and r.cosmetic })
 	end
 end)
 

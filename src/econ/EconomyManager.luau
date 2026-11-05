@@ -57,7 +57,7 @@ EconomyManager.Template = {
 	flags = {}, -- one-off flags, e.g. starterGranted
 	cosmetics = {
 		owned = {}, -- [cosmeticId] = true (default items are always owned)
-		equipped = { board = ShopCatalog.DefaultEquipped.board, cardback = ShopCatalog.DefaultEquipped.cardback },
+		equipped = { board = ShopCatalog.DefaultEquipped.board, cardback = ShopCatalog.DefaultEquipped.cardback, backdrop = ShopCatalog.DefaultEquipped.backdrop },
 	},
 	boosts = { luckCharges = 0, xpUntil = 0 },
 	daily = {
@@ -572,12 +572,15 @@ function EconomyManager.buy(player, kind, id)
 		if ownsCosmetic(d, c.id) then
 			return false, "You already own " .. c.name .. "."
 		end
+		if c.road or not c.price then
+			return false, c.name .. " is a Trophy Road reward. Win matches to earn it!"
+		end
 		local ok, why = payPrice(d, c.price)
 		if not ok then
 			return false, why
 		end
 		d.cosmetics.owned[c.id] = true
-		if c.kind == "board" or c.kind == "cardback" then
+		if ShopCatalog.EquipKinds[c.kind] then
 			d.cosmetics.equipped[c.kind] = c.id
 		end
 		changed(player, "buy")
@@ -640,14 +643,29 @@ function EconomyManager.buy(player, kind, id)
 	return false, "Unknown purchase."
 end
 
--- Equips an owned board theme or card back.
+-- Gives a cosmetic for free (Trophy Road rewards). Returns true if it was new.
+function EconomyManager.grantCosmetic(player, id)
+	local d = EconomyManager.waitForData(player)
+	local c = type(id) == "string" and ShopCatalog.CosmeticById[id]
+	if not d or not c then
+		return false
+	end
+	if ownsCosmetic(d, id) then
+		return false
+	end
+	d.cosmetics.owned[id] = true
+	changed(player, "grant")
+	return true
+end
+
+-- Equips an owned board theme, card back or match background.
 function EconomyManager.equip(player, kind, id)
 	local d = EconomyManager.waitForData(player)
 	if not d then
 		return false, "Your save hasn't loaded yet."
 	end
 	local c = type(id) == "string" and ShopCatalog.CosmeticById[id]
-	if not c or c.kind ~= kind or (kind ~= "board" and kind ~= "cardback") then
+	if not c or c.kind ~= kind or not ShopCatalog.EquipKinds[kind] then
 		return false, "You can't equip that."
 	end
 	if not ownsCosmetic(d, id) then
@@ -702,7 +720,7 @@ function EconomyManager.snapshot(player)
 		uniqueCards = unique,
 		deckSlots = d.deckSlots,
 		owned = owned,
-		equipped = { board = d.cosmetics.equipped.board, cardback = d.cosmetics.equipped.cardback },
+		equipped = { board = d.cosmetics.equipped.board, cardback = d.cosmetics.equipped.cardback, backdrop = ownsCosmetic(d, d.cosmetics.equipped.backdrop or "") and d.cosmetics.equipped.backdrop or ShopCatalog.DefaultEquipped.backdrop },
 		luckCharges = d.boosts.luckCharges,
 		xpBoostLeft = math.max(0, (d.boosts.xpUntil or 0) - now),
 		day = d.daily.day,

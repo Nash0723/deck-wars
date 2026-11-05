@@ -16,6 +16,8 @@
 --   PackShelf.hover(packId or nil)
 --   PackShelf.launch(packId)     -- the pack leaps at the camera and hides
 --   PackShelf.restore()          -- every pack back on the shelf
+--   PackShelf.suspend(on)        -- a match world hides the room: stop lighting the shelf up
+--                                   (its glow kept switching itself back on under the world)
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -115,6 +117,9 @@ local function approach(cur, target, dt, speed)
 end
 
 local function update(dt)
+	if state.suspended then
+		return -- (the room is hidden by a match background; leave its parts as they were put)
+	end
 	state.t += dt
 	local t = state.t
 	for id, p in pairs(state.packs) do
@@ -211,6 +216,10 @@ function PackShelf.attach()
 	end
 	state.conn = RunService.RenderStepped:Connect(update)
 	return true
+end
+
+function PackShelf.suspend(on)
+	state.suspended = on and true or false
 end
 
 function PackShelf.has()

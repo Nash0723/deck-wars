@@ -403,7 +403,7 @@ end
 -- 🎨 Deck & Field
 local function cosmeticTile(grid, c, s, order)
 	local owned = s.owned[c.id] == true
-	local isOn = (c.kind == "board" and s.equipped.board == c.id) or (c.kind == "cardback" and s.equipped.cardback == c.id)
+	local isOn = (c.kind == "board" and s.equipped.board == c.id) or (c.kind == "cardback" and s.equipped.cardback == c.id) or (c.kind == "backdrop" and s.equipped.backdrop == c.id)
 	local t = tile(grid, order, isOn)
 	local preview = make("Frame", { Name = "Preview", Size = UDim2.new(1, -20, 0, 96), Position = UDim2.fromOffset(10, 10), BackgroundColor3 = rgb(24, 20, 36) }, t)
 	corner(preview, 10)
@@ -415,13 +415,23 @@ local function cosmeticTile(grid, c, s, order)
 		local p = Cosmetics.previewBack(preview, c.id, UDim2.fromOffset(60, 84))
 		p.AnchorPoint = Vector2.new(0.5, 0.5)
 		p.Position = UDim2.fromScale(0.5, 0.5)
+	elseif c.kind == "backdrop" then
+		-- the world's two colours with its emoji (the Deck Shelf can preview it for real)
+		local info = require(here:WaitForChild("Backdrops")).ByKey[c.backdrop or ""]
+		if info then
+			make("UIGradient", { Rotation = 90, Color = ColorSequence.new(info.colors[1], info.colors[2]) }, preview)
+			preview.BackgroundColor3 = rgb(255, 255, 255)
+			text(preview, info.emoji, { Size = UDim2.fromScale(1, 1), TextScaled = true, Font = BOLD_FONT, TextXAlignment = Enum.TextXAlignment.Center })
+		end
 	else
 		text(preview, c.icon or "💬", { Size = UDim2.fromScale(1, 1), TextScaled = true, Font = BOLD_FONT, TextXAlignment = Enum.TextXAlignment.Center })
 	end
 	text(t, c.name, { Position = UDim2.fromOffset(10, 112), Size = UDim2.new(1, -20, 0, 22), Font = TITLE_FONT, TextSize = 18 })
 	text(t, c.blurb or (c.kind == "emote" and "Pops up over your hero in a match." or ""), { Position = UDim2.fromOffset(10, 136), Size = UDim2.new(1, -20, 0, 34), TextSize = 13, TextColor3 = DIM, TextYAlignment = Enum.TextYAlignment.Top })
 	local props = { Position = UDim2.new(0, 10, 1, -48), Size = UDim2.new(1, -20, 0, 38) }
-	if not owned then
+	if not owned and (c.road or not c.price) then
+		statusButton(t, "🏆 Trophy Road reward", rgb(150, 105, 50), props)
+	elseif not owned then
 		priceButton(t, c.price, function()
 			send("Buy", "cosmetic", c.id)
 		end, props)
@@ -441,6 +451,7 @@ function builders.cosmetics(content, s)
 		{ kind = "board", title = "Board themes", sub = "Repaints the duel table: felt, rim, frame and trim. You see it in the room and in every match." },
 		{ kind = "cardback", title = "Card backs", sub = "The back of every face-down card: your draws and the bot's hand." },
 		{ kind = "emote", title = "Emotes", sub = "Use them from the 💬 button in a match." },
+		{ kind = "backdrop", title = "Match backgrounds", sub = "The world around the table in your matches. Try them on and pick one at the Deck Shelf; three more are on the Trophy Road." },
 	}
 	for gi, g in ipairs(groups) do
 		local _, grid = section(content, g.title, g.sub, gi)
