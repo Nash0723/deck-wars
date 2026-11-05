@@ -1564,6 +1564,19 @@ Remotes:WaitForChild("LobbyEvent").OnClientEvent:Connect(function(payload)
 end)
 
 -- Clicking and hovering over stations in the 3D room
+-- (the mouse turns into a pointing hand over anything in the room that answers it)
+do
+	local pointing = false
+	function ui.setPointer(on)
+		if on == pointing then
+			return
+		end
+		pointing = on
+		pcall(function()
+			UserInputService.MouseIcon = on and "rbxasset://SystemCursors/PointingHand" or ""
+		end)
+	end
+end
 local highlight = Instance.new("Highlight")
 highlight.FillTransparency = 0.8
 highlight.OutlineColor = Color3.fromRGB(255, 220, 90)
@@ -2086,6 +2099,9 @@ UserInputService.InputBegan:Connect(function(input, processedByGui)
 		if ui.onMenuClick and ui.onMenuClick(pos) then
 			return -- (a pack on the Pack Shelf took the click)
 		end
+		if ui.roomLife and not Backdrops.current() then
+			ui.roomLife.click(pos, true) -- the prop you clicked answers (and its station still opens)
+		end
 		local station = stationAt(pos, true)
 		if station then
 			selectStation(station.Name)
@@ -2102,7 +2118,12 @@ end)
 do
 
 	-- The room comes alive: flickering fire, a spinning disco ball, color-changing party lights.
-	local ambience = { tiles = {}, strings = {}, partyLights = {}, nextColor = 0 }
+	-- RoomLife makes the props answer the mouse (and can hype up the fire, the disco ball and the
+	-- dance floor while you point at them).
+	local RoomLife = require(Shared:WaitForChild("RoomLife"))
+	RoomLife.attach(room)
+	ui.roomLife = RoomLife
+	local ambience = { tiles = {}, strings = {}, partyLights = {}, nextColor = 0, discoAngle = 0, tileColors = {} }
 	do
 		local fire = room:FindFirstChild("FireLight", true)
 		ambience.firePoint = fire and fire:FindFirstChildOfClass("PointLight")
@@ -2122,19 +2143,32 @@ do
 		end
 	end
 
-	local function updateAmbience()
+	local WHITE_GLOW = Color3.fromRGB(255, 250, 235)
+	local function updateAmbience(dt)
 		local a = ambience
 		if a.firePoint then
-			a.firePoint.Brightness = a.fireBase * (0.85 + 0.12 * math.noise(clock * 2.3, 1.1) + 0.08 * math.noise(clock * 7.9, 4.2))
+			a.firePoint.Brightness = a.fireBase * (0.85 + 0.12 * math.noise(clock * 2.3, 1.1) + 0.08 * math.noise(clock * 7.9, 4.2)) * RoomLife.fireBoost()
 		end
 		if a.disco then
-			a.disco.CFrame = a.discoBase * CFrame.Angles(0, clock * 0.3, 0)
+			a.discoAngle = (a.discoAngle + dt * 0.3 * RoomLife.discoBoost()) % (math.pi * 2)
+			a.disco.CFrame = a.discoBase * CFrame.Angles(0, a.discoAngle, 0)
+		end
+		-- the dance floor lights up under the cursor (every frame while it does)
+		local busy = RoomLife.tilesBusy()
+		if busy or a.tilesGlowing then
+			a.tilesGlowing = busy
+			for i, tile in ipairs(a.tiles) do
+				local base = a.tileColors[i] or tile.Color
+				tile.Color = base:Lerp(WHITE_GLOW, RoomLife.tileGlow(tile))
+			end
 		end
 		-- Slow and soft, so the room feels cosy rather than busy.
 		if clock >= a.nextColor then
 			a.nextColor = clock + 0.25
 			for i, tile in ipairs(a.tiles) do
-				tile.Color = Color3.fromHSV((i * 0.137 + clock * 0.04) % 1, 0.6, 1)
+				local c = Color3.fromHSV((i * 0.137 + clock * 0.04) % 1, 0.6, 1)
+				a.tileColors[i] = c
+				tile.Color = busy and c:Lerp(WHITE_GLOW, RoomLife.tileGlow(tile)) or c
 			end
 			local chase = math.floor(clock * 0.8)
 			for i, bulb in ipairs(a.strings) do
@@ -2158,7 +2192,11 @@ do
 		if mode == "menu" then
 			local mouse = UserInputService:GetMouseLocation()
 			local station = stationAt(mouse)
-			if ui.onMenuHover and ui.onMenuHover(mouse) then
+			local packHover = ui.onMenuHover and ui.onMenuHover(mouse)
+			-- the props in the room answer the mouse (not while a pack on the shelf has it)
+			local prop = RoomLife.update(dt, (not packHover and not Backdrops.current()) and mouse or nil, Backdrops.current() == nil)
+			ui.setPointer(prop ~= nil or station ~= nil or packHover == true)
+			if packHover then
 				highlight.Enabled = false -- (a pack on the shelf lifts up instead)
 			elseif station then
 				highlight.Adornee = station
@@ -2171,7 +2209,11 @@ do
 			end
 		elseif mode ~= "match" then
 			highlight.Enabled = false
+			RoomLife.update(dt, nil, false)
+			ui.setPointer(false)
 		elseif mode == "match" then
+			RoomLife.update(dt, nil, false) -- (puts every prop back before the table is copied into a world)
+			ui.setPointer(false)
 			hideTimer += dt
 			if hideTimer > 0.5 then
 				hideTimer = 0
@@ -2180,7 +2222,7 @@ do
 		end
 		MatchScreen.update(dt)
 		if not Backdrops.current() then
-			updateAmbience() -- the room is hidden while a match background is up
+			updateAmbience(dt) -- the room is hidden while a match background is up
 		end
 	end)
 end
