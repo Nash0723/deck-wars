@@ -170,7 +170,7 @@ local function cardCell(parent, id, order)
 	local card = kit.makeCard(cell, id, UDim2.fromOffset(104, 146))
 	local dim = make("Frame", { Name = "Dim", Size = UDim2.fromScale(1, 1), BackgroundColor3 = INK, BackgroundTransparency = 1, ZIndex = 20 }, card)
 	make("UICorner", { CornerRadius = UDim.new(0, 10) }, dim)
-	local badge = text(cell, "", { Name = "Badge", Size = UDim2.new(1, 0, 0, 20), Position = UDim2.new(0, 0, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 14, Font = Enum.Font.GothamBold })
+	local badge = text(cell, "", { Name = "Badge", Size = UDim2.new(1, 0, 0, 20), Position = UDim2.new(0, 0, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 14, Font = Enum.Font.FredokaOne })
 	return cell, dim, badge
 end
 
@@ -214,7 +214,7 @@ local function showCollection()
 			Position = UDim2.new(0, 0, 1, -20),
 			TextXAlignment = Enum.TextXAlignment.Center,
 			TextSize = have > 0 and 15 or 12,
-			Font = have > 0 and Enum.Font.GothamBold or kit.BODY_FONT,
+			Font = have > 0 and Enum.Font.FredokaOne or kit.BODY_FONT,
 			TextColor3 = have > 0 and GOLD or DIM,
 		})
 	end
@@ -344,7 +344,7 @@ local function chip(parent, str, color, on, onClick, props)
 	local b = kit.button(parent, str, on and color or color:Lerp(rgb(30, 25, 46), 0.7), onClick, props)
 	b.TextScaled = false
 	b.TextSize = 14
-	b.Font = Enum.Font.GothamBold
+	b.Font = Enum.Font.FredokaOne
 	b.TextColor3 = on and INK or TEXT
 	return b
 end
@@ -541,7 +541,7 @@ local function showEditor()
 		}, list)
 		make("UICorner", { CornerRadius = UDim.new(0, 6) }, row)
 		text(row, d.cost .. "  " .. d.name, { Size = UDim2.new(1, -44, 1, 0), Position = UDim2.fromOffset(8, 0), TextSize = 14, TextTruncate = Enum.TextTruncate.AtEnd })
-		text(row, "×" .. counts[id], { Size = UDim2.new(0, 36, 1, 0), Position = UDim2.new(1, -40, 0, 0), TextSize = 14, Font = Enum.Font.GothamBold, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Right })
+		text(row, "×" .. counts[id], { Size = UDim2.new(0, 36, 1, 0), Position = UDim2.new(1, -40, 0, 0), TextSize = 14, Font = Enum.Font.FredokaOne, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Right })
 		row.Activated:Connect(function()
 			removeCard(id)
 		end)

@@ -22,8 +22,8 @@ local make, tween, rgb = Juice.make, Juice.tween, Juice.rgb
 local GOLD = rgb(255, 214, 102)
 local GOLD_DEEP = rgb(255, 156, 40)
 local INK = rgb(28, 18, 10)
-local LOGO_FONT = Enum.Font.GothamBlack
-local BODY_FONT = Enum.Font.GothamBold
+local LOGO_FONT = Enum.Font.FredokaOne
+local BODY_FONT = Enum.Font.FredokaOne
 
 local TitleScreen = {}
 

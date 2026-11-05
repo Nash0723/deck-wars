@@ -171,9 +171,9 @@ for _, key in ipairs(StarterDecks.Order) do
 	local setup = DeckRules.setupFor(p)
 	check(setup.family == StarterDecks[key].family and #setup.lanes == CardData.Cols, key .. " practice deck makes a setup")
 end
-local m = MatchEngine.new(DeckRules.setupFor(starter), DeckRules.setupFor(DeckRules.fromPractice(StarterDecks.Robo)), 7)
-check(m.players[1].lanes[1] == "Snack" and m.players[1].lanes[4] == "Critter", "player 1's lanes come from the deck")
-check(m.terrain[1][1] == "Snack" and m.terrain[4][3] == "Critter", "player 1's half is painted with its lanes")
+local m = MatchEngine.new({ DeckRules.setupFor(starter), DeckRules.setupFor(DeckRules.fromPractice(StarterDecks.Robo)) }, 7)
+check(m.lanes[1][1].landscape == starter.lanes[1] and m.lanes[1][4].landscape == starter.lanes[4], "player 1's lanes come from the deck")
+check(m.lanes[2][1].landscape ~= nil, "player 2's lanes have landscapes too")
 
 ---------------------------------------------------------------------------
 -- PlayerDecks on top of the real EconomyManager (memory store)

@@ -46,7 +46,7 @@ local GEM = rgb(ShopCatalog.Color.Gems[1], ShopCatalog.Color.Gems[2], ShopCatalo
 local COIN = rgb(ShopCatalog.Color.Coins[1], ShopCatalog.Color.Coins[2], ShopCatalog.Color.Coins[3])
 local TITLE_FONT = Enum.Font.FredokaOne
 local BODY_FONT = Enum.Font.GothamMedium
-local BOLD_FONT = Enum.Font.GothamBold
+local BOLD_FONT = Enum.Font.FredokaOne
 
 local state = {
 	ready = false,

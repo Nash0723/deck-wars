@@ -224,15 +224,16 @@ function MatchScreen.init(ctx)
 		local lines = {
 			"<b>1.</b> Every turn you get ✨ magic (" .. CardData.StartMagic .. " at first, 1 more each turn, up to " .. CardData.MaxMagic .. ") and draw a card.",
 			"",
-			"<b>2.</b> Drag a card with a <font color=\"#6eff82\">green outline</font> onto one of your glowing lanes (or click it, then the lane). Creatures stand in front; buildings go behind and help the creature in their lane.",
+			"<b>2.</b> Drag a card with a <font color=\"#6eff82\">green outline</font> onto a glowing spot (or click it, then the spot). Each lane has a <b>Front</b> and a <b>Back</b> spot for creatures and a building slot behind them that helps both.",
 			"",
-			"<b>3.</b> Click one of your creatures to 🌀 <b>Spark</b> it: it uses the purple ability on its card, and skips its attack this turn.",
+			"<b>3.</b> Click one of your creatures to 🌀 <b>Spark</b> it (the purple ability on its card) or ↕ <b>Shift</b> it to the other row for " .. (CardData.ShiftCost or 1) .. " ✨. Either way it skips its attack this turn.",
 			"",
-			"<b>4.</b> Press <b>⚔ BATTLE!</b> to end your turn. Each of your creatures hits the creature across its lane, or the other hero if that lane is empty.",
+			"<b>4.</b> Press <b>⚔ BATTLE!</b> to end your turn. Front creatures hit the first enemy in their lane (Front first, then Back), or the hero if the lane is empty. Back creatures wait, unless they're <b>Ranged</b>, and step up when the Front spot is free.",
 			"",
 			"<b>Good to know</b>",
 			"• New creatures wait a turn before they attack (💤), unless they have Zoom.",
 			"• A creature on its own landscape gets +1 attack (already in its number).",
+			"• <b>Overkill</b>: damage left over after a creature falls rolls on to the next one in the lane, then the hero.",
 			"• Deal " .. CardData.BigMoveCharge .. " damage and your hero's ★ <b>Big Move</b> is ready (once a match).",
 			"• Hover anything to see what it does.",
 			"",
@@ -548,9 +549,14 @@ function MatchScreen.init(ctx)
 			frame = 0.36, -- how wide the wooden frame is
 			base = base,
 			groundTop = base + 0.26,
-			creatureZ = 2.45,
-			buildingZ = 5.55,
+			-- Each side has two rows of creatures per lane (Front nearest the middle, Back behind
+			-- it) and a building slot behind those.
+			creatureZ = 1.95, -- the Front row
+			backZ = 4.2, -- the Back row
+			buildingZ = 6.25,
 		}
+		L.rowGap = L.backZ - L.creatureZ
+		L.spot = math.min(pitch * 0.82, 2.1) -- how wide a creature's spot is
 		L.padTop = L.groundTop
 		L.frameTop = L.groundTop + 0.16
 		L.halfWidth = pitch * width / 2
@@ -565,6 +571,7 @@ function MatchScreen.init(ctx)
 	end
 
 	function F.buildBoard(v)
+		S.ghost = nil -- (its model goes with the board)
 		S.boardFolder:ClearAllChildren()
 		S.pads = {}
 		S.scrap = {}
@@ -623,29 +630,40 @@ function MatchScreen.init(ctx)
 		-- The ground: the lanes touch, so each side reads as one stretch of land.
 		local strip = part({ Name = "LaneStrip", Size = Vector3.new(L.pitch, groundH, D), CFrame = CFrame.new(x, groundBottom + groundH / 2, L.z(t, D / 2)), Color = groundColor(land), Material = look.material, CanQuery = true })
 		laneAttrs(strip, t, lane, "creature")
-		-- The creature's spot: a soft ring in the landscape's colour around a lighter circle.
+		laneAttrs(strip, t, lane, "strip") -- (which row a click on the ground means is worked out from where it lands)
+		-- The creature spots, Front and Back: a soft ring in the landscape's colour around a lighter
+		-- circle (the Back spot a little darker, so the two rows read apart).
 		local cz = L.z(t, L.creatureZ)
-		local spot = math.min(L.pitch * 0.82, 2.5)
+		local backz = L.z(t, L.backZ)
+		local spot = L.spot
 		local flat = CFrame.Angles(0, 0, math.pi / 2)
 		local ring = part({ Name = "CreatureRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.02, spot, spot), CFrame = CFrame.new(x, L.groundTop + 0.006, cz) * flat, Color = look.accent, Material = Enum.Material.SmoothPlastic, Transparency = RING_REST, CanQuery = false })
 		local cpad = part({ Name = "CreaturePad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.02, spot - 0.16, spot - 0.16), CFrame = CFrame.new(x, L.groundTop + 0.012, cz) * flat, Color = groundColor(land):Lerp(WHITE, 0.3), Transparency = 0.35, CanQuery = true })
 		laneAttrs(cpad, t, lane, "creature")
+		local backRing = part({ Name = "BackRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.02, spot, spot), CFrame = CFrame.new(x, L.groundTop + 0.006, backz) * flat, Color = look.accent, Material = Enum.Material.SmoothPlastic, Transparency = RING_REST, CanQuery = false })
+		local bkpad = part({ Name = "BackPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.02, spot - 0.16, spot - 0.16), CFrame = CFrame.new(x, L.groundTop + 0.012, backz) * flat, Color = groundColor(land):Lerp(WHITE, 0.12), Transparency = 0.35, CanQuery = true })
+		laneAttrs(bkpad, t, lane, "back")
 		-- The building's foundation behind it: a stone slab on a dark rim.
 		local bz = L.z(t, L.buildingZ)
 		local rim = part({ Name = "BuildingRim", Size = Vector3.new(L.pitch * 0.58 + 0.14, 0.02, 1.64), CFrame = CFrame.new(x, L.groundTop + 0.008, bz), Color = Color3.fromRGB(28, 22, 24), Transparency = 0.15, CanQuery = false })
 		local bpad = part({ Name = "BuildingPad", Size = Vector3.new(L.pitch * 0.58, 0.03, 1.5), CFrame = CFrame.new(x, L.groundTop + 0.016, bz), Color = groundColor(land):Lerp(Color3.fromRGB(20, 16, 18), 0.4), Material = Enum.Material.Cobblestone, CanQuery = true })
 		laneAttrs(bpad, t, lane, "building")
-		-- A glowing frame shown when you can pick this lane.
-		local glow = part({ Name = "LaneGlow", Size = Vector3.new(L.pitch * 0.86, 0.04, 2.7), CFrame = CFrame.new(x, L.groundTop + 0.03, cz), Color = Color3.fromRGB(255, 210, 90), Material = Enum.Material.Neon, Transparency = 1, CanQuery = false })
+		-- Glowing frames shown when you can pick a spot: one for each row and one for the building.
+		local function glowAt(z, depth)
+			return part({ Name = "LaneGlow", Size = Vector3.new(L.pitch * 0.86, 0.04, depth), CFrame = CFrame.new(x, L.groundTop + 0.03, z), Color = Color3.fromRGB(255, 210, 90), Material = Enum.Material.Neon, Transparency = 1, CanQuery = false })
+		end
+		local glow = glowAt(cz, L.rowGap - 0.12)
+		local backGlow = glowAt(backz, L.rowGap - 0.12)
+		local buildGlow = glowAt(bz, 1.6)
 		-- (The landscape's name shows when you hover the lane.)
-		S.pads[t][lane] = { strip = strip, ring = ring, creature = cpad, rim = rim, building = bpad, glow = glow, landscape = land, deco = {}, weather = nil }
+		S.pads[t][lane] = { strip = strip, ring = ring, creature = cpad, backRing = backRing, back = bkpad, rim = rim, building = bpad, glow = glow, backGlow = backGlow, buildGlow = buildGlow, landscape = land, deco = {}, weather = nil }
 		S.scrap[t][lane] = {}
 		F.decorate(t, lane)
 	end
 
 	-- Everything in a lane that rises out of the table (the ground and its spots).
 	function F.laneParts(pad)
-		local out = { pad.strip, pad.ring, pad.creature, pad.rim, pad.building }
+		local out = { pad.strip, pad.ring, pad.creature, pad.backRing, pad.back, pad.rim, pad.building }
 		for _, d in ipairs(pad.deco) do
 			if d:IsA("BasePart") then
 				table.insert(out, d)
@@ -670,15 +688,16 @@ function MatchScreen.init(ctx)
 	end
 
 	-- Bring a creature's ring to full glow for a moment (a creature landed, or it's battling).
-	function F.flareRing(team, lane, color)
+	function F.flareRing(team, lane, color, row)
 		local pad = S.pads[team] and S.pads[team][lane]
-		if not (pad and pad.ring and pad.ring.Parent) then
+		local ring = pad and (row == 2 and pad.backRing or pad.ring)
+		if not (ring and ring.Parent) then
 			return
 		end
 		local look = LANDS[pad.landscape] or PLAIN
-		pad.ring.Color = color or look.accent
-		pad.ring.Transparency = 0.15
-		TweenService:Create(pad.ring, TweenInfo.new(0.9 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = RING_REST, Color = look.accent }):Play()
+		ring.Color = color or look.accent
+		ring.Transparency = 0.15
+		TweenService:Create(ring, TweenInfo.new(0.9 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = RING_REST, Color = look.accent }):Play()
 	end
 
 	-- Lanes are kept plain (just their ground) so the creatures stand out; this only clears anything
@@ -707,15 +726,28 @@ function MatchScreen.init(ctx)
 		pad.strip.Color = groundColor(family)
 		pad.creature.Color = groundColor(family):Lerp(WHITE, 0.3)
 		pad.ring.Color = look.accent
+		pad.back.Color = groundColor(family):Lerp(WHITE, 0.12)
+		pad.backRing.Color = look.accent
 		pad.building.Color = groundColor(family):Lerp(Color3.fromRGB(20, 16, 18), 0.4)
 		F.decorate(team, lane)
 		F.riseLane(team, lane, 0, 0.9)
 		F.flareRing(team, lane)
 	end
 
+	-- A unit's spot: "creature" (the Front row), "back" (the Back row) or "building".
+	function F.slotOf(u)
+		if u.kind == "building" then
+			return "building"
+		end
+		return u.row == 2 and "back" or "creature"
+	end
+	function F.rowOfSlot(slot)
+		return slot == "back" and 2 or (slot == "creature" and 1 or nil)
+	end
+
 	function F.slotCF(team, lane, slot)
 		local L = S.layout
-		local z = L.z(team, slot == "building" and L.buildingZ or L.creatureZ)
+		local z = L.z(team, slot == "building" and L.buildingZ or (slot == "back" and L.backZ or L.creatureZ))
 		local cf = CFrame.new(L.x(lane), L.padTop + 0.03, z)
 		if team ~= S.myTeam then
 			cf = cf * CFrame.Angles(0, math.pi, 0)
@@ -727,14 +759,17 @@ function MatchScreen.init(ctx)
 		for t = 1, 2 do
 			for _, pad in pairs(S.pads[t] or {}) do
 				pad.glow.Transparency = 1
+				pad.backGlow.Transparency = 1
+				pad.buildGlow.Transparency = 1
 			end
 		end
 		for _, item in ipairs(list or {}) do
 			local pad = S.pads[item.team] and S.pads[item.team][item.lane]
 			if pad then
-				pad.glow.Color = item.color or color or Color3.fromRGB(255, 210, 90)
-				pad.glow.Transparency = 0.45
-				pad.glow.CFrame = CFrame.new(pad.creature.Position.X, S.layout.groundTop + 0.03, item.slot == "building" and pad.building.Position.Z or pad.creature.Position.Z)
+				local slot = item.slot or (item.row == 2 and "back" or "creature")
+				local g = slot == "building" and pad.buildGlow or (slot == "back" and pad.backGlow or pad.glow)
+				g.Color = item.color or color or Color3.fromRGB(255, 210, 90)
+				g.Transparency = 0.45
 			end
 		end
 	end
@@ -843,7 +878,7 @@ function MatchScreen.init(ctx)
 		if entry.model and entry.model.Parent then
 			return entry.home.Position + Vector3.new(0, entry.height * 0.6, 0)
 		end
-		return F.slotCF(entry.team, entry.lane, entry.kind).Position
+		return F.slotCF(entry.team, entry.lane, entry.slot or entry.kind).Position
 	end
 
 	function F.makeLabel(entry)
@@ -893,23 +928,138 @@ function MatchScreen.init(ctx)
 		entry.statusLabel.Text = table.concat(bits, " ")
 	end
 
+	-- How big a unit's model stands on the board (its spot is about 2 studs across).
+	function F.unitScale(id, kind)
+		local info = CreatureBuilder.info(id) or { height = 2.5, width = 2.5, depth = 2.5 }
+		local widest = math.max(info.width or 2.5, info.depth or 2.5, 0.5)
+		local L = S.layout
+		if kind == "building" then
+			return math.min(0.5, L.pitch * 0.62 / widest, 1.6 / math.max(info.height, 0.5)), info
+		end
+		return math.min(0.6, L.spot * 0.98 / widest, 2.6 / math.max(info.height, 0.5)), info
+	end
+
+	---------------------------------------------------------------------------
+	-- Placement preview: while you place a creature or a building (clicked or dragged), a see-through
+	-- copy of it glides after the pointer and snaps onto the nearest spot it can go, so you see
+	-- exactly where it will land before you let go.
+	---------------------------------------------------------------------------
+	function F.hideGhost(destroy)
+		local g = S.ghost
+		if not g then
+			return
+		end
+		g.spot = nil
+		if destroy then
+			if g.model then
+				g.model:Destroy()
+			end
+			S.ghost = nil
+		elseif g.model then
+			g.model.Parent = nil
+		end
+	end
+
+	function F.ghostModel(id, kind)
+		local model = ctx.buildModel(id)
+		local s = F.unitScale(id, kind)
+		ctx.setScale(model, s)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.CanQuery = false
+				d.CanCollide = false
+				d.CastShadow = false
+				d.Transparency = math.max(d.Transparency, 0.55)
+			elseif d:IsA("ParticleEmitter") or d:IsA("Light") or d:IsA("BillboardGui") or d:IsA("Sparkles") or d:IsA("Fire") or d:IsA("Smoke") then
+				d:Destroy()
+			end
+		end
+		local h = Instance.new("Highlight")
+		h.FillTransparency = 0.75
+		h.FillColor = Color3.fromRGB(255, 220, 120)
+		h.OutlineColor = Color3.fromRGB(255, 220, 120)
+		h.OutlineTransparency = 0.1
+		h.DepthMode = Enum.HighlightDepthMode.Occluded
+		h.Parent = model
+		return model, h
+	end
+
+	-- The spot nearest the pointer (on the table's ground plane) that the picked card can go to.
+	function F.nearestSpot(pick, px, py)
+		local L = S.layout
+		local ray = camera:ViewportPointToRay(px, py)
+		if math.abs(ray.Direction.Y) < 1e-4 then
+			return nil
+		end
+		local tHit = (L.groundTop - ray.Origin.Y) / ray.Direction.Y
+		if tHit <= 0 then
+			return nil
+		end
+		local at = ray.Origin + ray.Direction * tHit
+		local c = CardData.Cards[pick.id]
+		local radius = 0.7 * math.min(L.pitch, L.rowGap) + 0.45
+		local best, bestD = nil, radius
+		for _, item in ipairs(F.spotsFor(pick.action, c)) do
+			local slot = item.slot or (item.row == 2 and "back" or "creature")
+			local p = F.slotCF(S.myTeam, item.lane, slot).Position
+			local d = ((p - at) * Vector3.new(1, 0, 1)).Magnitude
+			if d < bestD then
+				best, bestD = { lane = item.lane, row = item.row, slot = slot, replace = item.replace }, d
+			end
+		end
+		return best
+	end
+
+	function F.updateGhost(dt)
+		local pick = S.pick
+		if not (pick and pick.kind == "card" and pick.step == "lane" and S.layout and F.myTurn()) then
+			F.hideGhost(true)
+			return
+		end
+		local c = CardData.Cards[pick.id]
+		if not c or (c.type ~= "Creature" and c.type ~= "Building") then
+			F.hideGhost(true)
+			return
+		end
+		local g = S.ghost
+		if not g or g.id ~= pick.id or g.handUid ~= pick.handUid then
+			F.hideGhost(true)
+			local model, h = F.ghostModel(pick.id, c.type == "Building" and "building" or "creature")
+			g = { id = pick.id, handUid = pick.handUid, model = model, highlight = h, cf = nil }
+			S.ghost = g
+		end
+		local p = F.pointer()
+		local spot = F.nearestSpot(pick, p.X, p.Y)
+		g.spot = spot
+		if not spot then
+			g.model.Parent = nil
+			g.cf = nil
+			return
+		end
+		local target = F.slotCF(S.myTeam, spot.lane, spot.slot)
+		local color = spot.replace and Color3.fromRGB(255, 150, 70) or Color3.fromRGB(255, 220, 120)
+		g.highlight.FillColor = color
+		g.highlight.OutlineColor = color
+		if not g.cf then
+			g.cf = target * CFrame.new(0, 0.6, 0)
+		end
+		local a = 1 - math.exp(-(dt or 1 / 60) * 16)
+		g.cf = g.cf:Lerp(target, a)
+		local bob = 0.12 + math.sin(clock() * 4) * 0.06
+		g.model:PivotTo(g.cf * CFrame.new(0, bob, 0))
+		g.model.Parent = S.boardFolder
+	end
+
 	function F.spawnUnit(u, quick)
 		local existing = S.units[u.uid]
 		if existing then
 			return existing
 		end
 		local model = ctx.buildModel(u.id)
-		local info = CreatureBuilder.info(u.id) or { height = 2.5, width = 2.5, depth = 2.5 }
-		local widest = math.max(info.width or 2.5, info.depth or 2.5, 0.5)
-		local L = S.layout
-		local s
-		if u.kind == "building" then
-			s = math.min(0.5, L.pitch * 0.62 / widest, 1.6 / math.max(info.height, 0.5))
-		else
-			s = math.min(0.62, L.pitch * 0.82 / widest, 2.6 / math.max(info.height, 0.5))
-		end
+		local s, info = F.unitScale(u.id, u.kind)
 		ctx.setScale(model, s)
-		local home = F.slotCF(u.team, u.lane, u.kind)
+		local slot = F.slotOf(u)
+		local home = F.slotCF(u.team, u.lane, slot)
 		model:PivotTo(home)
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") then
@@ -918,7 +1068,7 @@ function MatchScreen.init(ctx)
 			end
 		end
 		model.Parent = S.boardFolder
-		local entry = { uid = u.uid, id = u.id, kind = u.kind, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false }
+		local entry = { uid = u.uid, id = u.id, kind = u.kind, slot = slot, row = u.row, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false }
 		S.units[u.uid] = entry
 		if u.kind == "creature" then
 			F.makeLabel(entry)
@@ -928,7 +1078,7 @@ function MatchScreen.init(ctx)
 			entry.busy = true
 			model:PivotTo(home * CFrame.new(0, -1.2, 0))
 			if u.kind == "creature" then
-				F.flareRing(u.team, u.lane)
+				F.flareRing(u.team, u.lane, nil, u.row)
 			end
 			F.tween(0.45, function(a)
 				if model.Parent then
@@ -971,11 +1121,15 @@ function MatchScreen.init(ctx)
 		end)
 	end
 
-	function F.moveUnit(entry, lane, team)
+	function F.moveUnit(entry, lane, team, row)
 		entry.lane = lane
 		entry.team = team or entry.team
+		if entry.kind == "creature" and row then
+			entry.row = row
+			entry.slot = row == 2 and "back" or "creature"
+		end
 		local from = entry.home
-		local to = F.slotCF(entry.team, lane, entry.kind)
+		local to = F.slotCF(entry.team, lane, entry.slot or entry.kind)
 		entry.home = to
 		entry.busy = true
 		F.tween(0.45, function(a)
@@ -1200,6 +1354,7 @@ function MatchScreen.init(ctx)
 
 	function F.clearPick()
 		S.pick = nil
+		F.hideGhost(true)
 		ui.promptBar.Visible = false
 		for _, c in ipairs(ui.promptOptions:GetChildren()) do
 			if not c:IsA("UIListLayout") then
@@ -1248,7 +1403,13 @@ function MatchScreen.init(ctx)
 	function F.targetGlows(targets)
 		local list = {}
 		for _, t in ipairs(targets or {}) do
-			table.insert(list, { team = t.team, lane = t.lane, color = t.team == S.myTeam and Color3.fromRGB(110, 255, 140) or Color3.fromRGB(255, 90, 80) })
+			local row = t.row
+			if not row then
+				-- (a whole-lane target: light the spot of the creature it would hit first)
+				local l = S.view and S.view.lanes[t.team] and S.view.lanes[t.team][t.lane]
+				row = (l and not l.creature and l.back) and 2 or 1
+			end
+			table.insert(list, { team = t.team, lane = t.lane, row = row, color = t.team == S.myTeam and Color3.fromRGB(110, 255, 140) or Color3.fromRGB(255, 90, 80) })
 		end
 		F.glowLanes(list)
 	end
@@ -1279,12 +1440,8 @@ function MatchScreen.init(ctx)
 		end
 		if c.type == "Creature" or c.type == "Building" then
 			S.pick = { kind = "card", handUid = uid, id = entry.id, step = "lane", action = a }
-			local list = {}
-			for _, lane in ipairs(a.lanes) do
-				table.insert(list, { team = S.myTeam, lane = lane, slot = c.type == "Building" and "building" or "creature" })
-			end
-			F.glowLanes(list)
-			F.prompt("Pick a lane for " .. c.name, {})
+			F.glowLanes(F.spotsFor(a, c))
+			F.prompt(c.type == "Building" and ("Pick a building slot for " .. c.name) or ("Pick a Front or Back spot for " .. c.name), {})
 		elseif a.needsTarget then
 			S.pick = { kind = "card", handUid = uid, id = entry.id, step = "target", action = a }
 			F.targetGlows(a.targets)
@@ -1294,45 +1451,94 @@ function MatchScreen.init(ctx)
 		end
 	end
 
-	-- A click on the table: a lane, a creature or a hero.
+	-- Where a creature or building card can go, as glows: creatures on any of your Front or Back
+	-- spots (gold when empty, orange when it would replace one of yours), buildings in a building slot.
+	function F.spotsFor(a, c)
+		local list = {}
+		if c.type == "Building" then
+			for _, lane in ipairs(a.lanes or {}) do
+				table.insert(list, { team = S.myTeam, lane = lane, slot = "building" })
+			end
+		else
+			for _, t in ipairs(a.tiles or {}) do
+				table.insert(list, { team = S.myTeam, lane = t.lane, row = t.row, replace = t.replace, color = t.replace and Color3.fromRGB(255, 150, 70) or nil })
+			end
+		end
+		return list
+	end
+
+	-- The spot a hit on the board means for the card being placed (or nil).
+	function F.spotForHit(pick, hit)
+		if not (hit and hit.team == S.myTeam and hit.lane) then
+			return nil
+		end
+		local c = CardData.Cards[pick.id]
+		if c.type == "Building" then
+			if table.find(pick.action.lanes or {}, hit.lane) then
+				return { lane = hit.lane, slot = "building" }
+			end
+			return nil
+		end
+		local row = hit.row
+		if not row then
+			return nil
+		end
+		for _, t in ipairs(pick.action.tiles or {}) do
+			if t.lane == hit.lane and t.row == row then
+				return { lane = t.lane, row = t.row, slot = row == 2 and "back" or "creature", replace = t.replace }
+			end
+		end
+		return nil
+	end
+
+	-- A click on the table: a spot, a creature or a hero.
 	function F.onBoardClick(hit)
 		local pick = S.pick
 		if not F.myTurn() then
 			return
 		end
 		if pick and pick.kind == "card" and pick.step == "lane" then
-			if hit.team == S.myTeam and hit.lane and table.find(pick.action.lanes, hit.lane) then
+			local spot = (S.ghost and S.ghost.spot) or F.spotForHit(pick, hit)
+			if spot then
 				local c = CardData.Cards[pick.id]
 				if c.type == "Creature" and c.target and pick.action.targets and #pick.action.targets > 0 then
-					pick.lane = hit.lane
+					pick.lane = spot.lane
+					pick.row = spot.row
 					pick.step = "target"
+					F.hideGhost(true)
 					F.targetGlows(pick.action.targets)
 					F.prompt("Pick a target for " .. c.name .. " (or skip)", {
 						{
 							text = "Skip",
 							name = "Skip",
 							fn = function()
-								F.send({ kind = "play", handUid = pick.handUid, lane = pick.lane })
+								F.send({ kind = "play", handUid = pick.handUid, lane = pick.lane, row = pick.row })
 							end,
 						},
 					})
 				else
-					F.send({ kind = "play", handUid = pick.handUid, lane = hit.lane })
+					F.send({ kind = "play", handUid = pick.handUid, lane = spot.lane, row = spot.row })
 				end
 			end
 			return
 		end
 		if pick and (pick.kind == "card" or pick.kind == "bigmove") and pick.step == "target" then
 			local targets = pick.kind == "bigmove" and pick.action.targets or pick.action.targets
+			-- A target on a row matches that row; a whole-lane target matches anywhere in the lane.
+			local chosen = nil
 			for _, t in ipairs(targets or {}) do
-				if t.team == hit.team and t.lane == hit.lane then
-					if pick.kind == "bigmove" then
-						F.send({ kind = "bigmove", target = t })
-					else
-						F.send({ kind = "play", handUid = pick.handUid, lane = pick.lane, target = t })
-					end
-					return
+				if t.team == hit.team and t.lane == hit.lane and (t.row == nil or t.row == hit.row) then
+					chosen = t
+					break
 				end
+			end
+			if chosen then
+				if pick.kind == "bigmove" then
+					F.send({ kind = "bigmove", target = chosen })
+				else
+					F.send({ kind = "play", handUid = pick.handUid, lane = pick.lane, row = pick.row, target = chosen })
+				end
+				return
 			end
 			return
 		end
@@ -1360,8 +1566,21 @@ function MatchScreen.init(ctx)
 				})
 			end
 		end
+		local shift = F.legal("shift", "uid", entry.uid)
+		if shift then
+			local other = entry.row == 2 and "Front" or "Back"
+			table.insert(options, {
+				text = "↕ SHIFT to " .. other .. " (" .. (S.view.shiftCost or 1) .. "✨)",
+				name = "Shift",
+				color = Color3.fromRGB(70, 130, 200),
+				width = 220,
+				fn = function()
+					F.send({ kind = "shift", uid = entry.uid })
+				end,
+			})
+		end
 		S.pick = { kind = "unit", uid = entry.uid }
-		F.glowLanes({ { team = entry.team, lane = entry.lane, color = Color3.fromRGB(150, 200, 255) } })
+		F.glowLanes({ { team = entry.team, lane = entry.lane, row = entry.row, color = Color3.fromRGB(150, 200, 255) } })
 		local text = c.name
 		if c.sparkText then
 			text = text .. ": " .. c.sparkText .. (spark and "" or (entry.data and entry.data.sparked and " (already Sparked)" or " (not enough magic)"))
@@ -1446,6 +1665,8 @@ function MatchScreen.init(ctx)
 		end
 		if d.ghost then
 			d.ghost.Position = UDim2.fromOffset(p.X, p.Y)
+			-- over a spot, the see-through creature on the table shows where it goes instead
+			d.ghost.Visible = not (S.ghost and S.ghost.spot)
 		end
 	end
 
@@ -1482,8 +1703,8 @@ function MatchScreen.init(ctx)
 		end
 		local before = S.pick and S.pick.handUid == d.uid and S.pick.step
 		local hit = F.boardAt(p.X, p.Y, true)
-		if hit and hit.lane and before then
-			F.onBoardClick(hit)
+		if before and ((hit and hit.lane) or (S.ghost and S.ghost.spot)) then
+			F.onBoardClick(hit or {})
 		end
 		-- Missed: put it back (unless it went on to pick a target).
 		if S.pick and S.pick.handUid == d.uid and S.pick.step == before then
@@ -1836,15 +2057,16 @@ function MatchScreen.init(ctx)
 			for lane, l in ipairs(v.lanes[t]) do
 				F.setLandscape(t, lane, l.landscape)
 				F.setScrap(t, lane, l.scrap or 0)
-				for _, u in ipairs({ l.creature, l.building }) do
+				for _, u in ipairs({ l.creature, l.back, l.building }) do
 					if u then
 						present[u.uid] = true
 						local entry = S.units[u.uid]
 						if not entry then
 							entry = F.spawnUnit(u, true)
-						elseif entry.lane ~= u.lane or entry.team ~= u.team then
-							entry.lane, entry.team = u.lane, u.team
-							entry.home = F.slotCF(u.team, u.lane, u.kind)
+						elseif entry.lane ~= u.lane or entry.team ~= u.team or (u.kind == "creature" and entry.row ~= u.row) then
+							entry.lane, entry.team, entry.row = u.lane, u.team, u.row
+							entry.slot = F.slotOf(u)
+							entry.home = F.slotCF(u.team, u.lane, entry.slot)
 							entry.model:PivotTo(entry.home)
 						end
 						entry.owner = u.owner
@@ -1865,6 +2087,13 @@ function MatchScreen.init(ctx)
 	---------------------------------------------------------------------------
 
 	local ANIM = {}
+
+	local function unitText(e, text, color)
+		local entry = S.units[e.uid]
+		if entry then
+			F.floatText(F.unitPosition(entry) + Vector3.new(0, 0.4, 0), text, color)
+		end
+	end
 
 	ANIM.turn = function(e)
 		local v = S.view
@@ -1965,9 +2194,33 @@ function MatchScreen.init(ctx)
 	ANIM.move = function(e)
 		local entry = S.units[e.uid]
 		if entry then
-			F.moveUnit(entry, e.to, e.team)
+			F.moveUnit(entry, e.to, e.team, e.toRow)
+			if e.how == "stepUp" then
+				unitText(e, "⬆ Steps up", Color3.fromRGB(200, 230, 255))
+			end
 		end
-		F.step(0.45)
+		F.step(e.how == "swap" and 0.25 or 0.45)
+	end
+
+	-- Shift: a creature trades rows in its lane (the move events right after it do the moving).
+	ANIM.shift = function(e)
+		local entry = S.units[e.uid]
+		if entry then
+			F.log(F.seatName(S.view, e.seat) .. " shifts " .. cardName(entry.id) .. ".", Color3.fromRGB(200, 230, 255))
+			unitText(e, "↕ Shift", Color3.fromRGB(200, 230, 255))
+			F.sound("swish", { volume = 0.4, pitch = 1.2 })
+		end
+		F.step(0.2)
+	end
+
+	-- Overkill: the damage left over after a creature falls rolls on down the lane.
+	ANIM.overkill = function(e)
+		local entry = S.units[e.uid]
+		local pos = entry and F.unitPosition(entry) or (S.pads[e.team] and S.pads[e.team][e.lane] and S.pads[e.team][e.lane].creature.Position)
+		if pos then
+			F.floatText(pos + Vector3.new(0, 0.9, 0), "Overkill " .. tostring(e.amount) .. (e.toHero and " → hero!" or " →"), Color3.fromRGB(255, 160, 90))
+		end
+		F.step(0.2)
 	end
 
 	ANIM.battle = function(e)
@@ -2089,13 +2342,6 @@ function MatchScreen.init(ctx)
 		local entry = S.units[e.unit.uid]
 		if entry then
 			F.setStats(entry, e.unit)
-		end
-	end
-
-	local function unitText(e, text, color)
-		local entry = S.units[e.uid]
-		if entry then
-			F.floatText(F.unitPosition(entry) + Vector3.new(0, 0.4, 0), text, color)
 		end
 	end
 
@@ -2565,16 +2811,32 @@ function MatchScreen.init(ctx)
 		if node and node:IsA("Model") then
 			for _, entry in pairs(S.units) do
 				if entry.model == node then
-					return { team = entry.team, lane = entry.lane, slot = entry.kind, unit = entry }
+					local slot = entry.slot or entry.kind
+					return { team = entry.team, lane = entry.lane, slot = slot, row = F.rowOfSlot(slot), unit = entry }
 				end
 			end
 			return nil
 		end
 		local team, lane = inst:GetAttribute("Team"), inst:GetAttribute("Lane")
 		if team and lane then
+			local slot = inst:GetAttribute("Slot")
+			local L = S.layout
+			local snapped = false
+			if slot == "strip" and L then
+				-- The ground of a lane: the nearest spot to where the pointer landed.
+				local d = math.abs(hit.Position.Z)
+				if d >= (L.backZ + L.buildingZ) / 2 then
+					slot = "building"
+				elseif d >= (L.creatureZ + L.backZ) / 2 then
+					slot = "back"
+				else
+					slot = "creature"
+				end
+				snapped = true
+			end
 			local l = S.view and S.view.lanes[team] and S.view.lanes[team][lane]
-			local u = l and l.creature and S.units[l.creature.uid]
-			return { team = team, lane = lane, slot = inst:GetAttribute("Slot"), unit = u }
+			local u = l and (slot == "building" and l.building or (slot == "back" and l.back or l.creature))
+			return { team = team, lane = lane, slot = slot, row = F.rowOfSlot(slot), unit = u and S.units[u.uid], snapped = snapped }
 		end
 		return nil
 	end
@@ -2588,7 +2850,9 @@ function MatchScreen.init(ctx)
 			return
 		end
 		local hit = F.boardAt(pos.X, pos.Y, false)
-		if hit and hit.lane then
+		if S.pick and S.pick.step == "lane" and S.ghost and S.ghost.spot then
+			F.onBoardClick(hit or {}) -- (the placement preview has snapped onto a spot)
+		elseif hit and hit.lane then
 			F.onBoardClick(hit)
 		elseif S.pick and S.pick.kind == "unit" then
 			F.clearPick()
@@ -2606,7 +2870,8 @@ function MatchScreen.init(ctx)
 		if hit and hit.lane then
 			local l = S.view.lanes[hit.team][hit.lane]
 			local fam = l.landscape
-			tip = (CardData.Terrains[fam] or fam) .. " (" .. fam .. " creatures +1 ⚔)"
+			local where = hit.slot == "building" and "Building slot" or (hit.row == 2 and "Back row" or "Front row")
+			tip = where .. " · " .. (CardData.Terrains[fam] or fam) .. " (" .. fam .. " creatures +1 ⚔)"
 			if l.scrap and l.scrap > 0 then
 				tip = tip .. " · Scrap ×" .. l.scrap
 			end
@@ -2616,13 +2881,8 @@ function MatchScreen.init(ctx)
 			end
 			if not S.handHover then
 				local u = hit.unit and hit.unit.data
-				local b = l.building
-				if hit.slot == "building" and b then
-					F.preview(b.id)
-				elseif u then
+				if u then
 					F.preview(u.id)
-				elseif l.creature then
-					F.preview(l.creature.id)
 				else
 					F.hidePreview()
 				end
@@ -2775,6 +3035,7 @@ function MatchScreen.init(ctx)
 		F.dragUpdate()
 		F.updateCoach()
 		F.updateHover()
+		F.updateGhost(dt)
 		F.idle(dt)
 	end
 

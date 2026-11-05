@@ -346,7 +346,7 @@ function Juice.stars(parent, sx, sy, count, opts)
 			BackgroundTransparency = 1,
 			Text = opts.text or "★",
 			TextScaled = true,
-			Font = Enum.Font.GothamBold,
+			Font = Enum.Font.FredokaOne,
 			TextColor3 = opts.color or Juice.Sparks[math.random(1, #Juice.Sparks)],
 			ZIndex = opts.zIndex or 50,
 		}, parent)
