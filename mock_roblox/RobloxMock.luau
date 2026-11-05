@@ -633,6 +633,7 @@ local EVENTS = {
 	OnServerEvent = true, OnClientEvent = true, CharacterAdded = true, PlayerRemoving = true, PlayerAdded = true,
 	InputBegan = true, InputEnded = true, RenderStepped = true, Heartbeat = true, Changed = true, ChildAdded = true,
 	Touched = true, Died = true, FocusLost = true, Focused = true,
+	AttributeChanged = true, InputChanged = true, ChildRemoved = true, DescendantAdded = true, MouseButton2Click = true,
 }
 
 local function defaultFor(t)
@@ -989,6 +990,9 @@ function methods.SetAttribute(self, name, value)
 	r.attrs[name] = value
 	if old ~= value and r.attrSignals and r.attrSignals[name] then
 		r.attrSignals[name]:Fire()
+	end
+	if old ~= value and r.signals and r.signals.AttributeChanged then
+		r.signals.AttributeChanged:Fire(name)
 	end
 end
 function methods.GetAttributes(self)

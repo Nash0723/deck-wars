@@ -49,17 +49,15 @@ The tests run outside Roblox with a small Luau runner in `tools/luaurun` (needs 
 
 ```
 cargo build --release --manifest-path tools/luaurun/Cargo.toml
-tools/luaurun/target/release/luaurun tests/run_tests.luau src/shared                   # rules: 211 checks + 120 bot games, about 1 minute
-tools/luaurun/target/release/luaurun -D BAL_GAMES=60 bal/balance.luau src/shared         # deck balance, bot vs bot
-tools/luaurun/target/release/luaurun mock_roblox/harness.luau mock_roblox                # plays matches in a simulated Studio, about 8 minutes
-tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every rig and move
-tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
+tools/luaurun/target/release/luaurun tests/lane_tests.luau src/shared                    # rules: two rows per lane, Shift, overkill, Ranged, plus 1v1 and 2v2 bot games
+tools/luaurun/target/release/luaurun tests/deck_tests.luau src/shared src/server src/econ # deck rules, the starter collection, saving decks
+tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every world
 tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl  # saves, session locks, Gems/Coins, Shop, boosts, Robux receipts
-tools/luaurun/target/release/luaurun tests/deck_tests.luau src/shared src/econ src/server src/packbrawl  # deck rules, the starter collection, saving decks
-tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the Shop, dev panel and saving in a simulated Studio
+tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the whole game in a simulated Studio: title, daily reward, Shop, dev panel, a full bot match
+tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 ```
 
-`-D NAME=VALUE` sets a setting before the script runs: `SOAK_GAMES` for the tests, `BAL_GAMES`, `BAL_DIFF`, `BAL_SEED`, `BAL_FIRSTDRAW` and `BAL_CARDS` (print how often each card was played and won) for the balance check.
+`-D NAME=VALUE` sets a setting before the script runs, for example `-D SOAK_GAMES=200` for more bot games in the rules tests (put it before the script path).
 
 GitHub runs the rules tests, the Pack Brawl tests and the economy tests and builds both place files for every pull request (`.github/workflows/build.yml`).
 
@@ -83,27 +81,14 @@ GitHub runs the rules tests, the Pack Brawl tests and the economy tests and buil
 | `docs/` | Pictures for this README |
 
 ## How to play
-- In the menu room, click a station or a button at the bottom, or press **A / ←** and **D / →** to go to the station before or after (it wraps around; on a gamepad the D-pad or bumpers). **S / ↓** (or Backspace, gamepad B) goes back to the room view. The station you're at has its button lit up.
-- The **Settings** station (the radio) has: Sound effects and Music volume, Action camera, Camera lean, Screen shake (Off, Low, Full), Table speed (Slow, Normal, Fast), Pack fights (Full, or Quick = always fast-forwarded), Quality (High, or Low = no shadows or glow, for slower devices) and Background blur, plus Reset to defaults. In a match the **⚙ Settings** button opens the same options. Changes apply at once and are saved to your Roblox account.
-- At the **Deck Shelf** you see your collection and your deck slots. New players get the Starter Deck in slot 1. Press **+ New** or **Edit** to open the deck builder (see "Build your own decks" below).
-- Click the Duel Table (or its button). Pick one of your ready decks or a practice deck, and a bot difficulty, then press "Sit down and play!".
-- Each turn you get 1 more energy (up to 8) and draw a card. The first player starts with 4 cards and skips the draw on their very first turn; the second player starts with 5.
-- **Play a card:** click it in your hand. Gold tiles show where it can go, and a see-through copy of the card follows your mouse and glides onto the nearest one. Creatures go on your Backline or Midline (or anywhere in your half in a lane with your Bunny Burrow). Buildings go in the building slots behind your rows; a building helps its lane, or one of your rows, and while you aim it the tiles it would help light up. Building on top of your own building replaces it. Spells that need a target light up what they can hit.
-- **Command a creature:** your creatures that can still act glow green. Click one: blue tiles are where it can walk (1 tile, or 2 if it's Fast), green tiles are friends it can swap places with, and red ones are what it can hit (on the 8 tiles around it, or 2 tiles away if it's Ranged). The buttons under the message are its other commands: **🛡 Defend** (until your next turn it takes 1 less damage and hits back 1 harder) and its family chant (like **✨ Picnic · 2⚡**). A grey chant button tells you why it can't be used right now. When the creature stands in the enemy's half, the enemy hero's pedestal glows red, so click the hero to hit it. New creatures sleep (zZ) for a turn unless they have Zoom.
-- A creature can walk first and then attack, defend or chant. After it walks it stays picked, so you can give it its command right away.
-- In a fight both creatures hit each other. A Ranged creature hitting from 2 tiles away doesn't get hit back.
-- **Big Move:** once you've dealt 10 damage, the READY! button lights up. You can use it once per match.
-- Press **END TURN** when you're done. Right-click or press Cancel to stop aiming.
-- You win by bringing the enemy hero from 20 health to 0.
-
-| Family | Chant | Energy | What it does |
-| --- | --- | --- | --- |
-| Snack | Picnic | 2 | Heals itself and your creatures next to it 2 (Snacks get Power, even at full health) |
-| Junk | Scrap Toss | 1 | 1 damage to an enemy creature or building up to 2 tiles away |
-| Weather | Gust | 1 | Blows an enemy creature up to 2 tiles away 1 tile back and Soaks it. If something is in the way, it takes 1 damage instead |
-| Critter | Call a Friend | 2 | A 1/1 Pigeon flies in next to it |
-| Spooky | Raise | 2 | Brings back your last creature that popped, next to it, with 1 health. Once per turn. If it pops again, it just fades away |
-| Robo | Power Up | 1 | Gets 1 Power (+1 attack, up to 3) |
+- **The room:** click a station or a button at the bottom (⚔ Duel Table, 📚 Deck Shelf, 🎁 Pack Party, 🛒 Shop, 🏆 Trophy Wall, ⚙ Settings), or press **A / ←** and **D / →** to go to the station before or after. **S / ↓** (or Backspace, gamepad B) goes back to the room view. Top right, **👥 Party** and **⚙** are always there, in the room and at the table.
+- **Duel Table:** Bot, 1v1, 2v2 or Cup. Pick one of your own decks (built at the Deck Shelf) or a practice deck, a bot difficulty and a background world, then "Sit down and play!".
+- **The board:** each side has **4 lanes**, and every lane has a **Front** spot (nearest the middle), a **Back** spot behind it and a **building slot** behind those. Your deck picks the landscape of each lane; a creature on its own landscape gets +1 attack.
+- **Play a card:** drag it onto a glowing spot, or click it and then the spot. A see-through copy of the creature glides after the pointer and snaps onto the nearest spot it can go (orange means it would replace one of yours). Buildings go in a building slot and help both rows of their lane.
+- **Spark and Shift:** click one of your creatures. 🌀 **Spark** uses the purple ability on its card; ↕ **Shift** (1 ✨, once a turn) swaps it to the other row of its lane (trading places with your creature there). Either way that creature skips its attack this turn.
+- **BATTLE:** Front creatures hit the first enemy in their lane (Front first, then Back), or the hero if the lane is empty. Back creatures wait unless they're **Ranged** (they shoot the weakest enemy in their lane or the lanes next to it) and step up to the Front when it's free. **Overkill**: damage left over after a creature falls rolls on to the next one in the lane, then the hero.
+- **Big Move:** deal enough damage and your hero's ★ Big Move is ready, once a match. You win when the other side's hit points reach 0.
+- **Trophy Wall:** your level, the daily reward, today's three quests and the achievements (claim each once for Gems).
 
 ## Change the speed
 | Setting | Where | Default |
@@ -224,7 +209,15 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
-## Latest update: a 4-lane board with building rows, and decks you build yourself
+## The merged game (Nash's build + jaault's build)
+One place, one save. From jaault's build: the hub room look, the match backgrounds and props, the fonts, levels and XP, quests on the Trophy Wall, the Party and ⚙ buttons top right, the Duel Table modes (Bot, 1v1, 2v2, Cup) and the lane board, now with **two rows per lane** (Front and Back) plus a building slot. From Nash's build: the title screen, the station icons, the developer panel with free rolls (DNash2307 and donatjalt), the deck builder and its rules, the Pack Shelf with the Pack Brawl openings (now played inside the pack's own world), the Shop (packs for Gems, items for Coins), the settings and the hover placement preview. New: achievements on the Trophy Wall, Shift, overkill, Ranged from the Back row, and a bolder outlined cartoon look for buttons and panels.
+
+- **One save:** levels, XP, quests and achievements live on the same profile as Gems, Coins, cards and decks (EconomyManager / ProfileStore). The daily reward pays Gems and Coins and waits for you to claim it from the pop-up.
+- **Match rewards:** wins pay Coins (with the anti-farming limits) plus Gems and XP: bots +20 / +35 / +50, friends +40, a Cup +150 (runner-up +50). A match too short to pay Coins pays no Gems or XP either.
+- **Not checked in real Studio yet.** Everything ran in the simulated Studio (title, daily reward, Shop, dev free roll and a full bot match on the two-row board), but look at it in Studio before publishing.
+
+## Earlier update (Nash's build before the merge): a 4-lane board with building rows, and decks you build yourself
+(The tile board below was replaced by the two-row lane board in the merge; the deck builder and its rules are kept.)
 
 ### The new board
 - Each side has **4 lanes** (columns) and **3 rows**: Frontline (next to the middle), Midline and Backline. Behind each side is a row of **4 building slots**. From your chair, top to bottom: their building slots, their Backline, Midline, Frontline, then your Frontline, Midline, Backline and your building slots.
