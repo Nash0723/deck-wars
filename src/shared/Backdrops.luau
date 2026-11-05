@@ -1,6 +1,7 @@
 -- Match backgrounds: the world around the Duel Table during a match.
 --
--- You pick one on the Duel Table panel before you start ("Background"). It's only on your screen,
+-- You pick one at the Deck Shelf ("Backgrounds", see BackdropPicker). Most are unlocked in the Shop
+-- or on the Trophy Road (ShopCatalog cosmetics of kind "backdrop"). It's only on your screen,
 -- so everyone at a table can have their own. "Card Den" keeps the room. The others hide the
 -- room (on your screen), build a themed world out of parts around the table and change the sky and
 -- lighting. When the match ends everything goes back exactly as it was.
@@ -32,10 +33,16 @@ Backdrops.ByKey = {}
 for _, b in ipairs(Backdrops.List) do
 	Backdrops.ByKey[b.key] = b
 end
-Backdrops.choice = "Room" -- what the Duel Table panel has picked
+Backdrops.choice = "Room" -- the equipped background (DeckWarsClient keeps it in step with the save)
+-- The worlds you own (keys), for "Surprise me". Nil = all of them (tests, the pull stage).
+Backdrops.owned = nil
+
+function Backdrops.setOwned(keys)
+	Backdrops.owned = keys
+end
 
 -- What's been changed, so clear() can put it all back.
-local S = { folder = nil, saved = {}, added = {}, removed = {}, current = nil, count = 0 }
+local S = { folder = nil, saved = {}, added = {}, removed = {}, current = nil, count = 0, movers = {}, t = 0 }
 
 local function save(inst, prop)
 	table.insert(S.saved, { inst, prop, inst[prop] })
@@ -62,6 +69,9 @@ local function make(props, className)
 	end
 	p.Parent = S.folder
 	S.count += 1
+	if S.collecting then
+		table.insert(S.collecting, p)
+	end
 	return p
 end
 
@@ -979,6 +989,405 @@ function Backdrops.buildInto(key, folder, offset)
 	return theme, n
 end
 
+
+---------------------------------------------------------------------------
+-- Life: the moving parts of each world (added 5 Nov). Built with the world in a match and in a
+-- Deck Shelf preview, never in the pull stage (buildInto). Backdrops.update(dt) runs them.
+--
+-- A mover is either a group of parts that follows a pivot (fn(t) -> CFrame) or a custom
+-- function(t, dt) that changes properties (lights flicker, colours shift...).
+---------------------------------------------------------------------------
+local LIFE = {}
+
+local function group(parts, pivot)
+	local g = { pivot = pivot, parts = {} }
+	for _, p in ipairs(parts) do
+		table.insert(g.parts, { p, pivot:ToObjectSpace(p.CFrame) })
+	end
+	return g
+end
+local function follow(g, fn)
+	table.insert(S.movers, { group = g, fn = fn })
+end
+local function every(fn)
+	table.insert(S.movers, { fn = fn })
+end
+-- Collects the parts made by `build` into a list (for groups).
+local function collect(build)
+	local outer = S.collecting
+	S.collecting = {}
+	build()
+	local list = S.collecting
+	S.collecting = outer
+	if outer then
+		for _, p in ipairs(list) do
+			table.insert(outer, p)
+		end
+	end
+	return list
+end
+
+-- A spinning wheel of `n` spokes around `center`, turned to face the seat.
+local function wheel(center, radius, n, colors, hubColor, mat)
+	local face = towardSeat(center)
+	local parts = collect(function()
+		for k = 0, n - 1 do
+			local a = k / n * math.pi * 2
+			local tip = (face * CFrame.new(math.cos(a) * radius, math.sin(a) * radius, 0)).Position
+			B.beam(center, tip, 0.5, 0.5, colors[(k % #colors) + 1], mat)
+			B.ball(tip, radius * 0.16, colors[(k % #colors) + 1], Enum.Material.Neon)
+		end
+		B.facing(center, center + face.LookVector, radius * 0.25, 0.8, hubColor, Enum.Material.Metal)
+	end)
+	return group(parts, face), face
+end
+
+function LIFE.Candy(rng)
+	-- a candy Ferris wheel on the east hills, turning slowly
+	local c = Vector3.new(95, 34, -95)
+	B.beam(Vector3.new(85, 0, -95), c, 1.2, 1.2, rgb(255, 250, 250))
+	B.beam(Vector3.new(105, 0, -95), c, 1.2, 1.2, rgb(255, 250, 250))
+	local g, face = wheel(c, 24, 12, { rgb(255, 90, 160), rgb(255, 220, 70), rgb(90, 210, 255), rgb(160, 110, 255) }, rgb(255, 245, 250), Enum.Material.SmoothPlastic)
+	follow(g, function(t)
+		return face * CFrame.Angles(0, 0, t * 0.12)
+	end)
+	-- gumdrop hot-air balloons drifting round the plaza
+	for i = 1, 3 do
+		local r = 70 + i * 22
+		local h = 38 + i * 9
+		local parts = collect(function()
+			local col = ({ rgb(255, 110, 170), rgb(120, 220, 190), rgb(255, 200, 80) })[i]
+			B.ball(Vector3.new(0, h, 0), 9, col, Enum.Material.SmoothPlastic, { Reflectance = 0.1 })
+			B.cyl(CFrame.new(0, h - 4.6, 0), 1.4, 5, col:Lerp(rgb(255, 255, 255), 0.4))
+			B.block(CFrame.new(0, h - 8.6, 0), Vector3.new(2.4, 1.8, 2.4), rgb(150, 95, 60), Enum.Material.Wood)
+			for _, sx in ipairs({ -1, 1 }) do
+				B.beam(Vector3.new(sx * 1.1, h - 7.7, 0), Vector3.new(sx * 2.4, h - 4.4, 0), 0.12, 0.12, rgb(90, 60, 40))
+			end
+		end)
+		local start = rng:NextNumber(0, 6.28)
+		follow(group(parts, CFrame.new()), function(t)
+			local a = start + t * (0.025 + i * 0.006)
+			return CFrame.new(math.sin(a) * r, math.sin(t * 0.4 + i) * 2.5, -math.cos(a) * r - 30)
+		end)
+	end
+	-- the rainbow shimmers
+	local bands = {}
+	for _, d in ipairs(S.folder:GetChildren()) do
+		if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Transparency > 0.3 and d.Transparency < 0.4 then
+			table.insert(bands, { d, d.Transparency, d.Position.X * 0.03 })
+		end
+	end
+	every(function(t)
+		for _, b in ipairs(bands) do
+			b[1].Transparency = math.clamp(b[2] + 0.12 * math.sin(t * 1.2 + b[3]), 0, 1)
+		end
+	end)
+end
+
+function LIFE.Meadow(rng)
+	-- a windmill on the hill to the north-east, its sails turning
+	local base = Vector3.new(70, 0, -120)
+	B.cone(CFrame.new(base), 34, 13, rgb(235, 215, 185), Enum.Material.Brick, 6, nil, 8)
+	B.cone(CFrame.new(base + Vector3.new(0, 34, 0)), 7, 10, rgb(170, 70, 55), Enum.Material.Wood, 4)
+	local hub = base + Vector3.new(0, 32, 0)
+	local face = towardSeat(hub)
+	hub = hub + face.LookVector * 5.5
+	local sails = collect(function()
+		for k = 0, 3 do
+			local a = k * math.pi / 2
+			local tip = (face * CFrame.new(math.cos(a) * 19, math.sin(a) * 19, 0)).Position + face.LookVector * 5.5
+			B.beam(hub, tip, 0.6, 0.6, rgb(120, 80, 50), Enum.Material.Wood)
+			-- the sail: a cloth panel along the arm, lying in the plane the sails turn in
+			B.block(CFrame.new(hub) * (face - face.Position) * CFrame.Angles(0, 0, a) * CFrame.new(11.5, 2.6, 0.3), Vector3.new(11, 4.6, 0.2), rgb(250, 245, 230), Enum.Material.Fabric)
+		end
+		B.facing(hub, hub + face.LookVector, 2.4, 1, rgb(90, 60, 40), Enum.Material.Wood)
+	end)
+	local pivot = CFrame.new(hub) * (face - face.Position)
+	follow(group(sails, pivot), function(t)
+		return pivot * CFrame.Angles(0, 0, -t * 0.35)
+	end)
+	-- butterflies flitting over the grass
+	local WING = { rgb(255, 170, 60), rgb(130, 200, 255), rgb(255, 120, 190), rgb(250, 240, 120) }
+	for i = 1, 9 do
+		local wings = {}
+		local col = WING[(i % #WING) + 1]
+		local left = B.block(CFrame.new(-0.35, 0, 0), Vector3.new(0.7, 0.05, 0.6), col, Enum.Material.SmoothPlastic)
+		local right = B.block(CFrame.new(0.35, 0, 0), Vector3.new(0.7, 0.05, 0.6), col, Enum.Material.SmoothPlastic)
+		wings[1], wings[2] = left, right
+		local home = spot(rng, 14, 40, 120)
+		local ph = rng:NextNumber(0, 6.28)
+		every(function(t)
+			local p = home + Vector3.new(math.sin(t * 0.5 + ph) * 5, 2.2 + math.sin(t * 1.3 + ph) * 0.8, math.cos(t * 0.37 + ph) * 4)
+			local dir = Vector3.new(math.cos(t * 0.5 + ph), 0, -math.sin(t * 0.37 + ph))
+			local cf = CFrame.lookAt(p, p + dir)
+			local flap = math.sin(t * 14 + ph) * 0.9
+			left.CFrame = cf * CFrame.Angles(0, 0, flap) * CFrame.new(-0.35, 0, 0)
+			right.CFrame = cf * CFrame.Angles(0, 0, -flap) * CFrame.new(0.35, 0, 0)
+		end)
+	end
+	-- the lily pond glints
+	every(function(t)
+		local k = 0.5 + 0.5 * math.sin(t * 0.8)
+		Lighting.ExposureCompensation = (THEMES.Meadow.lighting.ExposureCompensation or 0) + 0.04 * k
+	end)
+end
+
+function LIFE.Ice(rng)
+	-- floating crystal shards turning over the lake
+	local ICE = { rgb(170, 235, 255), rgb(130, 200, 255), rgb(210, 180, 255) }
+	for i = 1, 8 do
+		local a = math.rad(-120 + i * 30)
+		local r = 26 + (i % 3) * 7
+		local home = Vector3.new(math.sin(a) * r, 9 + (i % 4) * 2, -math.cos(a) * r)
+		local shard = B.block(CFrame.new(home), Vector3.new(1.2, 3.2, 1.2), ICE[(i % 3) + 1], Enum.Material.Glass, { Transparency = 0.15, Reflectance = 0.3 })
+		local core = B.block(CFrame.new(home), Vector3.new(0.5, 2, 0.5), rgb(220, 250, 255), Enum.Material.Neon, { Transparency = 0.3 })
+		local ph = i * 0.9
+		every(function(t)
+			local cf = CFrame.new(home + Vector3.new(0, math.sin(t * 0.7 + ph) * 1.2, 0)) * CFrame.Angles(0.3, t * 0.4 + ph, 0.2)
+			shard.CFrame = cf
+			core.CFrame = cf
+			core.Transparency = 0.25 + 0.2 * math.sin(t * 1.8 + ph)
+		end)
+	end
+	-- the northern lights ripple: every glowing band of the aurora sways its colour and fades
+	local bands = {}
+	for _, d in ipairs(S.folder:GetChildren()) do
+		if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Transparency >= 0.6 and d.Position.Y > 20 then
+			table.insert(bands, { d, d.Transparency, d.Color, d.Position.X * 0.02 + d.Position.Z * 0.01 })
+		end
+	end
+	local AUR = rgb(150, 110, 255)
+	every(function(t)
+		for _, b in ipairs(bands) do
+			local w = math.sin(t * 0.6 + b[4])
+			b[1].Transparency = math.clamp(b[2] + 0.12 * w, 0, 0.95)
+			b[1].Color = b[3]:Lerp(AUR, 0.25 + 0.25 * w)
+		end
+	end)
+	-- a slow snow-fox spirit loping round the lake (a glowing wisp with a tail)
+	local head = B.ball(Vector3.new(0, 3, -40), 1.4, rgb(220, 250, 255), Enum.Material.Neon, { Transparency = 0.1 })
+	B.light(head, rgb(160, 230, 255), 16, 1.2)
+	local tail = {}
+	for k = 1, 6 do
+		tail[k] = B.ball(Vector3.new(0, 3, -40), 1.2 - k * 0.15, rgb(200, 240, 255), Enum.Material.Neon, { Transparency = 0.2 + k * 0.11 })
+	end
+	every(function(t)
+		local function at(u)
+			local a = u * 0.22
+			return Vector3.new(math.sin(a) * 38, 2.2 + math.abs(math.sin(u * 2.6)) * 1.2, -math.cos(a) * 30 - 8)
+		end
+		head.Position = at(t)
+		for k, b in ipairs(tail) do
+			b.Position = at(t - k * 0.09)
+		end
+	end)
+end
+
+function LIFE.Fire(rng)
+	-- the volcanoes throw lava bombs that arc and splash
+	local vents = { Vector3.new(-120, 70, -160), Vector3.new(130, 60, -150), Vector3.new(-30, 80, -230) }
+	for i, v in ipairs(vents) do
+		local bomb = B.ball(v, 4, rgb(255, 150, 40), Enum.Material.Neon)
+		B.light(bomb, rgb(255, 120, 40), 40, 2)
+		local trail = {}
+		for k = 1, 4 do
+			trail[k] = B.ball(v, 3 - k * 0.5, rgb(255, 90, 30), Enum.Material.Neon, { Transparency = 0.3 + k * 0.15 })
+		end
+		local period = 6 + i * 1.7
+		local land = v + Vector3.new((i - 2) * 40 + 20, -v.Y, 60)
+		every(function(t)
+			local u = ((t + i * 2.3) % period) / 3.2
+			local function at(x)
+				local p = v:Lerp(land, x)
+				return p + Vector3.new(0, math.sin(x * math.pi) * 55, 0)
+			end
+			if u <= 1 then
+				bomb.Transparency = 0
+				bomb.Position = at(u)
+				for k, b in ipairs(trail) do
+					b.Transparency = 0.3 + k * 0.15
+					b.Position = at(math.max(0, u - k * 0.03))
+				end
+			else
+				bomb.Transparency = 1
+				for _, b in ipairs(trail) do
+					b.Transparency = 1
+				end
+			end
+		end)
+	end
+	-- the lava glows brighter and dimmer, like it's breathing
+	local lava = {}
+	for _, d in ipairs(S.folder:GetChildren()) do
+		if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Position.Y < 3 then
+			table.insert(lava, { d, d.Color, d.Position.X * 0.05 })
+		end
+	end
+	every(function(t)
+		for _, l in ipairs(lava) do
+			local k = 0.5 + 0.5 * math.sin(t * 1.1 + l[3])
+			l[1].Color = l[2]:Lerp(rgb(255, 230, 120), 0.25 * k)
+		end
+	end)
+	-- every torch light flickers
+	local flames = {}
+	for _, d in ipairs(S.folder:GetDescendants()) do
+		if d:IsA("PointLight") then
+			table.insert(flames, { d, d.Brightness, rng:NextNumber(0, 10) })
+		end
+	end
+	every(function(t)
+		for _, f in ipairs(flames) do
+			f[1].Brightness = f[2] * (0.8 + 0.25 * math.noise(t * 3, f[3]))
+		end
+	end)
+end
+
+function LIFE.Space(rng)
+	-- a moon circling the blue planet and a station with turning solar arms
+	local moon = nil
+	for _, d in ipairs(S.folder:GetChildren()) do
+		if d:IsA("BasePart") and d.Size.X == 16 and d.Material == Enum.Material.Slate then
+			moon = d
+		end
+	end
+	if moon then
+		local center = Vector3.new(175, -25, -95)
+		local r = (moon.Position - center).Magnitude
+		every(function(t)
+			local a = t * 0.05
+			moon.CFrame = CFrame.new(center + Vector3.new(math.cos(a + 2.3) * r, math.sin(a * 0.7) * 18, math.sin(a + 2.3) * r)) * CFrame.Angles(0, t * 0.1, 0)
+		end)
+	end
+	local st = Vector3.new(-60, 42, -110)
+	local station = collect(function()
+		B.cyl(CFrame.new(st) * CFrame.Angles(0, 0, math.pi / 2), 14, 3.4, rgb(200, 205, 220), Enum.Material.Metal)
+		B.ball(st, 5, rgb(220, 225, 240), Enum.Material.Metal)
+		for _, sx in ipairs({ -1, 1 }) do
+			B.block(CFrame.new(st + Vector3.new(sx * 9, 0, 0)), Vector3.new(10, 0.3, 5), rgb(60, 90, 200), Enum.Material.Glass, { Reflectance = 0.3 })
+			B.block(CFrame.new(st + Vector3.new(sx * 9, 0, 0)), Vector3.new(10.2, 0.2, 0.3), rgb(230, 230, 240), Enum.Material.Metal)
+		end
+		local beacon = B.ball(st + Vector3.new(0, 3, 0), 0.9, rgb(255, 80, 80), Enum.Material.Neon)
+		B.light(beacon, rgb(255, 90, 90), 20, 1.5)
+	end)
+	local pivot = CFrame.new(st)
+	follow(group(station, pivot), function(t)
+		return CFrame.new(st + Vector3.new(0, math.sin(t * 0.3) * 2, 0)) * CFrame.Angles(t * 0.15, 0, 0.3)
+	end)
+	-- shooting stars across the sky
+	local streak = B.block(CFrame.new(0, 200, 0), Vector3.new(0.6, 0.6, 18), rgb(255, 255, 255), Enum.Material.Neon, { Transparency = 1 })
+	every(function(t)
+		local u = (t % 5.5) / 0.9
+		if u <= 1 then
+			local i = math.floor(t / 5.5)
+			local seed = (i * 37) % 11
+			local from = Vector3.new(-160 + seed * 30, 90 + seed * 4, -220)
+			local to = from + Vector3.new(120, -50, 40)
+			local p = from:Lerp(to, u)
+			streak.CFrame = CFrame.lookAt(p, to)
+			streak.Transparency = 0.1 + 0.9 * math.max(0, u * 2 - 1)
+		elseif streak.Transparency < 1 then
+			streak.Transparency = 1
+		end
+	end)
+	-- the near asteroids tumble slowly
+	local rocks = {}
+	for _, d in ipairs(S.folder:GetChildren()) do
+		if d:IsA("BasePart") and d.Material == Enum.Material.Rock and d.Size.X < 13 and (d.Position * Vector3.new(1, 0, 1)).Magnitude < 120 and #rocks < 30 then
+			table.insert(rocks, { d, d.CFrame, rng:NextNumber(-0.25, 0.25), rng:NextNumber(0, 6.28) })
+		end
+	end
+	every(function(t)
+		for _, r in ipairs(rocks) do
+			r[1].CFrame = r[2] * CFrame.new(0, math.sin(t * 0.35 + r[4]) * 0.8, 0) * CFrame.Angles(t * r[3], t * r[3] * 0.7, 0)
+		end
+	end)
+end
+
+function LIFE.Mall(rng)
+	-- the lamp posts flicker now and then (one at a time, never all together)
+	local lamps = {}
+	for _, d in ipairs(S.folder:GetDescendants()) do
+		if d:IsA("PointLight") and d.Parent and d.Parent:IsA("BasePart") and d.Parent.Material == Enum.Material.Neon then
+			table.insert(lamps, { light = d, head = d.Parent, base = d.Brightness, color = d.Parent.Color, seed = rng:NextNumber(0, 100) })
+		end
+	end
+	every(function(t)
+		for _, l in ipairs(lamps) do
+			local n = math.noise(t * 2.2, l.seed)
+			local off = n > 0.42
+			l.light.Brightness = off and l.base * 0.1 or l.base
+			l.head.Color = off and l.color:Lerp(rgb(40, 50, 45), 0.8) or l.color
+		end
+	end)
+	-- one shopping cart rolls round and round the lot on its own
+	local metal = rgb(185, 190, 200)
+	local cart = collect(function()
+		B.block(CFrame.new(0, 1.3, 0), Vector3.new(2.2, 0.12, 3.2), metal, Enum.Material.Metal)
+		for _, sx in ipairs({ -1, 1 }) do
+			B.block(CFrame.new(sx * 1.1, 2.1, 0), Vector3.new(0.1, 1.6, 3.2), metal, Enum.Material.Metal, { Transparency = 0.3 })
+		end
+		B.block(CFrame.new(0, 2.1, 1.6), Vector3.new(2.2, 1.6, 0.1), metal, Enum.Material.Metal, { Transparency = 0.3 })
+		B.block(CFrame.new(0, 3.1, 1.9), Vector3.new(2.4, 0.15, 0.15), rgb(220, 40, 60), Enum.Material.SmoothPlastic)
+		for _, sx in ipairs({ -0.9, 0.9 }) do
+			for _, sz in ipairs({ -1.3, 1.3 }) do
+				B.ball(Vector3.new(sx, 0.3, sz), 0.6, rgb(30, 30, 34))
+			end
+		end
+	end)
+	local cg = group(cart, CFrame.new())
+	follow(cg, function(t)
+		local a = t * 0.11
+		local p = Vector3.new(math.sin(a) * 26, 0, -math.cos(a) * 22 - 6)
+		local ahead = Vector3.new(math.sin(a + 0.05) * 26, 0, -math.cos(a + 0.05) * 22 - 6)
+		return CFrame.lookAt(p, ahead) * CFrame.Angles(0, math.pi, math.sin(t * 3) * 0.03)
+	end)
+	-- ghostly wisps drifting up from the fog and fading
+	local WISP = { rgb(140, 255, 190), rgb(200, 140, 255) }
+	for i = 1, 7 do
+		local w = B.ball(Vector3.new(0, 0, 0), 0.9, WISP[(i % 2) + 1], Enum.Material.Neon, { Transparency = 1 })
+		local home = spot(rng, 16, 44, 140)
+		local ph = i * 1.37
+		every(function(t)
+			local u = ((t + ph * 3) % 7) / 7
+			w.Position = home + Vector3.new(math.sin(t * 0.8 + ph) * 1.5, 1 + u * 9, math.cos(t * 0.6 + ph) * 1.5)
+			w.Transparency = 0.15 + 0.85 * math.abs(u * 2 - 1)
+		end)
+	end
+	-- the MALL sign buzzes: the lit letters dip for a moment every few seconds
+	local letters = {}
+	for _, d in ipairs(S.folder:GetChildren()) do
+		if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Position.Y > 24 and d.Position.Y < 60 and d.Position.Z < -60 then
+			table.insert(letters, { d, d.Transparency })
+		end
+	end
+	every(function(t)
+		local buzz = (t % 4.3) < 0.18 or ((t % 4.3) > 0.3 and (t % 4.3) < 0.36)
+		for _, l in ipairs(letters) do
+			l[1].Transparency = buzz and math.min(1, l[2] + 0.6) or l[2]
+		end
+	end)
+end
+
+-- Runs the moving parts of the world that's up. DeckWarsClient calls it every frame.
+function Backdrops.update(dt)
+	if not S.current or #S.movers == 0 then
+		return
+	end
+	S.t += dt
+	local t = S.t
+	for _, m in ipairs(S.movers) do
+		if m.group then
+			local cf = m.fn(t)
+			for _, e in ipairs(m.group.parts) do
+				e[1].CFrame = cf * e[2]
+			end
+		else
+			m.fn(t, dt)
+		end
+	end
+end
+
 ---------------------------------------------------------------------------
 -- Turning a world on and off
 ---------------------------------------------------------------------------
@@ -1057,9 +1466,12 @@ function Backdrops.apply(key, room, duelTable)
 	if key == "Random" then
 		local options = {}
 		for _, b in ipairs(Backdrops.List) do
-			if THEMES[b.key] then
+			if THEMES[b.key] and (Backdrops.owned == nil or Backdrops.owned[b.key]) then
 				table.insert(options, b.key)
 			end
+		end
+		if #options == 0 then
+			return "Room" -- nothing unlocked yet: the room it is
 		end
 		key = options[math.random(1, #options)]
 	end
@@ -1074,8 +1486,17 @@ function Backdrops.apply(key, room, duelTable)
 	S.folder.Parent = workspace
 	hideRoom(room, duelTable)
 	setLighting(theme)
-	-- The same world every time you pick it (only the particles move).
+	-- The same world every time you pick it; then its moving parts (Backdrops.update).
 	theme.build(Random.new(20260 + #key * 17))
+	S.movers, S.t = {}, 0
+	if LIFE[key] then
+		local ok, err = pcall(LIFE[key], Random.new(4242 + #key))
+		if not ok then
+			warn("[Backdrops] the moving parts of " .. key .. " failed: " .. tostring(err))
+			S.movers = {}
+		end
+	end
+	Backdrops.update(0)
 	return key
 end
 
@@ -1101,6 +1522,7 @@ function Backdrops.clear()
 		S.folder = nil
 	end
 	S.current = nil
+	S.movers = {}
 end
 
 -- The world that's up (nil for the room) and how many parts it's made of.

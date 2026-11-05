@@ -214,6 +214,31 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
 
+## Match backgrounds, the Trophy Road and the table at rest
+
+**Picking a background.** The world around the Duel Table in your matches is now picked at the **Deck Shelf**: the "🌄 Match background" button over your decks fills the big panel with every world. 👁 tries one on: the world goes up around the table, the camera floats through it and a bar at the bottom lets you wear it, buy it, step to the next one (◀ ▶, A / D) or go back (Back, Esc, Backspace). The Duel Table panel no longer has a background row. Campaign stages still bring their own world.
+
+**Unlocking them.** Backgrounds are cosmetics (`ShopCatalog.Cosmetics`, kind `"backdrop"`), saved and equipped like board themes and card backs:
+
+| World | How you get it |
+| --- | --- |
+| Card Den, Surprise me | Free ("Surprise me" picks one of the worlds you own) |
+| Gumdrop Plaza, Frostglass Lake | Shop, 1,500 Coins each |
+| Midnight Mall | Shop, 300 Gems |
+| Sunset Grasslands, Ember Caldera, Cosmic Void | Trophy Road (45, 140 and 320 trophies), can't be bought |
+
+They also show in the Shop's Deck & Field tab.
+
+**The Trophy Road** (top of the Trophy Wall): every match that went the distance earns trophies, and they never go down. A win against a bot earns 4 / 6 / 9 (Easy / Medium / Hard), a win against people 10, a Cup win 25 more, a loss or draw 1. The road has 12 stops with Coins, Gems and the three backgrounds; tap a stop you've reached to claim it. Numbers live in `Progression.Trophies` and `Progression.TrophyRoad`; the server keeps the count in the save (`progress.trophies`, `progress.road`) and shows it as the `Trophies` and `RoadClaimed` attributes. The match result screen shows the trophies a match earned.
+
+**Livelier worlds.** Every world now has moving parts (`LIFE` in `Backdrops.luau`, run by `Backdrops.update`): a candy Ferris wheel, gumdrop balloons and a shimmering rainbow; a windmill and butterflies at sunset; floating ice shards, a rippling aurora and a glowing snow-fox spirit; lava bombs from the volcanoes, breathing lava and flickering torches; a circling moon, a space station and shooting stars; flickering lamps, a runaway cart, ghost wisps and a buzzing MALL sign.
+
+**The table at rest** (`IdleTable.luau`). Between matches the table used to show the old 5x6 tile board. It now shows the lane board at rest, exactly where the match board rises: 4 lanes a side with inlaid Front and Back rings and a building slab, brass caps, a gold seam with a Deck Wars medallion, all in your board theme's colours. Two of the game's big creatures face off in the middle lanes and swap every half minute; the rings breathe and a soft light runs along the seam. The old tile parts are hidden (each keeps its look in the `IdleTransparency` attribute, and the pull stage's copy of the table puts them back).
+
+**Fix: the Pack Shelf glowing in other worlds.** The shelf re-lit its pack lights every frame, so they showed through a match background. The shelf now pauses while a background hides the room (`PackShelf.suspend`).
+
+**Tested** in the simulated Studio (`econharness`): the resting board and its showcase, the picker's 8 worlds, a preview with moving parts and a dark Pack Shelf (this check fails without the fix), stepping worlds, buying and wearing one from the preview, the match played in it, trophies from the match, claiming Trophy Road stops (once each, not before you reach them) and a background unlocked from the road. Economy tests cover buying, wearing and the road-only rule. Not checked in real Studio yet.
+
 ## The Campaign and the Plaza
 Two new ways out of the room, built like the hubs of tower-defense and gacha games on Roblox (a world map of stages with stars, and a shared lobby where everyone shows off), with Deck Wars' own worlds, opponents and rewards.
 

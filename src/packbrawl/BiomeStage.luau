@@ -137,6 +137,12 @@ function BiomeStage.new(parent, worldKey, opts)
 		end
 		for _, d in ipairs(copy:GetDescendants()) do
 			if d:IsA("BasePart") then
+				-- the old tile board is hidden in the room (IdleTable lays the lane board over
+				-- it); the stage's copy keeps its tiles, which sink and split in the fight
+				local was = d:GetAttribute("IdleTransparency")
+				if type(was) == "number" then
+					d.Transparency = was
+				end
 				d.Anchored = true
 				d.CanCollide = false
 				d.CanQuery = false
