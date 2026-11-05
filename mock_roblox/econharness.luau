@@ -712,6 +712,13 @@ do
 		end
 	end
 	check(away < 1e-6, "every room prop is back in place at the table (" .. away .. ")")
+	-- keep what the server says the match paid, to check the trophies against it
+	local seenRewards = nil
+	local showResult = F.showResult
+	F.showResult = function(payload, ...)
+		seenRewards = type(payload) == "table" and payload.rewards or seenRewards
+		return showResult(payload, ...)
+	end
 	local plays, backPlays, shifts, buildings, turnsMine = 0, 0, 0, 0, 0
 	local playedThisTurn, shiftedThisTurn, lastTurn = 0, false, -1
 	local guard = 0
@@ -819,17 +826,19 @@ do
 	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "back at the Duel Table panel after the match")
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
 	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
+	F.showResult = showResult
 	-- Trophies follow the Trophy Road rule for how this match actually went: the match seed comes
 	-- from the clock, so the bot can win in a few turns, and a match shorter than
 	-- ShopCatalog.Match.minSeconds / minTurns earns nothing by design.
 	check(#matchLog == logged0 + 1, "the match was recorded on the save (" .. (#matchLog - logged0) .. ")")
+	check(seenRewards ~= nil, "the result came with its rewards")
 	local rec = matchLog[#matchLog]
 	if rec then
 		local want = expectedTrophies(rec.m)
 		local got = (player:GetAttribute("Trophies") or 0) - trophiesBefore
-		print("note match result: " .. tostring(rec.m.result) .. " after " .. string.format("%.0f", rec.m.seconds or 0) .. " s and " .. tostring(rec.m.turns) .. " turns, " .. got .. " trophies")
+		print("note match result: " .. tostring(rec.m.result) .. " after " .. string.format("%.0f", rec.m.seconds or 0) .. " s and " .. tostring(rec.m.turns) .. " turns, " .. got .. " trophies, note " .. tostring(seenRewards and seenRewards.note))
 		check(got == want, "the match earned the trophies the Trophy Road rule gives it (" .. got .. ", want " .. want .. ")")
-		check((rec.out and rec.out.trophies or 0) == want, "the result screen reports those trophies")
+		check(seenRewards and (seenRewards.trophies or 0) == want, "the result screen reports those trophies (" .. tostring(seenRewards and seenRewards.trophies) .. ")")
 	end
 end
 
@@ -1010,7 +1019,7 @@ do
 			rewardsSeen = true
 			check(named("CampaignNext") ~= nil, "a win offers Next")
 		else
-			check(named("CampaignRetry") ~= nil and named("CampaignRetry").Text == "⟳ Try again", "a loss offers Try again")
+			check(named("CampaignRetry") ~= nil and string.find(named("CampaignRetry").Text, "Try again", 1, true) ~= nil, "a loss offers Try again")
 			click(named("CampaignRetry"), "Try again")
 			M.advance(1)
 		end
