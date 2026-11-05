@@ -278,6 +278,28 @@ end
 local ShopCatalog = makeEnv(clientScript, clientCache).require(shared.ShopCatalog)
 local CardData = makeEnv(clientScript, clientCache).require(shared.CardData)
 local Economy = makeEnv(nil, serverCache).require(serverModules.EconomyManager)
+local ServerProgression = makeEnv(nil, serverCache).require(shared.Progression)
+
+-- Every match the server records on the save, with what it paid (for the Trophy Road checks).
+local matchLog = {}
+do
+	local PlayerDataMod = makeEnv(nil, serverCache).require(ServerScriptService.PlayerData)
+	local record = PlayerDataMod.recordMatch
+	PlayerDataMod.recordMatch = function(who, m)
+		local out = record(who, m)
+		table.insert(matchLog, { m = m, out = out })
+		return out
+	end
+end
+-- The Trophy Road rule: a match that lasted long enough earns Progression.trophiesFor, a too
+-- short one earns nothing.
+local function expectedTrophies(m)
+	local rule = ShopCatalog.Match
+	if (tonumber(m.seconds) or 0) < rule.minSeconds or (tonumber(m.turns) or 0) < rule.minTurns then
+		return 0
+	end
+	return ServerProgression.trophiesFor(m)
+end
 
 ---------------------------------------------------------------------------
 -- Joining
@@ -679,6 +701,8 @@ do
 	local MatchScreen = makeEnv(clientScript, clientCache).require(shared.MatchScreen)
 	local F, S = MatchScreen.F, MatchScreen.S
 	local gemsBefore = player:GetAttribute("Gems")
+	local trophiesBefore = player:GetAttribute("Trophies") or 0
+	local logged0 = #matchLog
 	click(named("NavDuelTable"), "Duel Table station")
 	M.advance(1.5)
 	click(named("PlayBot"), "Sit down and play (bot)")
@@ -806,7 +830,18 @@ do
 	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "back at the Duel Table panel after the match")
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
 	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
-	check((player:GetAttribute("Trophies") or 0) > 0, "the match earned trophies (" .. tostring(player:GetAttribute("Trophies")) .. ")")
+	-- Trophies follow the Trophy Road rule for how this match actually went: the match seed comes
+	-- from the clock, so the bot can win in a few turns, and a match shorter than
+	-- ShopCatalog.Match.minSeconds / minTurns earns nothing by design.
+	check(#matchLog == logged0 + 1, "the match was recorded on the save (" .. (#matchLog - logged0) .. ")")
+	local rec = matchLog[#matchLog]
+	if rec then
+		local want = expectedTrophies(rec.m)
+		local got = (player:GetAttribute("Trophies") or 0) - trophiesBefore
+		print("note match result: " .. tostring(rec.m.result) .. " after " .. string.format("%.0f", rec.m.seconds or 0) .. " s and " .. tostring(rec.m.turns) .. " turns, " .. got .. " trophies")
+		check(got == want, "the match earned the trophies the Trophy Road rule gives it (" .. got .. ", want " .. want .. ")")
+		check((rec.out and rec.out.trophies or 0) == want, "the result screen reports those trophies")
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -928,6 +963,7 @@ do
 	check(named("NavCampaign") ~= nil and named("NavPlazaDoor") ~= nil, "the nav bar has Campaign and Plaza buttons")
 
 	local gems0 = player:GetAttribute("Gems")
+	local campLogged0 = #matchLog
 	click(named("NavCampaign"), "Campaign station")
 	M.advance(2)
 	check(named("StationTitle") and named("StationTitle").Text == "Campaign", "the Campaign panel opens")
@@ -991,6 +1027,19 @@ do
 		end
 	end
 	check(won, "act 1 was beaten within 3 tries")
+	do
+		local want, earnedAny = 60, false
+		for i = campLogged0 + 1, #matchLog do
+			want += expectedTrophies(matchLog[i].m)
+		end
+		for _, rec in ipairs(matchLog) do
+			if expectedTrophies(rec.m) > 0 then
+				earnedAny = true
+			end
+		end
+		check(saveData().progress.trophies == want and player:GetAttribute("Trophies") == want, "the Campaign stages added their trophies to the road (" .. tostring(player:GetAttribute("Trophies")) .. ", want " .. want .. ")")
+		check(earnedAny, "a match that went the distance earned trophies")
+	end
 	if won then
 		local d = saveData()
 		local clear = d and d.campaign and d.campaign.clears["Den:1:N"]
