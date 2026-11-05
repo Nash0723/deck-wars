@@ -56,9 +56,9 @@ Campaign.Worlds = {
 		title = "Den Graduate",
 		opponents = { "Practice Pip", "Shuffle Sprout", "Dice Goblin", "Table Tidy", "Lamp Lurker" },
 		decks = { "Snack", "Critter", "Weather", "Junk", "Robo", "Spooky" }, -- one per act
-		difficulty = { "Easy", "Easy", "Easy", "Easy", "Medium", "Medium" },
+		difficulty = { "Easy", "Easy", "Easy", "Easy", "Easy", "Medium" },
 		boss = { name = "Bot Bonkers", card = nil, rules = {} },
-		tiers = { "basic", "basic", "basic", "basic", "normal", "normal" }, -- (the starter deck must keep up)
+		tiers = { "basic", "basic", "basic", "basic", "basic", "normal" }, -- (the starter deck must keep up)
 	},
 	{
 		key = "Candy",

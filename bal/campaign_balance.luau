@@ -8,7 +8,7 @@
 -- and a Hard brain on Hard (Hard opens after a world's boss: a player who has collected and
 -- learned by then).
 --
--- Run with: luaurun -D GAMES=40 bal/campaign_balance.luau src/shared
+-- Run with: luaurun -D GAMES=40 bal/campaign_balance.luau src/shared   (add -D WORLD=Den for one world)
 
 _G.warn = function() end
 local Campaign = require("Campaign")
@@ -20,6 +20,7 @@ local StarterDecks = require("StarterDecks")
 local Rng = require("Rng")
 
 local GAMES = tonumber(GAMES) or 40
+local ONLY = WORLD -- -D WORLD=Den runs one world only
 
 local function playerSetup(stage, i)
 	if stage.world == "Den" and not stage.hard then
@@ -89,7 +90,7 @@ print(string.format("Campaign balance, %d games a stage", GAMES))
 print("stage         opponent                 diff    hp  limit   win%  ♥star%  ⏱star%  3★%   turns")
 for _, hard in ipairs({ false, true }) do
 	for _, w in ipairs(Campaign.Worlds) do
-		for act = 1, Campaign.Acts do
+		for act = 1, (ONLY == nil or ONLY == w.key) and Campaign.Acts or 0 do
 			local s = Campaign.stage(Campaign.stageId(w.key, act, hard))
 			local r = run(s)
 			print(string.format("%-12s  %-23s  %-6s  %3d  %5d  %5.0f  %6.0f  %6.0f  %4.0f  %5.1f", s.id, s.name, s.difficulty, s.enemyHp, s.turnLimit, r.win * 100, r.star2 * 100, r.star3 * 100, r.all3 * 100, r.turns))
