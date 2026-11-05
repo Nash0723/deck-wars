@@ -961,7 +961,7 @@ function MatchEngine:startTurn(s)
 		end
 	end
 	seat.maxMagic = math.min(CardData.MaxMagic, CardData.StartMagic + seat.turns - 1)
-	seat.magic = seat.maxMagic + extra
+	seat.magic = seat.maxMagic + extra + (seat.magicBonus or 0) -- magicBonus: a campaign rule (Surge)
 	-- Your creatures wake up; "until your next turn" effects you caused wear off.
 	for _, u in ipairs(self:allCreatures()) do
 		if u.owner == s then

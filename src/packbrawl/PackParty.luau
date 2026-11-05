@@ -10,6 +10,7 @@
 --     onStatus = function(text) end, -- short status lines (also shown in the panel)
 --     isActive = function() return true end, -- is the panel on screen? (shelf hover, Q/E keys)
 --     previews = true | false,       -- tier preview buttons (default: only in Studio)
+--     noDive = true,                 -- skip the Dive into the room's Duel Table (the Plaza's altar)
 --   })
 --   PackParty.request(count, tier, packId, free) -- also used by the developer panel
 --   PackParty.select(packId), PackParty.selected()
@@ -243,7 +244,7 @@ local function onResult(result)
 	task.delay(PackShelf.has() and 0.3 or 0, function()
 		PackTease.play({ tier = CardData.get(id).rarity, count = #result.cards, quick = Settings.get("packFights") == "Quick", pack = pack }, function()
 			local function startBrawl(fn)
-				if brawl.world then
+				if brawl.world and not (state.opts and state.opts.noDive) then
 					dive(Kit.tierColor("Common", 0):Lerp(Packs.color(pack, "color"), 0.7), function()
 						Director.play(brawl, fn)
 					end)

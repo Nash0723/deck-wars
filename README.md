@@ -53,21 +53,25 @@ tools/luaurun/target/release/luaurun tests/lane_tests.luau src/shared           
 tools/luaurun/target/release/luaurun tests/deck_tests.luau src/shared src/server src/econ # deck rules, the starter collection, saving decks
 tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl src/shared  # Pack Brawl: odds, casting, every card's fight script, every world
 tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl  # saves, session locks, Gems/Coins, Shop, boosts, Robux receipts
-tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the whole game in a simulated Studio: title, daily reward, Shop, dev panel, a full bot match
+tools/luaurun/target/release/luaurun tests/campaign_tests.luau src/shared src/server     # Campaign: every stage, decks, rules, stars, unlocks, rewards, chests, the Challenge
+tools/luaurun/target/release/luaurun tests/plaza_tests.luau src/shared mock_roblox       # Plaza: booth cards, likes once a day, titles, banners, the booth ring
+tools/luaurun/target/release/luaurun -D GAMES=40 bal/campaign_balance.luau src/shared    # Campaign balance: plays every stage, prints win and star rates (slow, about 20 min)
+tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the whole game in a simulated Studio: title, daily reward, Shop, dev panel, a full bot match, a Campaign stage, the Plaza
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox                           # the room's props answering the mouse (hover, click, back in place)
 ```
 
 `-D NAME=VALUE` sets a setting before the script runs, for example `-D SOAK_GAMES=200` for more bot games in the rules tests (put it before the script path).
 
-GitHub runs the rules tests, the Pack Brawl tests and the economy tests and builds both place files for every pull request (`.github/workflows/build.yml`).
+GitHub runs the rules, deck, Pack Brawl, economy, Campaign and Plaza tests and the simulated Studio runs, and builds both place files for every pull request (`.github/workflows/build.yml`).
 
 ## Project layout
 | Path | What it is |
 | --- | --- |
 | `default.project.json` | The Rojo project: where each file goes in the Roblox place, plus the Lighting settings |
-| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes), DeckRules (what a deck may hold, the starter collection), DeckBuilderUI (the Deck Shelf), RoomLife (the room's props answering the mouse) |
-| `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools), PlayerDecks (your saved decks and the starter grant) |
+| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes), DeckRules (what a deck may hold, the starter collection), DeckBuilderUI (the Deck Shelf), RoomLife (the room's props answering the mouse), Campaign (worlds, stages, rules, rewards), CampaignUI (the world map), Plaza (booth, like and title logic), PlazaClient (the Plaza on screen) |
+| `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools), PlayerDecks (your saved decks and the starter grant), CampaignData (Campaign progress on your save), PlazaServer (booths, likes, banners, leaderboards), HubRoom (turns the painting and the door into stations) |
+| `src/plaza/` | ServerScriptService > PlazaBuilder: builds the Plaza at (2000, 0, 0) |
 | `src/econ/` | ServerStorage > DeckWarsServer: EconomyManager, ProfileStore (session-locked saves), DevAccess (who's a developer) |
 | `src/devcontrols/` | ServerStorage > DevControls: the developer panel, copied only to developers |
 | `src/client/` | StarterPlayerScripts > DeckWarsClient (menus, table, animations, camera) |
@@ -209,6 +213,60 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 - A move looks wrong on one creature: tweak its keyframes in `Moves.luau`, or its rig in `Rig.Overrides`.
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
+
+## The Campaign and the Plaza
+Two new ways out of the room, built like the hubs of tower-defense and gacha games on Roblox (a world map of stages with stars, and a shared lobby where everyone shows off), with Deck Wars' own worlds, opponents and rewards.
+
+### The Campaign (the painting over the fireplace)
+Click the painting (or the 🗺 Campaign button) to open the world map. **7 worlds × 6 acts**, each played on the Duel Table inside that world, against named opponents and a boss with its own Legendary:
+
+| World | Opponents play | Boss | Boss rule |
+| --- | --- | --- | --- |
+| 🏠 Card Den | a different family each act | Bot Bonkers | none (the tutorial world) |
+| 🍬 Gumdrop Plaza | Snack | Queen Parfait | Tough (+10 hit points) |
+| 🌄 Sunset Grasslands | Critter | Big Momma Moose | Head Start (+2 cards) |
+| ❄️ Frostglass Lake | Weather | Stormlord Nimbus | Thick Skin (+5 hit points) |
+| 🌋 Ember Caldera | Junk | The Junk King | Thick Skin |
+| 🌌 Cosmic Void | Robo | Mega Blender Prime | Surge (+1 magic a turn) and Tough |
+| 🌙 Midnight Mall | Spooky | The Mannequin Duke | Head Start, Tough and Home Turf |
+
+- **You play with your own decks** (built at the Deck Shelf; everyone starts with the Starter Deck). The opponents' decks grow through each world: starter-strength in acts 1-2, normal in 3-4, full in 5, and the boss plays its Legendary twice. The Card Den stays starter-strength until its boss, so the Starter Deck can clear it.
+- **Stars:** ★ win, ★ win with half your hit points left, ★ win within the act's turn limit. Stars from Normal and Hard both count (252 in all).
+- **Unlocks:** beat act N to open act N+1; beat a world's boss to open the next world and that world's **Hard mode** (harder bots, more rules, every boss gets Big Start).
+- **Rewards:** a first clear pays 💎 30 / 35 / 45 / 55 / 70 / 100 (act 1 to 6, ×1.5 on Hard) and a card of the world's family (Common up to Mythic; a Hard boss gives its Legendary). Replays can drop family cards (up to 10 drops a day), and a Normal boss replay has a 2% chance at its Legendary. **Star chests** in each world at 6★ (💎 50), 12★ (💎 100 + an Epic) and 18★ (💎 150 + a title for your nameplate).
+- **The hourly Challenge** opens after the Card Den's boss: one stage for everyone, a new one every hour (a full-strength family deck with two random rules). Winning pays 💎 60 and a random Rare, Epic or Mythic card, once an hour.
+- After a stage: the stars pop in, the rewards and new cards show, and **Next ▶ / ⟳ Again / Map** take you on.
+
+### The Plaza (the front door)
+Click the front door (or 🏙 Plaza) and walk out. In the Plaza you walk around as your Roblox avatar with everyone else in the server.
+
+- **Booths:** everyone in the server gets one of 12 booths around the square. It shows your 3 best cards (your rarest, or the ones you pick with **🖼 My booth**), your name, title and likes.
+- **Likes:** walk up to a booth's heart and press E. One like per booth per day, never your own. The Most Liked board counts them.
+- **Companions and nameplates:** the first creature on your booth walks along with you, and a nameplate shows your title, level, Campaign stars and likes. Titles come from star chests and from your rarest pull ever (Rare: Lucky Charm, up to Secret: Keeper of Secrets).
+- **The Pull Altar** in the middle opens packs right there (the same Pack Party as the room, without the dive into the table).
+- **Big pulls:** a Mythic or better pull gets a banner for the whole server (15 s later, so it doesn't spoil the puller's own reveal), a pillar of light over the altar and a line on the **Hall of Pulls**. A Secret is told to every server.
+- **Leaderboards:** Campaign Stars, Highest Level and Most Liked Booths (saved in OrderedDataStores every 2 minutes; in Studio without API access they show the players in the server).
+- **Gates:** 🏠 Home (back to the room), 🗺 Campaign (opens the map) and the ⚔ Duel Table kiosk.
+
+### Where to change things
+- Every Campaign number is in `ReplicatedStorage > DeckWars > Campaign` (worlds, opponents, rules, decks, turn limits, rewards, drops, chests, the Challenge). The save part is `ServerScriptService > CampaignData`; the map screen is `CampaignUI`.
+- The Plaza's numbers (booths, banner rarities, likes, titles) are in `DeckWars > Plaza`. The place is built by `ServerScriptService > PlazaBuilder` at (2000, 0, 0) when the server starts. **To build your own Plaza in Studio,** make a `Workspace > Plaza` model with the part names listed at the top of PlazaBuilder and it is used instead. `PlazaServer` runs booths, likes, banners and boards; `PlazaClient` is the screen.
+- `ServerScriptService > HubRoom` turns the painting and the door into the two new stations when the server starts.
+
+### Balance
+`luaurun -D GAMES=40 bal/campaign_balance.luau src/shared` plays every stage many times with a bot standing in for you (the Starter Deck on the Card Den, a themed deck later, a Hard brain on Hard mode) and prints the win rate, how often each star is earned and how long wins take. Results with 40-60 games a stage (the stand-in plays worse than a person, so real players should do better):
+
+| | Normal | Hard |
+| --- | --- | --- |
+| Card Den acts 1-5 | 65-95% wins | 35-72% |
+| Other worlds, acts 1-2 | 78-100% | 22-68% |
+| Other worlds, acts 3-5 | 28-80% | 32-78% |
+| Bosses | 28-42% | 22-45% (Den 73%) |
+
+The ♥ star (half your hit points) is earned in 30-100% of wins (hardest in Frostglass Lake) and the ⏱ star in 33-100%, so three stars takes a good game. Tuning from the first run: the Card Den's later acts were too hard for the Starter Deck (10% at act 5, now 65%), turn limits were too loose (the ⏱ star came free), and two boss rules were swapped for Thick Skin (Junk King with Surge won 10%, Stormlord Nimbus with Home Turf 18%). The hardest stages left are Hard-mode act 2 in the Cosmic Void (22%) and the Hard bosses of the Cosmic Void and the Midnight Mall (22%); tell me if they feel unfair.
+
+### Tested
+`tests/campaign_tests.luau` (every stage builds and plays on the real engine, decks, rules, stars, unlocks, rewards, drop cap, chests, the Challenge) and `tests/plaza_tests.luau` (booth cards, picks, likes, titles, banners, the booth ring) pass. The whole-game run in the simulated Studio (`econharness`) now also opens the map, plays act 1 of the Card Den with your own deck through the real client, checks the stars, Gems, card and act 2 opening, then walks out into the Plaza: booth cards, the booth editor, a friend's like (and a second one refused), a Mythic banner and the Hall of Pulls, the boards, the altar's pack panel, and the Duel kiosk back inside with the room's light and camera restored. **Not checked in real Studio yet**: walking with Roblox's own camera, the ProximityPrompts, OrderedDataStores and MessagingService only run for real there.
 
 ## The room answers your mouse
 Point at things in the room and they react. Click them (or tap them on a phone) and they do something bigger. Every now and then one of them fidgets on its own, and Pickles blinks. The mouse turns into a pointing hand over anything that reacts. The idea comes from the clickable props in the corners of digital card game boards and from cozy room games, where poking the scenery is half the fun. Everything happens on your own screen only. The moment you sit down at the table, every prop snaps back to where it was.

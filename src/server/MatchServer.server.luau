@@ -21,6 +21,7 @@ local Rng = require(Shared:WaitForChild("Rng"))
 local ShopCatalog = require(Shared:WaitForChild("ShopCatalog"))
 local DeckRules = require(Shared:WaitForChild("DeckRules"))
 local PlayerDecks = require(script.Parent:WaitForChild("PlayerDecks"))
+local Campaign = require(Shared:WaitForChild("Campaign"))
 -- Match rewards in Gems (one table in ShopCatalog.Match, next to Nash's Coins and anti-farming rules).
 local PullRates = {
 	WinGems = (ShopCatalog.Match and ShopCatalog.Match.winGems) or { Easy = 20, Medium = 35, Hard = 50 },
@@ -33,6 +34,9 @@ local PullRates = {
 -- also runs without it (like in the simulated Studio the tests use).
 local playerDataModule = script.Parent:FindFirstChild("PlayerData")
 local PlayerData = playerDataModule and require(playerDataModule)
+-- Campaign stars, unlocks and rewards (also optional, like PlayerData).
+local campaignDataModule = script.Parent:FindFirstChild("CampaignData")
+local CampaignData = campaignDataModule and require(campaignDataModule)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MatchEvent = Remotes:WaitForChild("MatchEvent") -- server -> client: board updates
@@ -77,6 +81,7 @@ local lastDeck = {} -- [player] = the deck they picked last (they bring it when 
 local outsideInvites = {} -- [player] = when they last opened Roblox's invite prompt
 local bringParty -- defined with the parties, used by the lobbies
 local startBotMatch, savePrefs -- defined next to the menu actions
+local startCampaignMatch -- defined after the bot match
 local reopenLobby -- defined with the lobbies
 
 -- A whole number from the client, or nil (no NaN, no huge values). User ids are big, so the cap is
@@ -116,6 +121,11 @@ end
 -- The MatchEngine setup for a seat's deck: a saved deck (checked against what the player owns
 -- right now) or a practice deck, with its lane terrains and themes.
 local function setupForSeat(seat)
+	if type(seat.setup) == "table" then
+		-- a campaign opponent: its deck is made by the Campaign rules
+		local s = seat.setup
+		return { deck = table.clone(s.deck), hero = s.hero, family = s.family, themes = { s.family }, lanes = s.lanes and table.clone(s.lanes) }
+	end
 	local slot = savedSlot(seat.deck)
 	if slot and seat.kind == "human" then
 		local setup = PlayerDecks.setupFor(seat.player, slot)
@@ -131,6 +141,19 @@ local function setupForSeat(seat)
 		return setup
 	end
 	return { deck = table.clone(practice.cards), hero = practice.hero, family = practice.family, themes = { practice.family } }
+end
+
+-- Home Turf (a campaign rule): the human's lanes take the opponent's landscape.
+do
+	local plainSetup = setupForSeat
+	setupForSeat = function(seat)
+		local setup = plainSetup(seat)
+		if seat.lanesOverride and setup then
+			setup = table.clone(setup)
+			setup.lanes = table.clone(seat.lanesOverride)
+		end
+		return setup
+	end
 end
 
 local function randomDeck(rng)
@@ -190,6 +213,10 @@ function Match.new(seats, opts)
 		end
 	end
 	self.engine = MatchEngine.new(setups, seed)
+	self.turnSeconds = TURN_SECONDS
+	if self.opts.campaign then
+		self:applyCampaignRules(self.opts.campaign)
+	end
 	self.startedAt = now()
 	-- What each seat did, for daily quests: cards played by type, Sparks, enemy creatures popped.
 	self.stats = {}
@@ -199,7 +226,7 @@ function Match.new(seats, opts)
 	self.unitTeam = {} -- [uid] = team, to know whose creature popped
 	self.turnToken = 0
 	self.turnEndsAt = 0
-	self.turnRemaining = TURN_SECONDS
+	self.turnRemaining = self.turnSeconds
 	self.ended = false
 	self.botRunning = false
 	for _, seat in ipairs(seats) do
@@ -208,6 +235,20 @@ function Match.new(seats, opts)
 		end
 	end
 	return self
+end
+
+-- The rules of a campaign stage (Campaign.Rules), on the engine that was just made. The bot seats
+-- are the stage's opponent; the humans play their own decks.
+function Match:applyCampaignRules(stage)
+	-- (the rules themselves are in Campaign.applyRules, so the tests and the balance run use the same code)
+	for i, seat in ipairs(self.seats) do
+		if seat.kind == "bot" then
+			local seconds = Campaign.applyRules(self.engine, stage, i)
+			if seconds then
+				self.turnSeconds = math.min(self.turnSeconds, seconds)
+			end
+		end
+	end
 end
 
 function Match:humans()
@@ -302,7 +343,7 @@ function Match:sendUpdate(extra)
 	self:countEvents(events)
 	local names = {}
 	for i, seat in ipairs(self.seats) do
-		names[i] = { name = seat.name, bot = seat.kind == "bot", userId = seat.kind == "human" and seat.player.UserId or nil }
+		names[i] = { name = seat.name, bot = seat.kind == "bot", userId = seat.kind == "human" and seat.player.UserId or nil, boss = seat.bossCard }
 	end
 	for _, s in ipairs(self:humans()) do
 		local seat = self.seats[s]
@@ -441,11 +482,37 @@ function Match:finishIfOver()
 				turns = math.floor((m.seats[s].turns or 0)),
 				stats = stats,
 			})
+			-- A campaign stage: stars, first-clear rewards, drops and chests (CampaignData).
+			local camp = nil
+			if self.opts.campaign and CampaignData then
+				local ok, res = pcall(CampaignData.record, seat.player, self.opts.campaign, {
+					result = result,
+					hp = m.teams[team].hp,
+					maxHp = m.teams[team].maxHp,
+					turns = m.seats[s].turns or 0,
+				})
+				if ok then
+					camp = res
+				else
+					warn("[MatchServer] campaign rewards failed: " .. tostring(res))
+				end
+			end
 			if r then
 				rewards[s] = r
 				gems[s] = r.totalGems > 0 and r.totalGems or nil
 			elseif amount > 0 and addGems(seat.player, amount) then
 				gems[s] = amount
+			end
+			if camp then
+				local rw = rewards[s] or { gems = {}, totalGems = gems[s] or 0 }
+				rw.gems = rw.gems or {}
+				for _, g in ipairs(camp.gems) do
+					table.insert(rw.gems, g)
+				end
+				rw.totalGems = (rw.totalGems or 0) + (camp.totalGems or 0)
+				rw.campaign = camp
+				rewards[s] = rw
+				gems[s] = rw.totalGems > 0 and rw.totalGems or nil
 			end
 		end
 	end
@@ -512,7 +579,7 @@ end
 function Match:timeUp()
 	local s = self.engine.current
 	self.engine:act(s, { kind = "battle" })
-	self.turnRemaining = TURN_SECONDS
+	self.turnRemaining = self.turnSeconds
 	self.turnEndsAt = 0
 	self:continue("Time's up! " .. self.seats[s].name .. "'s creatures battle on their own.")
 end
@@ -552,7 +619,7 @@ function Match:runBotTurn()
 		self:waitForScreens()
 	end
 	self.botRunning = false
-	self.turnRemaining = TURN_SECONDS
+	self.turnRemaining = self.turnSeconds
 	self:continue()
 end
 
@@ -572,7 +639,7 @@ function Match:onAction(player, action)
 	end
 	self:pauseClock()
 	if self.engine.current ~= s then
-		self.turnRemaining = TURN_SECONDS
+		self.turnRemaining = self.turnSeconds
 	end
 	self:continue()
 end
@@ -1488,6 +1555,98 @@ startBotMatch = function(player, deck, difficulty)
 	match:start()
 end
 
+-- A campaign stage (Campaign.luau): your own deck against the stage's opponent, inside the
+-- stage's world. stageId is like "Candy:3:N" or "Challenge:<hour>".
+startCampaignMatch = function(player, stageId, deck)
+	if matches[player] then
+		return
+	end
+	local function refuse(text)
+		LobbyEvent:FireClient(player, { kind = "toast", text = text })
+		LobbyEvent:FireClient(player, { kind = "campaignRefused", stage = stageId, text = text })
+	end
+	local stage = type(stageId) == "string" and Campaign.stage(stageId)
+	if not stage then
+		return refuse("That stage doesn't exist.")
+	end
+	if CampaignData then
+		local ok, why = CampaignData.canPlay(player, stage.id)
+		if not ok then
+			return refuse(why or "That stage isn't open yet.")
+		end
+	end
+	-- Campaign stages are played with your own decks (built at the Deck Shelf).
+	local slot = savedSlot(deck)
+	if not slot then
+		return refuse("Pick one of your own decks for the Campaign.")
+	end
+	local setup, why = PlayerDecks.setupFor(player, slot)
+	if not setup then
+		return refuse("That deck can't be played yet: " .. tostring(why))
+	end
+	leaveLobby(player)
+	local human = { kind = "human", player = player, deck = deck }
+	local fam = stage.family
+	if stage.rules and table.find(stage.rules, "homeTurf") then
+		human.lanesOverride = { fam, fam, fam, fam }
+	end
+	local bot = {
+		kind = "bot",
+		difficulty = stage.difficulty,
+		deck = fam,
+		name = stage.name,
+		bossCard = stage.bossCard,
+		setup = { deck = stage.cards, hero = stage.hero, family = fam, lanes = { fam, fam, fam, fam } },
+	}
+	-- you go first in the first act of the tutorial world; otherwise a coin flip, like a bot match
+	local rng = Rng.new(math.floor(now() * 1000) % 2147483647)
+	local youFirst = stage.id == "Den:1:N" or rng:int(1, 2) == 1
+	local seats = youFirst and { human, bot } or { bot, human }
+	local match = Match.new(seats, {
+		mode = "Campaign",
+		label = stage.title,
+		campaign = stage,
+		campaignRetry = { stage = stage.id, deck = deck },
+	})
+	local ruleNames = {}
+	for _, r in ipairs(stage.rules) do
+		local def = Campaign.Rules[r]
+		if def then
+			table.insert(ruleNames, { name = def.name, text = def.text, emoji = def.emoji })
+		end
+	end
+	lastDeck[player] = deck
+	match:start({
+		backdrop = stage.backdrop,
+		campaign = {
+			id = stage.id,
+			title = stage.title,
+			name = stage.name,
+			boss = stage.boss,
+			bossCard = stage.bossCard,
+			rules = ruleNames,
+			stars = Campaign.starTexts(stage),
+			enemyHp = stage.enemyHp,
+		},
+	})
+end
+
+-- The stage after `id` (the next act, or act 1 of the next world after a boss), or nil.
+local function nextStage(id)
+	local world, act, hard = Campaign.parseId(id)
+	if not world then
+		return nil
+	end
+	if act < Campaign.Acts then
+		return Campaign.stageId(world.key, act + 1, hard)
+	end
+	local nextWorld = Campaign.Worlds[world.index + 1]
+	if nextWorld and not hard then
+		return Campaign.stageId(nextWorld.key, 1, false)
+	end
+	return nil
+end
+
 ---------------------------------------------------------------------------
 -- Settings each player keeps between visits (deck, bot difficulty, background, action camera,
 -- speed, whether they've seen the how-to-play screen). They're "Pref..." attributes on the
@@ -1537,6 +1696,25 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 			old:release(player)
 			startBotMatch(player, old.opts.rematch.deck, old.opts.rematch.difficulty)
 		end
+	elseif what == "StartCampaign" then
+		startCampaignMatch(player, options.stage, options.deck)
+	elseif what == "CampaignRetry" or what == "CampaignNext" then
+		-- "Try again" / "Next act" on a campaign result screen.
+		local old = matches[player]
+		local info = old and old.engine.over and old.opts.campaignRetry
+		if info then
+			local target = info.stage
+			if what == "CampaignNext" then
+				target = nextStage(info.stage)
+			end
+			old:release(player)
+			if target then
+				startCampaignMatch(player, target, info.deck)
+			end
+		end
+	elseif what == "CampaignState" then
+		local snap = CampaignData and CampaignData.snapshot(player)
+		LobbyEvent:FireClient(player, { kind = "campaign", snapshot = snap })
 	elseif what == "SavePrefs" then
 		savePrefs(player, options)
 	elseif what == "ClaimDaily" then
