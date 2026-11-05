@@ -18,6 +18,7 @@ local here = script.Parent
 local CardData = require(here:WaitForChild("CardData"))
 local DeckRules = require(here:WaitForChild("DeckRules"))
 local Juice = require(here:WaitForChild("Juice"))
+local UIKit = require(here:WaitForChild("UIKit"))
 
 local rgb = Juice.rgb
 
@@ -395,13 +396,12 @@ local function showEditor()
 				redraw()
 			end, { Name = "Hero_" .. h, Size = UDim2.new(0.5, -3, 1, 0) })
 		end
-		local closeB = kit.button(root, "✕", rgb(110, 60, 70), function()
+		-- (a drawn ✕: Roblox's fonts have none)
+		UIKit.closeButton(root, function()
 			state.editing = nil
 			state.saved, state.note = nil, nil
 			redraw()
-		end, { Name = "CloseEditor", Size = UDim2.fromOffset(40, 36), Position = UDim2.new(1, -54, 0, 10) })
-		closeB.TextScaled = false
-		closeB.TextSize = 18
+		end, { Name = "CloseEditor", Size = UDim2.fromOffset(38, 38), Position = UDim2.new(1, -54, 0, 9) })
 		-- themes and lanes
 		text(root, "Themes (up to " .. DeckRules.MaxThemes .. ")", { Size = UDim2.new(0.5, 0, 0, 18), Position = UDim2.fromOffset(14, 52), TextColor3 = DIM, TextSize = 13 })
 		local themeRow = make("Frame", { Name = "Themes", Size = UDim2.new(1, -28, 0, 30), Position = UDim2.fromOffset(14, 70), BackgroundTransparency = 1 }, root)
@@ -553,7 +553,7 @@ local function showEditor()
 	end
 	local probs = side:FindFirstChild("Problems")
 	if ok then
-		probs.Text = "✔ Ready to play"
+		probs.Text = "✓ Ready to play"
 		probs.TextColor3 = GOOD
 	else
 		local shown = {}
@@ -652,7 +652,7 @@ local function showSlots()
 			text(card, d.deck.name, { Size = UDim2.new(1, -150, 0, 24), Position = UDim2.fromOffset(20, 6), Font = Enum.Font.FredokaOne, TextSize = 19, TextColor3 = TEXT, TextTruncate = Enum.TextTruncate.AtEnd })
 			local hero = CardData.Heroes[d.deck.hero]
 			text(card, themeLine(d.deck) .. " · " .. #d.deck.cards .. " cards · " .. (hero and hero.name or "?"), { Size = UDim2.new(1, -150, 0, 18), Position = UDim2.fromOffset(20, 32), TextSize = 13, TextColor3 = DIM })
-			text(card, d.ok and "✔ Ready to play" or ("⚠ " .. tostring(d.problems and d.problems[1] or "Not finished")), {
+			text(card, d.ok and "✓ Ready to play" or ("⚠ " .. tostring(d.problems and d.problems[1] or "Not finished")), {
 				Size = UDim2.new(1, -150, 0, 30),
 				Position = UDim2.fromOffset(20, 50),
 				TextSize = 12,
@@ -777,7 +777,7 @@ function DeckBuilderUI.init(k)
 			redraw()
 		elseif what == "DeckSaved" and type(data) == "table" then
 			if data.ok then
-				state.saved = { "✔ Saved. Ready to play at the Duel Table!", GOOD }
+				state.saved = { "✓ Saved. Ready to play at the Duel Table!", GOOD }
 				Juice.sound("chime", 1.0, 0.5)
 			else
 				state.saved = { "Saved, but not ready to play yet", GOLD }

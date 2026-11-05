@@ -23,6 +23,7 @@ local here = script.Parent
 local Plaza = require(here:WaitForChild("Plaza"))
 local CardData = require(here:WaitForChild("CardData"))
 local Juice = require(here:WaitForChild("Juice"))
+local UIKit = require(here:WaitForChild("UIKit")) -- the drawn close ✕ and Focus
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -609,7 +610,8 @@ local function openEditor()
 	corner(f, 14)
 	stroke(f, GOLD, 2)
 	text(f, "🖼 Your booth", { Font = TITLE_FONT, TextSize = 24, Size = UDim2.new(1, -60, 0, 32), Position = UDim2.fromOffset(16, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = GOLD })
-	button(f, "✕", rgb(110, 60, 70), closeEditor, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 10) })
+	UIKit.closeButton(f, closeEditor, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 10) })
+	UIKit.Focus.watch(f, { dim = 0.4, blur = 8 })
 	if not st or st.loading then
 		text(f, "Loading your cards...", { Position = UDim2.fromOffset(16, 60), Size = UDim2.new(1, -32, 0, 20), TextColor3 = DIM })
 		PlazaAction:FireServer("State")
@@ -715,7 +717,7 @@ local function openPacks()
 	corner(f, 14)
 	stroke(f, GOLD, 2)
 	text(f, "✨ Pull Altar", { Font = TITLE_FONT, TextSize = 24, Size = UDim2.new(1, -60, 0, 30), Position = UDim2.fromOffset(14, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = GOLD })
-	button(f, "✕", rgb(110, 60, 70), closePacks, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 8) })
+	UIKit.closeButton(f, closePacks, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 8) })
 	local area = make("Frame", { Name = "PackArea", Size = UDim2.new(1, -24, 1, -62), Position = UDim2.fromOffset(12, 52), BackgroundTransparency = 1 }, f)
 	PackParty.mount(area, {
 		noDive = true, -- (the Dive starts from the room's pack corner)

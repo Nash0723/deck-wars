@@ -26,7 +26,9 @@ local Rng = req("Rng")
 local ShopCatalog = {}
 
 ShopCatalog.Currencies = { "Gems", "Coins" }
-ShopCatalog.Icon = { Gems = "💎", Coins = "🪙" }
+-- (Roblox has no 🪙 to draw, so where a coin icon matters UIKit draws one; in plain text Coins
+-- are written as a word: Icon.Coins is only a fallback for text-only spots.)
+ShopCatalog.Icon = { Gems = "💎", Coins = "Coins" }
 ShopCatalog.Color = { Gems = { 110, 200, 255 }, Coins = { 255, 200, 70 } }
 ShopCatalog.MaxBalance = 999999999
 

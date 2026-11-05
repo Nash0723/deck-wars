@@ -284,7 +284,7 @@ function TitleScreen.show(opts)
 		Juice.flash(gui, rgb(255, 240, 200), 0.45, 0.35)
 		Juice.shake(logo, 14, 0.35)
 		Juice.pop(logo, 1.12, 0.6)
-		Juice.stars(gui, 0.5, 0.33, 18, { text = "✦", color = GOLD, speed = 1.6, size = 22, gravity = 120 })
+		Juice.stars(gui, 0.5, 0.33, 18, { text = "★", color = GOLD, speed = 1.6, size = 22, gravity = 120 })
 		Juice.tintSunburst(rays, GOLD, 0.1)
 		for _, r in ipairs(rays:GetDescendants()) do
 			if r.Name == "Ray" then

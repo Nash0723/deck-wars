@@ -27,6 +27,7 @@ local LobbyScreen = require(Shared:WaitForChild("LobbyScreen"))
 local PartyScreen = require(Shared:WaitForChild("PartyScreen"))
 local Backdrops = require(Shared:WaitForChild("Backdrops"))
 local Progression = require(Shared:WaitForChild("Progression"))
+local UIKit = require(Shared:WaitForChild("UIKit")) -- drawn icons, the level badge and Focus (one window at a time)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MenuAction = Remotes:WaitForChild("MenuAction")
@@ -847,32 +848,46 @@ label(ui.menuUI, "Click a part of the room or a button below.  A / D or ← / �
 })
 -- You: your level and XP, your Gems and Coins, your win streak and today's first-win bonus. The
 -- server keeps the real numbers and shows them as attributes on your Player (Level, XP, Gems...).
-ui.profile = panel(ui.menuUI, UDim2.fromOffset(340, 66), UDim2.fromOffset(24, 136))
+ui.profile = panel(ui.menuUI, UDim2.fromOffset(356, 72), UDim2.fromOffset(24, 136))
 ui.profile.Name = "Profile"
-ui.levelBadge = label(ui.profile, "1", { Name = "Level", Size = UDim2.fromOffset(44, 44), Position = UDim2.fromOffset(11, 11), BackgroundColor3 = Color3.fromRGB(80, 66, 140), BackgroundTransparency = 0, TextScaled = false, TextSize = 20, TextColor3 = Color3.fromRGB(255, 230, 140) })
-corner(ui.levelBadge, 22)
-make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(255, 210, 110), ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ui.levelBadge)
-ui.xpText = label(ui.profile, "", { Name = "XPText", Size = UDim2.new(1, -170, 0, 16), Position = UDim2.fromOffset(66, 11), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(220, 216, 240), TextXAlignment = Enum.TextXAlignment.Left })
-ui.xpBack = make("Frame", { Size = UDim2.new(1, -174, 0, 8), Position = UDim2.fromOffset(66, 31), BackgroundColor3 = Color3.fromRGB(26, 22, 40) }, ui.profile)
+UIKit.rim(ui.profile)
+-- the round level badge (UIKit draws it, with the number centered both ways)
+ui.levelBadge = UIKit.levelBadge(ui.profile, 48, { Position = UDim2.new(0, 12, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5) })
+ui.xpText = label(ui.profile, "", { Name = "XPText", Size = UDim2.new(1, -184, 0, 18), Position = UDim2.fromOffset(72, 11), Font = UIKit.BOLD_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(230, 226, 246), TextXAlignment = Enum.TextXAlignment.Left })
+ui.xpBack = make("Frame", { Name = "XPBar", Size = UDim2.new(1, -184, 0, 8), Position = UDim2.fromOffset(72, 33), BackgroundColor3 = Color3.fromRGB(14, 11, 24) }, ui.profile)
 corner(ui.xpBack, 4)
-ui.xpFill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(130, 200, 255) }, ui.xpBack)
+make("UIStroke", { Thickness = 1, Color = Color3.fromRGB(80, 70, 120), Transparency = 0.3 }, ui.xpBack)
+ui.xpFill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1) }, ui.xpBack)
 corner(ui.xpFill, 4)
-ui.profileExtra = label(ui.profile, "", { Name = "Extra", Size = UDim2.new(1, -170, 0, 14), Position = UDim2.fromOffset(66, 43), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = Color3.fromRGB(255, 200, 130), TextXAlignment = Enum.TextXAlignment.Left })
--- Gems (open packs) and Coins (shop items), stacked on the right of the card.
-ui.gemsLabel = label(ui.profile, "", { Name = "Gems", Size = UDim2.fromOffset(96, 24), Position = UDim2.new(1, -12, 0, 8), AnchorPoint = Vector2.new(1, 0), TextScaled = false, TextSize = 20, TextColor3 = Color3.fromRGB(130, 220, 255), TextXAlignment = Enum.TextXAlignment.Right })
-ui.coinsLabel = label(ui.profile, "", { Name = "Coins", Size = UDim2.fromOffset(96, 22), Position = UDim2.new(1, -12, 0, 34), AnchorPoint = Vector2.new(1, 0), TextScaled = false, TextSize = 18, TextColor3 = Color3.fromRGB(255, 214, 110), TextXAlignment = Enum.TextXAlignment.Right })
+make("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(120, 190, 255), Color3.fromRGB(170, 130, 255)) }, ui.xpFill)
+ui.profileExtra = label(ui.profile, "", { Name = "Extra", Size = UDim2.new(1, -184, 0, 16), Position = UDim2.fromOffset(72, 46), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = Color3.fromRGB(255, 204, 136), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+-- Gems (open packs) and Coins (shop items), stacked on the right of the card, each with its icon
+-- (Roblox has no 🪙 to draw, so the coin is drawn by UIKit).
+do
+	local wallet = make("Frame", { Name = "Wallet", Size = UDim2.new(0, 100, 1, -14), Position = UDim2.new(1, -12, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1 }, ui.profile)
+	make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Right, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, wallet)
+	local gemsRow
+	gemsRow, ui.gemsLabel = UIKit.currency(wallet, "Gems", "", { size = 20, height = 26 })
+	gemsRow.LayoutOrder = 1
+	local coinsRow
+	coinsRow, ui.coinsLabel = UIKit.currency(wallet, "Coins", "", { size = 19, height = 26, iconSize = 18 })
+	coinsRow.LayoutOrder = 2
+	ui.gemsRow, ui.coinsRow = gemsRow, coinsRow
+end
 do
 	local function refreshProfile()
 		local gems = player:GetAttribute("Gems")
 		local coins = player:GetAttribute("Coins")
-		ui.gemsLabel.Text = if gems then "💎 " .. gems else ""
-		ui.coinsLabel.Text = if coins then "🪙 " .. coins else ""
+		ui.gemsLabel.Text = if gems then ShopCatalog.format(gems) else ""
+		ui.coinsLabel.Text = if coins then ShopCatalog.format(coins) else ""
+		ui.gemsRow.Visible = gems ~= nil
+		ui.coinsRow.Visible = coins ~= nil
 		local level = player:GetAttribute("Level") or 1
 		local xp = player:GetAttribute("XP") or 0
 		local need = player:GetAttribute("XPNeeded") or Progression.xpForLevel(level)
-		ui.levelBadge.Text = tostring(level)
-		ui.xpText.Text = "Level " .. level .. "   ·   " .. xp .. " / " .. need .. " XP"
-		ui.xpFill.Size = UDim2.fromScale(math.clamp(xp / math.max(1, need), 0, 1), 1)
+		UIKit.setLevel(ui.levelBadge, level)
+		ui.xpText.Text = "Level " .. level .. "  ·  " .. xp .. " / " .. need .. " XP"
+		TweenService:Create(ui.xpFill, TweenInfo.new(0.5, Enum.EasingStyle.Quint), { Size = UDim2.fromScale(math.clamp(xp / math.max(1, need), 0, 1), 1) }):Play()
 		local bits = {}
 		local streak = player:GetAttribute("WinStreak") or 0
 		if streak >= 2 then
@@ -899,8 +914,17 @@ ui.STATION_SIZE = UDim2.fromOffset(400, 520)
 ui.STATION_POS = UDim2.new(1, -24, 0.5, 14)
 ui.stationPanel = panel(ui.menuUI, ui.STATION_SIZE, ui.STATION_POS, Vector2.new(1, 0.5))
 ui.stationPanel.Visible = false
-ui.stationTitle = headingStyle(label(ui.stationPanel, "", { Name = "StationTitle", Size = UDim2.new(1, -24, 0, 30), Position = UDim2.fromOffset(12, 12), TextScaled = false, TextSize = 24, TextColor3 = WHITE }))
-ui.stationBody = make("Frame", { Size = UDim2.new(1, -24, 1, -62), Position = UDim2.fromOffset(12, 52), BackgroundTransparency = 1 }, ui.stationPanel)
+ui.stationPanel.Name = "StationPanel"
+UIKit.rim(ui.stationPanel)
+-- (stations can ask for a taller panel by scale; it never grows past the screen's comfort zone)
+make("UISizeConstraint", { MaxSize = Vector2.new(620, 680), MinSize = Vector2.new(320, 360) }, ui.stationPanel)
+ui.stationTitle = headingStyle(label(ui.stationPanel, "", { Name = "StationTitle", Size = UDim2.new(1, -110, 0, 32), Position = UDim2.new(0.5, 0, 0, 12), AnchorPoint = Vector2.new(0.5, 0), TextScaled = false, TextSize = 26, TextColor3 = WHITE }))
+-- a thin gold line under the title
+do
+	local rule = make("Frame", { Name = "TitleRule", Size = UDim2.new(1, -28, 0, 1), Position = UDim2.fromOffset(14, 52), BackgroundColor3 = Color3.fromRGB(255, 214, 120), BorderSizePixel = 0 }, ui.stationPanel)
+	make("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) }) }, rule)
+end
+ui.stationBody = make("Frame", { Name = "StationBody", Size = UDim2.new(1, -24, 1, -72), Position = UDim2.fromOffset(12, 62), BackgroundTransparency = 1 }, ui.stationPanel)
 
 -- The Shop window and reward toasts (ShopUI), and the Deck Shelf's collection and deck editor
 -- (DeckBuilderUI). The server owns every number; they show its snapshots. (Gems and Coins show
@@ -984,10 +1008,13 @@ do
 		end
 		for _, row in ipairs(ROWS) do
 			if row.head then
-				label(scroll, row.head, { Size = UDim2.new(1, -10, 0, 26), TextScaled = false, TextSize = 20, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder() })
+				label(scroll, string.upper(row.head), { Size = UDim2.new(1, -10, 0, 34), TextScaled = false, TextSize = 17, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = nextOrder() })
 			else
 				local key = row.key
-				local f = make("Frame", { Name = "Row_" .. key, Size = UDim2.new(1, -10, 0, row.tip and 58 or 40), BackgroundTransparency = 1, LayoutOrder = nextOrder() }, scroll)
+				-- each setting sits on its own soft card
+				local f = make("Frame", { Name = "Row_" .. key, Size = UDim2.new(1, -10, 0, row.tip and 62 or 42), BackgroundColor3 = Color3.fromRGB(44, 38, 64), BackgroundTransparency = 0.45, LayoutOrder = nextOrder() }, scroll)
+				corner(f, 10)
+				make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 1) }, f)
 				label(f, row.name, { Size = UDim2.new(0.4, 0, 0, 34), Position = UDim2.fromOffset(0, 3), Font = BODY_FONT, TextScaled = false, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left })
 				if row.tip then
 					label(f, row.tip, { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 39), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = TIP, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true })
@@ -1086,6 +1113,8 @@ do
 	local function showDuelTablePanel()
 		clearBody()
 		ui.stationTitle.Text = "Duel Table"
+		-- a wider, taller panel: deck tiles two by two, and nothing squeezed
+		ui.stationPanel.Size = UDim2.new(0, 470, 0.78, 0)
 		LobbyScreen.show(ui.stationBody)
 		require(Shared:WaitForChild("DeckBuilderUI")).request()
 	end
@@ -1161,10 +1190,11 @@ do
 			corner(back, 6)
 			local fill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(130, 200, 255) }, back)
 			corner(fill, 6)
+			make("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(170, 170, 190)) }, fill)
 			return fill
 		end
 		local function heading(text, order)
-			label(body, text, { Size = UDim2.new(1, -8, 0, 26), TextScaled = false, TextSize = 20, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = order })
+			label(body, string.upper(text), { Size = UDim2.new(1, -8, 0, 30), TextScaled = false, TextSize = 17, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = order })
 		end
 		-- Level
 		local lv = box(1, 60, "LevelBox")
@@ -1174,7 +1204,7 @@ do
 		-- Daily reward
 		local daily = box(2, 64, "DailyBox")
 		local dText = label(daily, "", { Size = UDim2.new(1, -130, 0, 24), Position = UDim2.fromOffset(10, 6), TextScaled = false, TextSize = 18, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left })
-		local dSub = label(daily, "", { Size = UDim2.new(1, -130, 0, 20), Position = UDim2.fromOffset(10, 36), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextWrapped = true, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+		local dSub = label(daily, "", { Size = UDim2.new(1, -130, 0, 20), Position = UDim2.fromOffset(10, 36), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextWrapped = true, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 		local dButton = button(daily, "Claim", READY, function()
 			MenuAction:FireServer("ClaimDaily")
 		end, { Name = "ClaimDaily", Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
@@ -1185,7 +1215,7 @@ do
 		for i = 1, Progression.QuestsPerDay do
 			local q = box(4 + i, 60, "Quest" .. i)
 			local r = {}
-			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = BODY_FONT, TextScaled = false, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left })
+			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = UIKit.BOLD_FONT, TextScaled = false, TextSize = 15, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
 			r.fill = bar(q, UDim2.fromOffset(10, 36), UDim2.new(1, -184, 0, 10))
 			r.count = label(q, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 32), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.button = button(q, "", READY, function()
@@ -1201,7 +1231,7 @@ do
 			local f = box(10 + i, 60, "Ach_" .. a.id)
 			local r = { def = a }
 			r.text = label(f, "", { Size = UDim2.new(1, -124, 0, 20), Position = UDim2.fromOffset(10, 5), TextScaled = false, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left })
-			r.sub = label(f, a.text, { Size = UDim2.new(1, -184, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+			r.sub = label(f, a.text, { Size = UDim2.new(1, -124, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.fill = bar(f, UDim2.fromOffset(10, 43), UDim2.new(1, -184, 0, 8))
 			r.count = label(f, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 38), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.button = button(f, "", READY, function()
@@ -1374,6 +1404,8 @@ do
 		moveCamera("Overview")
 	end
 	ui.goBack = goBack
+	-- a drawn ✕ in the panel's corner goes back to the room, like Back and S
+	UIKit.closeButton(ui.stationPanel, goBack, { Name = "CloseStation", Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -12, 0, 12), AnchorPoint = Vector2.new(1, 0), ZIndex = 5 })
 
 	for i, s in ipairs(STATIONS) do
 		local b = button(ui.navBar, s.name, NAV_IDLE, function()
@@ -1521,6 +1553,7 @@ ui.dailyPopup = panel(ui.menuUI, UDim2.fromOffset(560, 250), UDim2.fromScale(0.5
 ui.dailyPopup.Name = "DailyPopup"
 ui.dailyPopup.Visible = false
 ui.dailyPopup.ZIndex = 45
+UIKit.rim(ui.dailyPopup)
 headingStyle(label(ui.dailyPopup, "🎁 Daily reward", { Size = UDim2.new(1, -24, 0, 34), Position = UDim2.fromOffset(12, 14), TextScaled = false, TextSize = 28, TextColor3 = WHITE }))
 label(ui.dailyPopup, "Come back every day: the rewards grow, and day 7 is the big one.", { Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 52), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(205, 200, 225) })
 ui.dailyTiles = make("Frame", { Name = "Days", Size = UDim2.new(1, -24, 0, 78), Position = UDim2.fromOffset(12, 80), BackgroundTransparency = 1 }, ui.dailyPopup)
@@ -1529,7 +1562,7 @@ ui.dailyClaim = button(ui.dailyPopup, "Claim", Color3.fromRGB(60, 170, 90), func
 	MenuAction:FireServer("ClaimDaily")
 end, { Name = "ClaimDaily", Size = UDim2.fromOffset(220, 50), Position = UDim2.new(0.5, -6, 1, -14), AnchorPoint = Vector2.new(1, 1) })
 button(ui.dailyPopup, "Later", Color3.fromRGB(80, 74, 104), function()
-	ui.dailyPopup.Visible = false
+	UIKit.close(ui.dailyPopup)
 end, { Name = "DailyLater", Size = UDim2.fromOffset(120, 50), Position = UDim2.new(0.5, 6, 1, -14), AnchorPoint = Vector2.new(0, 1) })
 
 local function showDailyPopup()
@@ -1587,7 +1620,7 @@ Remotes:WaitForChild("LobbyEvent").OnClientEvent:Connect(function(payload)
 	end
 	if payload.what == "daily" then
 		ui.dailyPopup.Visible = false
-		local coins = (tonumber(payload.coins) or 0) > 0 and ("  +" .. tostring(payload.coins) .. " 🪙") or ""
+		local coins = (tonumber(payload.coins) or 0) > 0 and ("  +" .. tostring(payload.coins) .. " Coins") or ""
 		LobbyScreen.toast("🎁 Daily reward: +" .. tostring(payload.gems) .. " 💎" .. coins .. " (day " .. tostring(payload.day) .. ")")
 		chime(1)
 	elseif payload.what == "achievement" then
@@ -1913,6 +1946,7 @@ LobbyScreen.init({
 	BODY_FONT = BODY_FONT,
 	player = player,
 	WinGems = ShopCatalog.Match.winGems,
+	FirstWinBonus = Progression.FirstWinBonus,
 	myDecks = ui.myDecks,
 	getMode = function()
 		return mode
@@ -2036,7 +2070,7 @@ MatchScreen.init({
 		end
 		highlight.Enabled = false
 		require(Shared:WaitForChild("DeckBuilderUI")).hide()
-		require(Shared:WaitForChild("ShopUI")).close()
+		require(Shared:WaitForChild("ShopUI")).close(true)
 		ui.matchTop.Visible = true
 		hideCharacter(true)
 		actionCam.reset()
@@ -2176,6 +2210,74 @@ do
 	end, function()
 		return MatchScreen.heroPart(false)
 	end)
+end
+
+---------------------------------------------------------------------------
+-- Focus: one thing on screen at a time. When a window opens, whatever would crowd it slides out of
+-- the way (the title, the profile card, the station panel, the room's signs...), the room behind
+-- dims and softly blurs, and the window springs in. Closing it brings everything back. UIKit.Focus
+-- follows each window's Visible, so the code that opens and closes them is unchanged.
+---------------------------------------------------------------------------
+do
+	local Focus = UIKit.Focus
+	Focus.setup()
+	local hint = ui.menuUI:FindFirstChild("MenuHint")
+	local titleSlide = Focus.slide(ui.menuTitle, UDim2.fromOffset(0, -170))
+	local hintSlide = hint and Focus.slide(hint, UDim2.fromOffset(0, -170))
+	Focus.chrome("title", {
+		hide = function()
+			titleSlide.hide()
+			if hintSlide then
+				hintSlide.hide()
+			end
+		end,
+		show = function()
+			titleSlide.show()
+			if hintSlide then
+				hintSlide.show()
+			end
+		end,
+	})
+	Focus.chrome("profile", Focus.slide(ui.profile, UDim2.fromOffset(-440, 0)))
+	Focus.chrome("nav", Focus.slide(ui.navBar, UDim2.fromOffset(0, 130)))
+	-- the station panel only moves (other scripts check its Visible)
+	Focus.chrome("station", Focus.anchorSlide(ui.stationPanel, Vector2.new(1.2, 0)))
+	-- the floating signs over the stations (they're also off during matches and the Plaza)
+	Focus.chrome("signs", {
+		hide = function()
+			setStationSigns(false)
+		end,
+		show = function()
+			setStationSigns(true)
+		end,
+		allowed = function()
+			return mode == "menu"
+		end,
+	})
+
+	local WINDOW = { hide = { "title", "profile", "signs", "dev" }, dim = 0.38, blur = 10 }
+	-- a station panel: the title and the signs step aside (it slides in by itself)
+	Focus.watch(ui.stationPanel, { hide = { "title", "signs" }, animate = false })
+	-- the big windows on the left: the Shop, your collection and deck editor, the tournament bracket
+	local shopWindow = gui.Parent:FindFirstChild("DeckWarsShop") and gui.Parent.DeckWarsShop:FindFirstChild("ShopWindow")
+	if shopWindow then
+		Focus.watch(shopWindow, WINDOW)
+	end
+	local collection = ui.menuUI:FindFirstChild("DeckBuilder")
+	if collection then
+		Focus.watch(collection, WINDOW)
+	end
+	Focus.watch(ui.bracketPanel, WINDOW)
+	-- the Party panel opens over the station panel, so that one slides away while it's open
+	Focus.watch(ui.partyPanel, { hide = { "station", "title", "signs", "dev" }, dim = 0.3, blur = 8 })
+	Focus.watch(ui.invitePopup, { animate = true })
+	-- the daily reward: everything else steps back
+	Focus.watch(ui.dailyPopup, { hide = { "title", "profile", "signs", "station", "nav", "dev" }, dim = 0.5, blur = 14 })
+	-- at the table: settings, how to play, the ⚙ menu and the result
+	Focus.watch(ui.matchSettings, { dim = 0.42, blur = 8 })
+	Focus.watch(ui.helpPanel, { dim = 0.42, blur = 8 })
+	Focus.watch(ui.menuPanel, { dim = 0.18 })
+	Focus.watch(ui.resultPanel, { dim = 0.35, blur = 6 })
 end
 
 ---------------------------------------------------------------------------

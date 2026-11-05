@@ -16,6 +16,7 @@ local Progression = require(here:WaitForChild("Progression"))
 local ShopCatalog = require(here:WaitForChild("ShopCatalog"))
 local Backdrops = require(here:WaitForChild("Backdrops"))
 local Juice = require(here:WaitForChild("Juice"))
+local UIKit = require(here:WaitForChild("UIKit")) -- the drawn coin (Roblox can't draw the coin emoji)
 
 local rgb, make, tween = Juice.rgb, Juice.make, Juice.tween
 
@@ -58,7 +59,8 @@ function TrophyRoadUI.reward(stop)
 	elseif stop.gems then
 		return "💎", "+" .. ShopCatalog.format(stop.gems) .. " Gems", nil
 	end
-	return "🪙", "+" .. ShopCatalog.format(stop.coins or 0) .. " Coins", nil
+	-- "Coins" means the drawn UIKit coin (the toast draws it too)
+	return "Coins", "+" .. ShopCatalog.format(stop.coins or 0) .. " Coins", nil
 end
 
 local function hookToasts()
@@ -125,6 +127,10 @@ function TrophyRoadUI.render(parent, order, kit)
 		local bubble = make("TextButton", { Name = "Bubble", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Size = UDim2.fromOffset(stop.cosmetic and 54 or 46, stop.cosmetic and 54 or 46), BackgroundColor3 = rgb(60, 54, 84), AutoButtonColor = false, Text = icon, TextScaled = true, Font = Enum.Font.GothamBold, TextColor3 = WHITE, BorderSizePixel = 0, ZIndex = 3 }, holder)
 		if stop.cosmetic then
 			bubble.Position = UDim2.new(0.5, 0, 0, 2)
+		end
+		if icon == "Coins" then
+			bubble.Text = ""
+			UIKit.coinIcon(bubble, 28, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		end
 		corner(bubble)
 		make("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, bubble)

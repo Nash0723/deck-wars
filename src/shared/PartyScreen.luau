@@ -12,6 +12,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SocialService = game:GetService("SocialService")
+local UIKit = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("UIKit"))
 
 local INVITE_SHOW_SECONDS = 55 -- an invite leaves the screen a little before the server closes it (60 s)
 local PURPLE = Color3.fromRGB(120, 80, 170)
@@ -85,9 +86,10 @@ function PartyScreen.init(ctx)
 		partyTitle.TextColor3 = Color3.new(1, 1, 1)
 		ctx.headingStyle(partyTitle)
 	end
-	button(ui.partyPanel, "Close", Color3.fromRGB(110, 60, 70), function()
-		ui.partyPanel.Visible = false
-	end, { Name = "CloseParty", Size = UDim2.fromOffset(90, 34), Position = UDim2.new(1, -12, 0, 10), AnchorPoint = Vector2.new(1, 0) })
+	UIKit.rim(ui.partyPanel)
+	UIKit.closeButton(ui.partyPanel, function()
+		UIKit.close(ui.partyPanel)
+	end, { Name = "CloseParty", Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -12, 0, 12), AnchorPoint = Vector2.new(1, 0) })
 	local body = make("Frame", { Name = "PartyBody", Size = UDim2.new(1, -28, 1, -62), Position = UDim2.fromOffset(14, 54), BackgroundTransparency = 1 }, ui.partyPanel)
 
 	local function row(parent, text, order, name)
