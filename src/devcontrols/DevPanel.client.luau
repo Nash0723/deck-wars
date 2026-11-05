@@ -193,3 +193,22 @@ UserInputService.InputBegan:Connect(function(input)
 		toggle()
 	end
 end)
+
+-- Focus (UIKit): when a big window opens (Shop, collection, daily reward...), the DEV tab and this
+-- panel step out of the way, and the profile card makes room while this panel is open.
+do
+	local ok, UIKit = pcall(function()
+		return require(Shared:WaitForChild("UIKit", 5))
+	end)
+	if ok and UIKit and UIKit.Focus then
+		local tabSlide = UIKit.Focus.slide(tab, UDim2.fromOffset(-80, 0))
+		UIKit.Focus.chrome("dev", {
+			hide = function()
+				tabSlide.hide()
+				panel.Visible = false
+			end,
+			show = tabSlide.show,
+		})
+		UIKit.Focus.watch(panel, { hide = { "profile" }, animate = false })
+	end
+end

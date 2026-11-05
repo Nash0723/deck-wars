@@ -719,8 +719,14 @@ function ShopUI.stationPanel(body)
 		end
 		gemsValue.Text = ShopCatalog.format(s.gems)
 		coinsValue.Text = ShopCatalog.format(s.coins)
-		level.Text = "Level " .. s.level .. "  ·  " .. s.xp .. " / " .. s.xpNeed .. " XP"
-		tween(fill, 0.4, { Size = UDim2.fromScale(math.clamp(s.xp / math.max(1, s.xpNeed), 0, 1), 1) })
+		-- The same level as the profile card (the player's Level / XP / XPNeeded attributes), so the
+		-- two never disagree; the shop's own numbers are only a fallback.
+		local lp = Players.LocalPlayer
+		local lv = lp and lp:GetAttribute("Level") or s.level
+		local xp = lp and lp:GetAttribute("XP") or s.xp
+		local need = lp and lp:GetAttribute("XPNeeded") or s.xpNeed
+		level.Text = "Level " .. lv .. "  ·  " .. xp .. " / " .. need .. " XP"
+		tween(fill, 0.4, { Size = UDim2.fromScale(math.clamp(xp / math.max(1, need), 0, 1), 1) })
 		local xpLeft = since(s.xpBoostLeft)
 		boosts.Text = "🍀 Lucky pulls: " .. s.luckCharges .. "\n⚡ " .. (xpLeft > 0 and ("Double XP for " .. duration(xpLeft)) or "No XP boost")
 		daily.Text = "🔥 Login streak: " .. s.streak .. " day" .. (s.streak == 1 and "" or "s") .. "\n🎮 Paid matches left today: " .. s.paidMatchesLeft .. (s.firstWinLeft and "  (first win bonus ready!)" or "")

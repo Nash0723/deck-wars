@@ -1008,10 +1008,13 @@ do
 		end
 		for _, row in ipairs(ROWS) do
 			if row.head then
-				label(scroll, row.head, { Size = UDim2.new(1, -10, 0, 26), TextScaled = false, TextSize = 20, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder() })
+				label(scroll, string.upper(row.head), { Size = UDim2.new(1, -10, 0, 34), TextScaled = false, TextSize = 17, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = nextOrder() })
 			else
 				local key = row.key
-				local f = make("Frame", { Name = "Row_" .. key, Size = UDim2.new(1, -10, 0, row.tip and 58 or 40), BackgroundTransparency = 1, LayoutOrder = nextOrder() }, scroll)
+				-- each setting sits on its own soft card
+				local f = make("Frame", { Name = "Row_" .. key, Size = UDim2.new(1, -10, 0, row.tip and 62 or 42), BackgroundColor3 = Color3.fromRGB(44, 38, 64), BackgroundTransparency = 0.45, LayoutOrder = nextOrder() }, scroll)
+				corner(f, 10)
+				make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 1) }, f)
 				label(f, row.name, { Size = UDim2.new(0.4, 0, 0, 34), Position = UDim2.fromOffset(0, 3), Font = BODY_FONT, TextScaled = false, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left })
 				if row.tip then
 					label(f, row.tip, { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 39), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = TIP, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true })
@@ -1185,10 +1188,11 @@ do
 			corner(back, 6)
 			local fill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(130, 200, 255) }, back)
 			corner(fill, 6)
+			make("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(170, 170, 190)) }, fill)
 			return fill
 		end
 		local function heading(text, order)
-			label(body, text, { Size = UDim2.new(1, -8, 0, 26), TextScaled = false, TextSize = 20, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = order })
+			label(body, string.upper(text), { Size = UDim2.new(1, -8, 0, 30), TextScaled = false, TextSize = 17, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = order })
 		end
 		-- Level
 		local lv = box(1, 60, "LevelBox")
@@ -1198,7 +1202,7 @@ do
 		-- Daily reward
 		local daily = box(2, 64, "DailyBox")
 		local dText = label(daily, "", { Size = UDim2.new(1, -130, 0, 24), Position = UDim2.fromOffset(10, 6), TextScaled = false, TextSize = 18, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left })
-		local dSub = label(daily, "", { Size = UDim2.new(1, -130, 0, 20), Position = UDim2.fromOffset(10, 36), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextWrapped = true, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+		local dSub = label(daily, "", { Size = UDim2.new(1, -130, 0, 20), Position = UDim2.fromOffset(10, 36), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextWrapped = true, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 		local dButton = button(daily, "Claim", READY, function()
 			MenuAction:FireServer("ClaimDaily")
 		end, { Name = "ClaimDaily", Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
@@ -1209,7 +1213,7 @@ do
 		for i = 1, Progression.QuestsPerDay do
 			local q = box(4 + i, 60, "Quest" .. i)
 			local r = {}
-			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = BODY_FONT, TextScaled = false, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left })
+			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = UIKit.BOLD_FONT, TextScaled = false, TextSize = 15, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
 			r.fill = bar(q, UDim2.fromOffset(10, 36), UDim2.new(1, -184, 0, 10))
 			r.count = label(q, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 32), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.button = button(q, "", READY, function()
@@ -1225,7 +1229,7 @@ do
 			local f = box(10 + i, 60, "Ach_" .. a.id)
 			local r = { def = a }
 			r.text = label(f, "", { Size = UDim2.new(1, -124, 0, 20), Position = UDim2.fromOffset(10, 5), TextScaled = false, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left })
-			r.sub = label(f, a.text, { Size = UDim2.new(1, -184, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+			r.sub = label(f, a.text, { Size = UDim2.new(1, -124, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.fill = bar(f, UDim2.fromOffset(10, 43), UDim2.new(1, -184, 0, 8))
 			r.count = label(f, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 38), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.button = button(f, "", READY, function()
@@ -1547,6 +1551,7 @@ ui.dailyPopup = panel(ui.menuUI, UDim2.fromOffset(560, 250), UDim2.fromScale(0.5
 ui.dailyPopup.Name = "DailyPopup"
 ui.dailyPopup.Visible = false
 ui.dailyPopup.ZIndex = 45
+UIKit.rim(ui.dailyPopup)
 headingStyle(label(ui.dailyPopup, "🎁 Daily reward", { Size = UDim2.new(1, -24, 0, 34), Position = UDim2.fromOffset(12, 14), TextScaled = false, TextSize = 28, TextColor3 = WHITE }))
 label(ui.dailyPopup, "Come back every day: the rewards grow, and day 7 is the big one.", { Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 52), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(205, 200, 225) })
 ui.dailyTiles = make("Frame", { Name = "Days", Size = UDim2.new(1, -24, 0, 78), Position = UDim2.fromOffset(12, 80), BackgroundTransparency = 1 }, ui.dailyPopup)
@@ -1555,7 +1560,7 @@ ui.dailyClaim = button(ui.dailyPopup, "Claim", Color3.fromRGB(60, 170, 90), func
 	MenuAction:FireServer("ClaimDaily")
 end, { Name = "ClaimDaily", Size = UDim2.fromOffset(220, 50), Position = UDim2.new(0.5, -6, 1, -14), AnchorPoint = Vector2.new(1, 1) })
 button(ui.dailyPopup, "Later", Color3.fromRGB(80, 74, 104), function()
-	ui.dailyPopup.Visible = false
+	UIKit.close(ui.dailyPopup)
 end, { Name = "DailyLater", Size = UDim2.fromOffset(120, 50), Position = UDim2.new(0.5, 6, 1, -14), AnchorPoint = Vector2.new(0, 1) })
 
 local function showDailyPopup()

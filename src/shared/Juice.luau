@@ -331,7 +331,7 @@ function Juice.confetti(parent, sx, sy, count, opts)
 	end
 end
 
--- Stars (or any text, like "✦" or "♥") that fly out in a ring and fade.
+-- Stars (or any text, like "★" or "♥") that fly out in a ring and fade.
 function Juice.stars(parent, sx, sy, count, opts)
 	opts = opts or {}
 	count = math.floor((count or 10) * (lowGraphics() and 0.6 or 1))
