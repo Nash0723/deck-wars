@@ -330,12 +330,12 @@ function LobbyScreen.init(ctx)
 			if s.kind == "empty" then
 				text = i .. ". (empty)"
 			else
-				local deck = StarterDecks[s.deck]
-				text = i .. ". " .. (s.kind == "bot" and "🤖 " or "") .. (inParty(s.userId) and "👥 " or "") .. s.name .. (deck and (" · " .. deck.name) or "")
+				local deckName = s.deckName or (StarterDecks[s.deck] and StarterDecks[s.deck].name)
+				text = i .. ". " .. (s.kind == "bot" and "🤖 " or "") .. (inParty(s.userId) and "👥 " or "") .. s.name .. (deckName and (" · " .. deckName) or "")
 			end
 			local nameLabel = label(r, text, { Size = UDim2.new(1, -150, 1, -8), Position = UDim2.fromOffset(8, 4), Font = BODY_FONT, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = s.kind == "empty" and Color3.fromRGB(150, 145, 170) or WHITE })
 			if s.kind ~= "empty" and s.deck then
-				nameLabel.TextColor3 = familyColor(StarterDecks[s.deck] and StarterDecks[s.deck].family or "Any"):Lerp(WHITE, 0.4)
+				nameLabel.TextColor3 = familyColor(s.deckFamily or (StarterDecks[s.deck] and StarterDecks[s.deck].family) or "Any"):Lerp(WHITE, 0.4)
 			end
 			local buttons = make("Frame", { Size = UDim2.new(0, 142, 1, -6), Position = UDim2.new(1, -4, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1 }, r)
 			make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Right, Padding = UDim.new(0, 4) }, buttons)
@@ -450,28 +450,65 @@ function LobbyScreen.init(ctx)
 			end, 84, i, "Tab_" .. t.key)
 		end
 		label(body, MODE_TEXT[L.tab], { Size = UDim2.new(1, 0, 0, 34), Font = BODY_FONT, TextWrapped = true, TextColor3 = Color3.fromRGB(230, 225, 240), LayoutOrder = 2 })
-		-- Your deck.
+		-- Your deck: one of your own (built at the Deck Shelf, keys "s1", "s2"...) or a practice deck.
+		local mine, decksLoaded = {}, false
+		if ctx.myDecks then
+			mine, decksLoaded = ctx.myDecks()
+		end
+		local function pickDeck(key)
+			L.deck = key
+			if ctx.prefs then
+				ctx.prefs.set("Deck", key)
+			end
+			if myLobby() then
+				send("SetDeck", { deck = key })
+			end
+			L.render()
+		end
+		local myInfo = nil
+		if #mine > 0 then
+			label(body, "My decks", { Size = UDim2.new(1, 0, 0, 18), Font = BODY_FONT, TextColor3 = Color3.fromRGB(255, 220, 140), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3 })
+			local myGrid = make("Frame", { Name = "MyDecks", Size = UDim2.new(1, 0, 0, math.ceil(#mine / 3) * 36 - 4), BackgroundTransparency = 1, LayoutOrder = 3 }, body)
+			make("UIGridLayout", { CellSize = UDim2.new(1 / 3, -4, 0, 32), CellPadding = UDim2.fromOffset(6, 4), SortOrder = Enum.SortOrder.LayoutOrder }, myGrid)
+			for i, d in ipairs(mine) do
+				local fam = familyColor(d.family)
+				local on = d.key == L.deck
+				if on then
+					myInfo = d
+				end
+				local b = button(myGrid, (d.ok and "" or "⚠ ") .. d.name, on and fam or fam:Lerp(Color3.fromRGB(40, 35, 60), d.ok and 0.65 or 0.85), function()
+					if not d.ok then
+						LobbyScreen.toast("That deck isn't ready: " .. tostring(d.problem or "fix it at the Deck Shelf"))
+						return
+					end
+					pickDeck(d.key)
+				end, { Name = "Deck_" .. d.key, LayoutOrder = i, TextScaled = false, TextSize = 14 })
+				b.TextColor3 = on and BLACK or WHITE
+			end
+			label(body, "Practice decks", { Size = UDim2.new(1, 0, 0, 18), Font = BODY_FONT, TextColor3 = Color3.fromRGB(200, 195, 220), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3 })
+		end
 		local grid = make("Frame", { Name = "Decks", Size = UDim2.new(1, 0, 0, 2 * 32 + 4), BackgroundTransparency = 1, LayoutOrder = 3 }, body)
 		make("UIGridLayout", { CellSize = UDim2.new(1 / 3, -4, 0, 32), CellPadding = UDim2.fromOffset(6, 4), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 		for i, key in ipairs(StarterDecks.Order) do
 			local fam = familyColor(StarterDecks[key].family)
 			local on = key == L.deck
 			local b = button(grid, StarterDecks[key].name, on and fam or fam:Lerp(Color3.fromRGB(40, 35, 60), 0.65), function()
-				L.deck = key
-				if ctx.prefs then
-					ctx.prefs.set("Deck", key)
-				end
-				if myLobby() then
-					send("SetDeck", { deck = key })
-				end
-				L.render()
+				pickDeck(key)
 			end, { Name = "Deck_" .. key, LayoutOrder = i, TextScaled = false, TextSize = 14 })
 			b.TextColor3 = on and BLACK or WHITE
 		end
-		local deck = StarterDecks[L.deck]
-		local rule = CardData.FamilyRules[deck.family]
-		-- How the deck plays, in a few words.
-		label(body, (rule and (rule.text .. ". ") or "") .. "Hero: " .. CardData.Heroes[deck.hero].name .. ".", { Name = "DeckInfo", Size = UDim2.new(1, 0, 0, 34), Font = BODY_FONT, TextWrapped = true, TextColor3 = familyColor(deck.family):Lerp(WHITE, 0.55), LayoutOrder = 4 })
+		if decksLoaded and not myInfo and not StarterDecks[L.deck] then
+			L.deck = "Snack" -- (a saved deck that was deleted or broke since)
+		end
+		if myInfo then
+			local hero = CardData.Heroes[myInfo.hero]
+			label(body, "Your deck: " .. table.concat(myInfo.themes or {}, " + ") .. ", " .. tostring(myInfo.count) .. " cards" .. (hero and (", hero " .. hero.name) or "") .. ".", { Name = "DeckInfo", Size = UDim2.new(1, 0, 0, 34), Font = BODY_FONT, TextWrapped = true, TextColor3 = familyColor(myInfo.family):Lerp(WHITE, 0.55), LayoutOrder = 4 })
+		else
+			local deck = StarterDecks[L.deck] or StarterDecks.Snack
+			local rule = CardData.FamilyRules[deck.family]
+			-- How the deck plays, in a few words.
+			label(body, (rule and (rule.text .. ". ") or "") .. "Hero: " .. CardData.Heroes[deck.hero].name .. ".", { Name = "DeckInfo", Size = UDim2.new(1, 0, 0, 34), Font = BODY_FONT, TextWrapped = true, TextColor3 = familyColor(deck.family):Lerp(WHITE, 0.55), LayoutOrder = 4 })
+		end
 		L.renderBackdrop(body)
 		if lobby then
 			L.renderLobby(body, lobby)
@@ -485,7 +522,7 @@ function LobbyScreen.init(ctx)
 	-- Your saved deck, bot difficulty and background (see prefs in DeckWarsClient).
 	function LobbyScreen.applyPrefs(prefs)
 		local deck = prefs.get("Deck")
-		if type(deck) == "string" and StarterDecks[deck] then
+		if type(deck) == "string" and (StarterDecks[deck] or string.match(deck, "^s%d+$")) then
 			L.deck = deck
 		end
 		local diff = prefs.get("Difficulty")

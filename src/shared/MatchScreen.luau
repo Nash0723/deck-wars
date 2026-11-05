@@ -283,18 +283,22 @@ function MatchScreen.init(ctx)
 
 	-- Sounds: quiet, and only for things that happen (a card lands, a hit, a pop, your turn).
 	-- ⚙ > Sound turns them off.
-	local PullSounds = nil
+	local TableSounds = nil
 	pcall(function()
-		PullSounds = require(Shared:WaitForChild("PullSounds", 5))
+		TableSounds = require(Shared:WaitForChild("TableSounds", 5))
 	end)
 	S.soundOn = true
 	local SOUND_VOLUME = 0.5
 	function F.sound(name, opts)
-		if not S.soundOn or not PullSounds then
+		if not S.soundOn or not TableSounds then
 			return
 		end
 		opts = opts or {}
-		pcall(PullSounds.play, name, { volume = (opts.volume or 1) * SOUND_VOLUME, pitch = opts.pitch })
+		local scale = ctx.sfxScale and ctx.sfxScale() or 1 -- the Sound effects volume in Settings
+		if scale <= 0 then
+			return
+		end
+		pcall(TableSounds.play, name, { volume = (opts.volume or 1) * SOUND_VOLUME * scale, pitch = opts.pitch })
 	end
 
 	local bannerToken = nil
@@ -1616,7 +1620,7 @@ function MatchScreen.init(ctx)
 	function F.setFast(on, save)
 		S.fast = on
 		ui.speedButton.Text = on and "⏩ Speed: Fast" or "⏩ Speed: Normal"
-		PACE = BASE_PACE * (on and FAST_PACE or 1)
+		PACE = BASE_PACE * (S.fast and FAST_PACE or 1)
 		if ctx.setPace then
 			ctx.setPace(PACE)
 		end
@@ -1626,6 +1630,34 @@ function MatchScreen.init(ctx)
 		if save and ctx.prefs then
 			ctx.prefs.set("Fast", on)
 		end
+	end
+
+	-- The Table speed setting (Slow / Normal / Fast in Settings): the pace everything is played at,
+	-- before the ⏩ toggle in the ⚙ menu speeds it up further.
+	function MatchScreen.setBasePace(p)
+		BASE_PACE = p
+		PACE = BASE_PACE * (S.fast and FAST_PACE or 1)
+		if ctx.setPace then
+			ctx.setPace(PACE)
+		end
+	end
+
+	function MatchScreen.toggleMenu()
+		F.toggleMenu()
+	end
+
+	-- The part to show an emote bubble over: your hero (mine = true) or the other side's first one.
+	function MatchScreen.heroPart(mine)
+		if not S.view then
+			return nil
+		end
+		for seat, entry in pairs(S.heroes) do
+			local sv = S.view.seats[seat]
+			if sv and (sv.team == S.myTeam) == mine and entry.model and entry.model.Parent then
+				return entry.model.PrimaryPart or entry.model:FindFirstChildWhichIsA("BasePart")
+			end
+		end
+		return nil
 	end
 
 	-- Your saved settings (DeckWarsClient calls this when they arrive from the server).

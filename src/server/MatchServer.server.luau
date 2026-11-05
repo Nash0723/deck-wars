@@ -682,8 +682,22 @@ local function lobbySummary(lobby)
 				name = slot.kind == "human" and slot.player.DisplayName or ("Bot (" .. slot.difficulty .. ")"),
 				userId = slot.kind == "human" and slot.player.UserId or nil,
 				deck = slot.deck,
+				deckName = nil,
+				deckFamily = nil,
 				difficulty = slot.difficulty,
 			}
+			-- A saved deck ("s2") shows its own name and theme to the others at the table.
+			local n = savedSlot(slot.deck)
+			if n and slot.kind == "human" then
+				local info = PlayerDecks.deckInfo(slot.player, n)
+				if info then
+					slots[i].deckName = info.name
+					slots[i].deckFamily = info.family
+				end
+			elseif StarterDecks[slot.deck] then
+				slots[i].deckName = StarterDecks[slot.deck].name
+				slots[i].deckFamily = StarterDecks[slot.deck].family
+			end
 		else
 			slots[i] = { kind = "empty" }
 		end
@@ -1528,8 +1542,8 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 	elseif what == "ClaimDaily" then
 		-- The daily reward (the screen shows a pop-up when it's ready).
 		if PlayerData and PlayerData.claimDaily then
-			local gems, day = PlayerData.claimDaily(player)
-			LobbyEvent:FireClient(player, { kind = "claimed", what = "daily", ok = gems ~= nil, gems = gems, day = day })
+			local gems, day, coins = PlayerData.claimDaily(player)
+			LobbyEvent:FireClient(player, { kind = "claimed", what = "daily", ok = gems ~= nil, gems = gems, day = day, coins = coins })
 		end
 	elseif what == "ClaimQuest" then
 		if PlayerData and PlayerData.claimQuest then

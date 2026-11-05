@@ -168,6 +168,17 @@ function PlayerDecks.setupFor(player, slot)
 	return DeckRules.setupFor(deck), deck
 end
 
+-- A saved deck's name and first theme, for lobby lists (nil if the slot is empty).
+function PlayerDecks.deckInfo(player, slot)
+	local p = profile(player)
+	local deck = p and type(slot) == "number" and p.decks[slotKey(slot)]
+	if type(deck) ~= "table" then
+		return nil
+	end
+	deck = DeckRules.sanitize(deck)
+	return { name = deck.name, family = deck.themes and deck.themes[1] or "Any" }
+end
+
 function PlayerDecks.forget(player)
 	memory[player] = nil
 end

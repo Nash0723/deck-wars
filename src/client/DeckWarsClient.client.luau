@@ -1,6 +1,8 @@
--- Deck Wars client: the menu room camera, the station menus and the pack openings.
--- The match table lives in MatchScreen, the Duel Table panel (bot, 1v1, 2v2, tournaments) in LobbyScreen,
+-- Deck Wars client: the title screen, the menu room camera and the station menus.
+-- The match table lives in MatchScreen, the Duel Table panel (bot, 1v1, 2v2, Cup) in LobbyScreen,
 -- parties and invites in PartyScreen, and the worlds around the table in a match in Backdrops.
+-- The Deck Shelf is DeckBuilderUI, the Shop is ShopUI, the Pack Shelf and its openings are
+-- PackBrawl.PackParty, and the player's settings are Settings.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,7 +18,10 @@ local Shared = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(Shared:WaitForChild("CardData"))
 local StarterDecks = require(Shared:WaitForChild("StarterDecks"))
 local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
-local PullRates = require(Shared:WaitForChild("PullRates"))
+local Settings = require(Shared:WaitForChild("Settings")) -- the player's settings (the Settings station)
+local Juice = require(Shared:WaitForChild("Juice"))
+local ShopCatalog = require(Shared:WaitForChild("ShopCatalog"))
+local TableSounds = require(Shared:WaitForChild("TableSounds"))
 local MatchScreen = require(Shared:WaitForChild("MatchScreen"))
 local LobbyScreen = require(Shared:WaitForChild("LobbyScreen"))
 local PartyScreen = require(Shared:WaitForChild("PartyScreen"))
@@ -24,6 +29,7 @@ local Backdrops = require(Shared:WaitForChild("Backdrops"))
 local Progression = require(Shared:WaitForChild("Progression"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local MenuAction = Remotes:WaitForChild("MenuAction")
 
 local room = workspace:WaitForChild("MenuRoom")
 local stations = room:WaitForChild("Stations")
@@ -48,6 +54,7 @@ local FONT = Enum.Font.FredokaOne
 local BODY_FONT = Enum.Font.GothamMedium
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
+local INK = Color3.fromRGB(18, 14, 28) -- the thick dark outline on buttons, panels and headings
 
 local function rgb(t)
 	return Color3.fromRGB(t[1], t[2], t[3])
@@ -58,7 +65,7 @@ local function familyColor(family)
 end
 
 -- Shared state, declared up here so every function below can use it.
-local mode = "menu" -- "menu", "match" or "pull" (a pack opening, which moves the camera itself)
+local mode = "title" -- "title", "menu", "match" or "pack" (a pack opening, which moves the camera itself)
 local clock = 0 -- seconds since the script started (advanced every frame)
 local currentStation = nil -- the station whose panel is open
 
@@ -75,10 +82,15 @@ local CAMS = {
 	SeatYou = { Vector3.new(0, 15.8, 12.8), Vector3.new(0, 4.1, 0.2), 50 },
 	SeatOpp = { Vector3.new(0, 15.8, 12.8), Vector3.new(0, 4.1, 0.2), 50 },
 	DeckShelf = { Vector3.new(-9, 8, 0), Vector3.new(-22, 6, 0) },
-	PackParty = { Vector3.new(9.5, 9.5, -9.5), Vector3.new(17, 5.2, -17.5) },
+	PackParty = { Vector3.new(11.5, 9.4, -6.3), Vector3.new(19.5, 6.0, -14.9) }, -- the Pack Shelf, left of the panel
 	ShopCounter = { Vector3.new(9, 8.5, 9), Vector3.new(16, 5.2, 17.5) },
 	TrophyWall = { Vector3.new(11, 9, 0), Vector3.new(23.5, 8, 0) },
 	Radio = { Vector3.new(-13, 6.2, -13), Vector3.new(-17.2, 3.6, -18.2) },
+	-- the title screen: a slow push across the room behind the logo
+	TitleFrom = { Vector3.new(-15, 12.5, 19), Vector3.new(0, 4.5, 0), 60 },
+	TitleTo = { Vector3.new(-5, 8.5, 13), Vector3.new(0, 4.6, -1), 55 },
+	-- after PLAY the camera starts low over the table and rises to the overview
+	Entrance = { Vector3.new(0, 7.2, 9.5), Vector3.new(0, 4.4, -2), 50 },
 }
 local DEFAULT_FOV = 70
 local cam = {
@@ -133,7 +145,7 @@ local function moveCamera(name, instant, seconds)
 end
 
 local function shakeCamera(strength)
-	cam.shake = math.max(cam.shake, strength)
+	cam.shake = math.max(cam.shake, strength * (cam.shakeScale or 1)) -- (Screen shake in Settings)
 end
 
 -- Lean the camera a little toward a point on the table (a fight), or back again with nil.
@@ -288,8 +300,8 @@ end
 local depthOfField = game:GetService("Lighting"):FindFirstChildOfClass("DepthOfFieldEffect")
 
 local function updateCamera(dt)
-	-- During a pack opening the opening owns the camera (see pullMode), so leave it alone.
-	if mode == "pull" then
+	-- During a pack opening the opening owns the camera (see PackParty), so leave it alone.
+	if mode == "pack" then
 		return
 	end
 	if cam.duration > 0 then
@@ -403,21 +415,26 @@ local function button(parent, text, color, onClick, props)
 	}, parent)
 	corner(b, 10)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }, b)
-	make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(20, 18, 30), Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, b)
+	-- Cartoon look: a thick dark outline, a light top and a darker bottom, and outlined text.
+	make("UIStroke", { Thickness = 2.5, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, b)
+	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(196, 190, 210)) }, b)
+	b.TextStrokeColor3 = INK
+	b.TextStrokeTransparency = 0.35
 	for k, v in pairs(props or {}) do
 		b[k] = v
 	end
 	if onClick then
 		b.Activated:Connect(onClick)
 	end
+	Juice.button(b) -- grows on hover, squishes on press, clicks
 	return b
 end
 
 -- Headings: a warm gold gradient with a soft dark outline (instead of a hard black stroke).
 local function headingStyle(l)
 	l.TextStrokeTransparency = 1
-	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 236, 160), Color3.fromRGB(255, 186, 80)) }, l)
-	make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(60, 34, 20), Transparency = 0.25 }, l)
+	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 238, 170), Color3.fromRGB(255, 166, 54)) }, l)
+	make("UIStroke", { Thickness = 2.5, Color = INK }, l)
 	return l
 end
 
@@ -428,10 +445,12 @@ local function panel(parent, size, pos, anchor)
 		Position = pos,
 		AnchorPoint = anchor or Vector2.new(0, 0),
 		BackgroundColor3 = Color3.fromRGB(30, 26, 44),
-		BackgroundTransparency = 0.08,
+		BackgroundTransparency = 0.04,
 	}, parent)
 	corner(f, 14)
-	make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(96, 86, 136), Transparency = 0.15 }, f)
+	-- cartoon look: a thick dark outline and a soft purple-to-navy shade
+	make("UIStroke", { Thickness = 3, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
+	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(170, 168, 200)) }, f)
 	return f
 end
 
@@ -785,323 +804,6 @@ local function makeCard(parent, cardId, size, costOverride, calm)
 	return card
 end
 
----------------------------------------------------------------------------
--- Pull reveal: the big card at the end of a pack opening
----------------------------------------------------------------------------
-
--- Shows a pulled card: a face-down card flies in and flips over (the front is made by makeCard,
--- so it looks just like the card in your hand), then its name, rarity, stats and keywords pop
--- in. Done flips it back and flies it away. Returns right away; the animation runs on its own.
--- opts (all optional):
---   from = Vector2: the screen point the card flies out of, like the winner's head in the
---          opening (default: the middle of the screen)
---   copies = how many copies the player owns now: 1 shows "NEW!", 2 or more shows "x2", "x3"...
---   onDone = function: called after Done, once the reveal is gone
---   onPullAgain = function: adds a "Pull again" button that closes the reveal and calls it
---   onCollection = function: adds a "Collection" button that closes the reveal and calls it
-local showCardReveal
-do
-	local CARD_W, CARD_H = 240, 336
-	local STAGE_W, STAGE_H = 640, 760 -- the layout below is drawn for this size, then scaled to fit
-	local CENTER = Vector2.new(320, 330) -- where the card lands, in stage coordinates
-	local RAINBOW = {
-		Color3.fromRGB(255, 80, 80),
-		Color3.fromRGB(255, 220, 60),
-		Color3.fromRGB(90, 220, 120),
-		Color3.fromRGB(80, 160, 255),
-		Color3.fromRGB(230, 90, 255),
-	}
-	local TIER_RANK = { Common = 0, Rare = 1, Epic = 2, Mythic = 3, Legendary = 4, Secret = 5 }
-	local PullSounds = require(Shared:WaitForChild("PullSounds"))
-	local current = nil
-
-	local function tween(inst, seconds, props, style, direction)
-		local t = TweenService:Create(inst, TweenInfo.new(seconds, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), props)
-		t:Play()
-		return t
-	end
-
-	local function at(x, y)
-		return UDim2.fromOffset(x, y)
-	end
-
-	-- The back of a card, framed in the tier's colour.
-	local function cardBack(parent, tierColor)
-		local back = make("Frame", { Name = "Back", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE }, parent)
-		corner(back, 10)
-		make("UIStroke", { Thickness = 4, Color = tierColor }, back)
-		make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(95, 75, 160), Color3.fromRGB(35, 25, 60)) }, back)
-		label(back, "DECK\nWARS", {
-			Size = UDim2.fromScale(0.8, 0.3),
-			Position = UDim2.fromScale(0.1, 0.35),
-			TextColor3 = Color3.fromRGB(255, 220, 90),
-			TextStrokeTransparency = 0.3,
-		})
-		return back
-	end
-
-	-- A ring in the tier's colour that rushes out from behind the card.
-	local function ring(parent, color)
-		local r = make("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = at(CENTER.X, CENTER.Y), Size = at(CARD_W, CARD_W), BackgroundTransparency = 1, ZIndex = 41 }, parent)
-		make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, r)
-		local stroke = make("UIStroke", { Thickness = 8, Color = color }, r)
-		tween(r, 0.6, { Size = at(CARD_W * 3, CARD_W * 3) })
-		tween(stroke, 0.6, { Transparency = 1 })
-		Debris:AddItem(r, 0.7)
-	end
-
-	-- Little squares that burst out from behind the card (Mythic and up).
-	local function confetti(parent, colors, count)
-		for i = 1, count do
-			local angle = (i / count) * math.pi * 2 + math.random() * 0.3
-			local dist = 200 + math.random() * 140
-			local bit = make("Frame", {
-				Size = at(12, 12),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = at(CENTER.X, CENTER.Y),
-				BackgroundColor3 = colors[(i - 1) % #colors + 1],
-				Rotation = math.random(0, 90),
-				ZIndex = 41,
-			}, parent)
-			tween(bit, 1.0, {
-				Position = at(CENTER.X + math.cos(angle) * dist, CENTER.Y + math.sin(angle) * dist),
-				Rotation = bit.Rotation + 200,
-				BackgroundTransparency = 1,
-			}, Enum.EasingStyle.Quart)
-			Debris:AddItem(bit, 1.1)
-		end
-	end
-
-	-- Squash the card to nothing sideways, swap what shows, and open it up again: a fake 3D flip.
-	local function flip(holder, hide, show)
-		PullSounds.play("swish", { pitch = 1.3 })
-		tween(holder, 0.12, { Size = at(0, CARD_H) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		task.wait(0.12)
-		hide.Visible = false
-		show.Visible = true
-		tween(holder, 0.12, { Size = at(CARD_W, CARD_H) })
-		task.wait(0.12)
-	end
-
-	function showCardReveal(cardId, opts)
-		opts = opts or {}
-		if current then
-			current:Destroy()
-		end
-		local def = CardData.get(cardId)
-		local tierColor = rgb(CardData.RarityColors[def.rarity])
-		local rank = TIER_RANK[def.rarity] or 0
-
-		local root = make("Frame", {
-			Name = "PullReveal",
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = BLACK,
-			BackgroundTransparency = 1,
-			Active = true, -- clicks on the dark backdrop don't reach the room behind it
-			ZIndex = 40,
-		}, gui)
-		current = root
-
-		-- Everything is laid out on a 640 x 760 stage, shrunk to fit small screens.
-		local vp = camera.ViewportSize
-		local s = math.min(1, vp.X / (STAGE_W + 40), vp.Y / (STAGE_H + 20))
-		local stage = make("Frame", { Name = "Stage", Size = at(STAGE_W, STAGE_H), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1, ZIndex = 41 }, root)
-		make("UIScale", { Scale = s }, stage)
-		local from = CENTER
-		if opts.from then
-			from = Vector2.new((opts.from.X - (vp.X - STAGE_W * s) / 2) / s, (opts.from.Y - (vp.Y - STAGE_H * s) / 2) / s)
-		end
-
-		local holder = make("Frame", { Name = "Card", Size = at(CARD_W, CARD_H), AnchorPoint = Vector2.new(0.5, 0.5), Position = at(from.X, from.Y), BackgroundTransparency = 1, ZIndex = 42 }, stage)
-		local grow = make("UIScale", { Scale = 0.2 }, holder)
-		local back = cardBack(holder, tierColor)
-		local front = makeCard(holder, cardId, UDim2.fromScale(1, 1))
-		front.Visible = false
-
-		-- Name, rarity, stats, keywords and buttons fade out together, so they share a group.
-		local info = make("CanvasGroup", { Name = "Info", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 43 }, stage)
-
-		task.spawn(function()
-			local function gone()
-				return current ~= root
-			end
-
-			-- 1. The face-down card flies in.
-			tween(root, 0.3, { BackgroundTransparency = 0.45 })
-			PullSounds.play("whoosh", { volume = 0.7, pitch = 1.2 })
-			tween(holder, 0.45, { Position = at(CENTER.X, CENTER.Y) }, Enum.EasingStyle.Back)
-			tween(grow, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
-			task.wait(0.5)
-			if gone() then
-				return
-			end
-
-			-- 2. Flip it over.
-			holder.Rotation = -4
-			flip(holder, back, front)
-			tween(holder, 0.3, { Rotation = 0 }, Enum.EasingStyle.Back)
-			cardLife.wake(front, true)
-			ring(stage, tierColor)
-			local tier = PullRates.tierOf(def.rarity) or 1
-			PullSounds.play("ding", { pitch = 0.9 + 0.1 * tier }) -- higher for rarer cards
-			if tier >= 4 then
-				PullSounds.play("ding", { volume = 0.6, pitch = 1.4 + 0.1 * tier })
-			end
-			if rank >= 3 then
-				local colors = def.rarity == "Secret" and RAINBOW or { tierColor, WHITE, tierColor:Lerp(WHITE, 0.5) }
-				confetti(stage, colors, rank == 5 and 48 or 28)
-			end
-			if opts.copies then
-				local isNew = opts.copies <= 1
-				local badge = label(holder, isNew and "NEW!" or ("x" .. opts.copies), {
-					Size = at(78, 34),
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.new(1, -8, 0, 8),
-					Rotation = 12,
-					BackgroundTransparency = 0,
-					BackgroundColor3 = isNew and Color3.fromRGB(255, 80, 90) or Color3.fromRGB(70, 80, 120),
-					TextStrokeTransparency = 0.4,
-					ZIndex = 45,
-				})
-				corner(badge, 10)
-				local pop = make("UIScale", { Scale = 0 }, badge)
-				tween(pop, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
-				PullSounds.play(if isNew then "boing2" else "bonk2", { volume = 0.5, pitch = if isNew then 1.5 else 1.3 })
-			end
-
-			-- 3. The name slams in, with the rarity under it.
-			local name = label(info, def.name, { Size = at(560, 52), AnchorPoint = Vector2.new(0.5, 1), Position = at(320, CENTER.Y - CARD_H / 2 - 40), TextStrokeTransparency = 0 })
-			local slam = make("UIScale", { Scale = 1.6 }, name)
-			tween(slam, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
-			PullSounds.play("thud", { volume = 0.8, pitch = 1.1 })
-			local light = def.rarity == "Secret" or def.rarity == "Mythic"
-			local rarity = label(info, string.upper(def.rarity), {
-				Size = at(220, 28),
-				AnchorPoint = Vector2.new(0.5, 1),
-				Position = at(320, CENTER.Y - CARD_H / 2 - 8),
-				BackgroundTransparency = 0,
-				BackgroundColor3 = tierColor,
-				TextColor3 = light and BLACK or WHITE,
-			})
-			corner(rarity, 8)
-			if def.rarity == "Secret" then
-				make("UIGradient", { Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, RAINBOW[1]),
-					ColorSequenceKeypoint.new(0.25, RAINBOW[2]),
-					ColorSequenceKeypoint.new(0.5, RAINBOW[3]),
-					ColorSequenceKeypoint.new(0.75, RAINBOW[4]),
-					ColorSequenceKeypoint.new(1, RAINBOW[5]),
-				}) }, rarity)
-			end
-			task.wait(0.2)
-
-			-- 4. Cost, attack and health count up from 0.
-			local stats = { { "✨", def.cost or 0 } }
-			if def.atk ~= nil and def.type ~= "Building" then
-				table.insert(stats, { "⚔", def.atk })
-			end
-			if def.hp ~= nil then
-				table.insert(stats, { "❤", def.hp })
-			end
-			local statLabel = label(info, "", { Size = at(400, 30), AnchorPoint = Vector2.new(0.5, 0), Position = at(320, CENTER.Y + CARD_H / 2 + 14), TextStrokeTransparency = 0.3 })
-			local t0 = os.clock()
-			while not gone() do
-				local a = math.min(1, (os.clock() - t0) / 0.4)
-				local bits = {}
-				for _, st in ipairs(stats) do
-					table.insert(bits, st[1] .. " " .. math.floor(st[2] * a + 0.5))
-				end
-				statLabel.Text = table.concat(bits, "     ")
-				if a >= 1 then
-					break
-				end
-				task.wait()
-			end
-			if gone() then
-				return
-			end
-
-			-- 5. Keyword chips pop in one by one, then the family's rule fades in.
-			local keywords = {}
-			for k in pairs(def.keywords or {}) do
-				table.insert(keywords, k)
-			end
-			table.sort(keywords)
-			if #keywords > 0 then
-				local row = make("Frame", { Name = "Keywords", Size = at(600, 26), AnchorPoint = Vector2.new(0.5, 0), Position = at(320, CENTER.Y + CARD_H / 2 + 52), BackgroundTransparency = 1 }, info)
-				make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6) }, row)
-				for i, k in ipairs(keywords) do
-					local chip = label(row, k, { Size = at(92, 26), BackgroundTransparency = 0, BackgroundColor3 = tierColor:Lerp(BLACK, 0.4) })
-					corner(chip, 13)
-					local pop = make("UIScale", { Scale = 0 }, chip)
-					tween(pop, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
-					PullSounds.play("bonk2", { volume = 0.35, pitch = 1.8 + 0.1 * i })
-					task.wait(0.08)
-				end
-			end
-			local rule = CardData.FamilyRules[def.family]
-			if rule then
-				local ruleLabel = label(info, rule.name .. ": " .. rule.text, {
-					Size = at(560, 40),
-					AnchorPoint = Vector2.new(0.5, 0),
-					Position = at(320, CENTER.Y + CARD_H / 2 + 86),
-					Font = BODY_FONT,
-					TextWrapped = true,
-					TextColor3 = familyColor(def.family):Lerp(WHITE, 0.45),
-					TextTransparency = 1,
-				})
-				tween(ruleLabel, 0.3, { TextTransparency = 0 })
-			end
-
-			-- 6. The buttons wait a moment, so a tap meant to skip can't press one by accident.
-			task.wait(0.6)
-			if gone() then
-				return
-			end
-			local bar = make("Frame", { Name = "Buttons", Size = at(600, 48), AnchorPoint = Vector2.new(0.5, 0), Position = at(320, CENTER.Y + CARD_H / 2 + 146), BackgroundTransparency = 1 }, info)
-			make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 10) }, bar)
-
-			-- 7. Closing: the card flips to its back, then drops away while everything fades.
-			local closing = false
-			local function close(after)
-				if closing or gone() then
-					return
-				end
-				closing = true
-				bar:Destroy()
-				flip(holder, front, back)
-				PullSounds.play("whoosh", { volume = 0.6, pitch = 0.8 })
-				tween(holder, 0.45, { Position = at(CENTER.X, STAGE_H + CARD_H) }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-				tween(grow, 0.45, { Scale = 0.3 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-				tween(info, 0.3, { GroupTransparency = 1 })
-				tween(root, 0.45, { BackgroundTransparency = 1 })
-				task.wait(0.45)
-				root:Destroy()
-				if current == root then
-					current = nil
-				end
-				if after then
-					after()
-				end
-			end
-			if opts.onPullAgain then
-				button(bar, "Pull again", Color3.fromRGB(240, 160, 50), function()
-					task.spawn(close, opts.onPullAgain)
-				end, { Name = "PullAgain", Size = at(170, 48) })
-			end
-			if opts.onCollection then
-				button(bar, "Collection", Color3.fromRGB(90, 80, 140), function()
-					task.spawn(close, opts.onCollection)
-				end, { Name = "Collection", Size = at(170, 48) })
-			end
-			button(bar, "Done", Color3.fromRGB(70, 130, 220), function()
-				task.spawn(close, opts.onDone)
-			end, { Name = "Done", Size = at(170, 48) })
-		end)
-		return root
-	end
-end
-
 -- All the on-screen panels, buttons and labels live in this table.
 local ui = {}
 
@@ -1110,53 +812,49 @@ local ui = {}
 ---------------------------------------------------------------------------
 
 ui.menuUI = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, gui)
-headingStyle(label(ui.menuUI, "DECK WARS", {
-	Name = "Title",
-	Size = UDim2.fromOffset(300, 40),
-	Position = UDim2.fromOffset(26, 66),
+ui.menuTitle = label(ui.menuUI, "DECK WARS", {
+	Name = "MenuTitle",
+	Size = UDim2.fromOffset(360, 52),
+	Position = UDim2.fromOffset(24, 62),
 	TextScaled = false,
-	TextSize = 36,
-	TextColor3 = WHITE,
+	TextSize = 46,
 	TextXAlignment = Enum.TextXAlignment.Left,
-}))
-label(ui.menuUI, "Click the Duel Table to play", {
-	Name = "Subtitle",
-	Size = UDim2.fromOffset(300, 18),
-	Position = UDim2.fromOffset(28, 106),
+})
+make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 238, 170), Color3.fromRGB(255, 156, 40)) }, ui.menuTitle)
+make("UIStroke", { Thickness = 3, Color = INK }, ui.menuTitle)
+label(ui.menuUI, "Click a part of the room or a button below.  A / D or ← / → look around, S goes back", {
+	Name = "MenuHint",
+	Size = UDim2.fromOffset(620, 18),
+	Position = UDim2.fromOffset(28, 112),
 	Font = BODY_FONT,
 	TextScaled = false,
 	TextSize = 14,
-	TextColor3 = Color3.fromRGB(200, 194, 222),
+	TextColor3 = Color3.fromRGB(225, 220, 240),
+	TextStrokeTransparency = 0.5,
 	TextXAlignment = Enum.TextXAlignment.Left,
 })
--- You: your level and XP, your Gems, your win streak and today's first-win bonus. The server keeps
--- the real numbers and shows them as attributes on your Player (Level, XP, Gems...).
-ui.profile = panel(ui.menuUI, UDim2.fromOffset(320, 66), UDim2.fromOffset(24, 134))
+-- You: your level and XP, your Gems and Coins, your win streak and today's first-win bonus. The
+-- server keeps the real numbers and shows them as attributes on your Player (Level, XP, Gems...).
+ui.profile = panel(ui.menuUI, UDim2.fromOffset(340, 66), UDim2.fromOffset(24, 136))
 ui.profile.Name = "Profile"
 ui.levelBadge = label(ui.profile, "1", { Name = "Level", Size = UDim2.fromOffset(44, 44), Position = UDim2.fromOffset(11, 11), BackgroundColor3 = Color3.fromRGB(80, 66, 140), BackgroundTransparency = 0, TextScaled = false, TextSize = 20, TextColor3 = Color3.fromRGB(255, 230, 140) })
 corner(ui.levelBadge, 22)
-make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(255, 210, 110), Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ui.levelBadge)
-ui.xpText = label(ui.profile, "", { Name = "XPText", Size = UDim2.new(1, -160, 0, 16), Position = UDim2.fromOffset(66, 11), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(210, 206, 235), TextXAlignment = Enum.TextXAlignment.Left })
-ui.xpBack = make("Frame", { Size = UDim2.new(1, -164, 0, 8), Position = UDim2.fromOffset(66, 31), BackgroundColor3 = Color3.fromRGB(50, 44, 72) }, ui.profile)
+make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(255, 210, 110), ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ui.levelBadge)
+ui.xpText = label(ui.profile, "", { Name = "XPText", Size = UDim2.new(1, -170, 0, 16), Position = UDim2.fromOffset(66, 11), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(220, 216, 240), TextXAlignment = Enum.TextXAlignment.Left })
+ui.xpBack = make("Frame", { Size = UDim2.new(1, -174, 0, 8), Position = UDim2.fromOffset(66, 31), BackgroundColor3 = Color3.fromRGB(26, 22, 40) }, ui.profile)
 corner(ui.xpBack, 4)
 ui.xpFill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(130, 200, 255) }, ui.xpBack)
 corner(ui.xpFill, 4)
-ui.profileExtra = label(ui.profile, "", { Name = "Extra", Size = UDim2.new(1, -160, 0, 14), Position = UDim2.fromOffset(66, 43), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = Color3.fromRGB(255, 200, 130), TextXAlignment = Enum.TextXAlignment.Left })
--- Your Gems (the server keeps the real number and shows it as an attribute on your Player).
-ui.gemsLabel = label(ui.profile, "", {
-	Name = "Gems",
-	Size = UDim2.fromOffset(86, 26),
-	Position = UDim2.new(1, -12, 0.5, 0),
-	AnchorPoint = Vector2.new(1, 0.5),
-	TextScaled = false,
-	TextSize = 20,
-	TextColor3 = Color3.fromRGB(130, 220, 255),
-	TextXAlignment = Enum.TextXAlignment.Right,
-})
+ui.profileExtra = label(ui.profile, "", { Name = "Extra", Size = UDim2.new(1, -170, 0, 14), Position = UDim2.fromOffset(66, 43), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = Color3.fromRGB(255, 200, 130), TextXAlignment = Enum.TextXAlignment.Left })
+-- Gems (open packs) and Coins (shop items), stacked on the right of the card.
+ui.gemsLabel = label(ui.profile, "", { Name = "Gems", Size = UDim2.fromOffset(96, 24), Position = UDim2.new(1, -12, 0, 8), AnchorPoint = Vector2.new(1, 0), TextScaled = false, TextSize = 20, TextColor3 = Color3.fromRGB(130, 220, 255), TextXAlignment = Enum.TextXAlignment.Right })
+ui.coinsLabel = label(ui.profile, "", { Name = "Coins", Size = UDim2.fromOffset(96, 22), Position = UDim2.new(1, -12, 0, 34), AnchorPoint = Vector2.new(1, 0), TextScaled = false, TextSize = 18, TextColor3 = Color3.fromRGB(255, 214, 110), TextXAlignment = Enum.TextXAlignment.Right })
 do
 	local function refreshProfile()
 		local gems = player:GetAttribute("Gems")
+		local coins = player:GetAttribute("Coins")
 		ui.gemsLabel.Text = if gems then "💎 " .. gems else ""
+		ui.coinsLabel.Text = if coins then "🪙 " .. coins else ""
 		local level = player:GetAttribute("Level") or 1
 		local xp = player:GetAttribute("XP") or 0
 		local need = player:GetAttribute("XPNeeded") or Progression.xpForLevel(level)
@@ -1173,8 +871,9 @@ do
 		end
 		ui.profileExtra.Text = table.concat(bits, "   ")
 	end
+	local WATCH = { Gems = true, Coins = true, Level = true, XP = true, XPNeeded = true, WinStreak = true, FirstWinReady = true }
 	player.AttributeChanged:Connect(function(name)
-		if name == "Gems" or name == "Level" or name == "XP" or name == "XPNeeded" or name == "WinStreak" or name == "FirstWinReady" then
+		if WATCH[name] then
 			refreshProfile()
 		end
 	end)
@@ -1184,130 +883,263 @@ end
 ui.navBar = make("Frame", { Size = UDim2.new(1, 0, 0, 64), Position = UDim2.new(0, 0, 1, -72), BackgroundTransparency = 1 }, ui.menuUI)
 make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 8) }, ui.navBar)
 
-ui.stationPanel = panel(ui.menuUI, UDim2.fromOffset(400, 520), UDim2.new(1, -24, 0.5, 14), Vector2.new(1, 0.5))
+ui.STATION_SIZE = UDim2.fromOffset(400, 520)
+ui.STATION_POS = UDim2.new(1, -24, 0.5, 14)
+ui.stationPanel = panel(ui.menuUI, ui.STATION_SIZE, ui.STATION_POS, Vector2.new(1, 0.5))
 ui.stationPanel.Visible = false
 ui.stationTitle = headingStyle(label(ui.stationPanel, "", { Name = "StationTitle", Size = UDim2.new(1, -24, 0, 30), Position = UDim2.fromOffset(12, 12), TextScaled = false, TextSize = 24, TextColor3 = WHITE }))
 ui.stationBody = make("Frame", { Size = UDim2.new(1, -24, 1, -62), Position = UDim2.fromOffset(12, 52), BackgroundTransparency = 1 }, ui.stationPanel)
 
+-- The Shop window and reward toasts (ShopUI), and the Deck Shelf's collection and deck editor
+-- (DeckBuilderUI). The server owns every number; they show its snapshots. (Gems and Coins show
+-- on the profile card above, so ShopUI's own counter bar isn't used.)
+do
+	local ShopUI = require(Shared:WaitForChild("ShopUI"))
+	ShopUI.init({ makeCard = makeCard })
+	require(Shared:WaitForChild("DeckBuilderUI")).init({
+		make = make,
+		label = label,
+		button = button,
+		panel = panel,
+		makeCard = makeCard,
+		familyColor = familyColor,
+		menuUI = ui.menuUI,
+		BODY_FONT = BODY_FONT,
+		MenuAction = MenuAction,
+	})
+end
 
+-- Your saved decks for the Duel Table (built at the Deck Shelf): { key = "s1", name, family,
+-- themes, hero, count, ok, problem }, and whether the list has arrived from the server yet.
+function ui.myDecks()
+	local snap = require(Shared:WaitForChild("DeckBuilderUI")).snapshot()
+	local list = {}
+	for _, d in ipairs(snap and snap.decks or {}) do
+		table.insert(list, {
+			key = "s" .. d.slot,
+			name = d.deck.name or ("Deck " .. d.slot),
+			family = d.deck.themes and d.deck.themes[1] or "Any",
+			themes = d.deck.themes,
+			hero = d.deck.hero,
+			count = d.deck.cards and #d.deck.cards or 0,
+			ok = d.ok,
+			problem = d.problems and d.problems[1],
+		})
+	end
+	return list, snap ~= nil
+end
+
+-- The Settings panel: built into the Settings station and into the in-match settings window.
+-- Every change goes through Settings.set, which applies it at once (see "Applying settings").
+ui.settingsLive = {} -- { scroll = ScrollingFrame, refresh = { fn, ... } } for every open settings panel
+do
+	local GOLD = Color3.fromRGB(255, 220, 90)
+	local IDLE = Color3.fromRGB(70, 66, 100)
+	local PICKED = Color3.fromRGB(240, 160, 50)
+	local TIP = Color3.fromRGB(190, 185, 205)
+	local ROWS = {
+		{ head = "Sound" },
+		{ key = "sfx", kind = "volume", name = "Sound effects" },
+		{ key = "music", kind = "volume", name = "Music" },
+		{ head = "Camera" },
+		{ key = "actionCam", kind = "toggle", name = "Action camera", tip = "Swoops in close for attacks, Sparks and big summons." },
+		{ key = "lean", kind = "toggle", name = "Camera lean", tip = "With the action camera off, lean a little toward fights." },
+		{ key = "shake", kind = "choice", name = "Screen shake" },
+		{ head = "Game" },
+		{ key = "speed", kind = "choice", name = "Table speed", tip = "How fast moves play out on the table." },
+		{ key = "packFights", kind = "choice", name = "Pack fights", tip = "Quick plays every pack opening fast-forwarded." },
+		{ head = "Graphics" },
+		{ key = "graphics", kind = "choice", name = "Quality", tip = "Low turns off shadows and glow for slower devices." },
+		{ key = "blur", kind = "toggle", name = "Background blur", tip = "Softly blurs the room far behind the table." },
+	}
+
+	function ui.buildSettings(parent)
+		local refresh = {}
+		local scroll = make("ScrollingFrame", {
+			Name = "SettingsList",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			CanvasSize = UDim2.new(),
+			ScrollBarThickness = 6,
+		}, parent)
+		make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
+		local order = 0
+		local function nextOrder()
+			order += 1
+			return order
+		end
+		for _, row in ipairs(ROWS) do
+			if row.head then
+				label(scroll, row.head, { Size = UDim2.new(1, -10, 0, 26), TextScaled = false, TextSize = 20, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = nextOrder() })
+			else
+				local key = row.key
+				local f = make("Frame", { Name = "Row_" .. key, Size = UDim2.new(1, -10, 0, row.tip and 58 or 40), BackgroundTransparency = 1, LayoutOrder = nextOrder() }, scroll)
+				label(f, row.name, { Size = UDim2.new(0.4, 0, 0, 34), Position = UDim2.fromOffset(0, 3), Font = BODY_FONT, TextScaled = false, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left })
+				if row.tip then
+					label(f, row.tip, { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 39), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = TIP, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true })
+				end
+				local area = make("Frame", { Size = UDim2.new(0.6, 0, 0, 34), Position = UDim2.new(0.4, 0, 0, 3), BackgroundTransparency = 1 }, f)
+				if row.kind == "toggle" then
+					local b = button(area, "", nil, function()
+						Settings.set(key, not Settings.get(key))
+					end, { Name = "Toggle_" .. key, Size = UDim2.fromScale(1, 1), TextScaled = false, TextSize = 18 })
+					table.insert(refresh, function()
+						local on = Settings.get(key)
+						b.Text = on and "On" or "Off"
+						b.BackgroundColor3 = on and PICKED or IDLE
+					end)
+				elseif row.kind == "choice" then
+					local choices = Settings.Choices[key]
+					local n = #choices
+					make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, area)
+					for i, c in ipairs(choices) do
+						local b = button(area, c, nil, function()
+							Settings.set(key, c)
+						end, { Name = key .. "_" .. c, Size = UDim2.new(1 / n, -4 * (n - 1) / n, 1, 0), LayoutOrder = i, TextScaled = false, TextSize = 16 })
+						table.insert(refresh, function()
+							b.BackgroundColor3 = Settings.get(key) == c and PICKED or IDLE
+						end)
+					end
+				else -- volume: - [bar] +
+					button(area, "-", IDLE, function()
+						Settings.set(key, math.max(0, Settings.get(key) - 1))
+					end, { Name = key .. "_Down", Size = UDim2.new(0, 34, 1, 0) })
+					button(area, "+", IDLE, function()
+						Settings.set(key, math.min(Settings.VolumeMax, Settings.get(key) + 1))
+					end, { Name = key .. "_Up", Size = UDim2.new(0, 34, 1, 0), Position = UDim2.new(1, -34, 0, 0) })
+					local bar = make("Frame", { Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 40, 0.5, -10), BackgroundColor3 = Color3.fromRGB(25, 22, 35) }, area)
+					corner(bar, 8)
+					make("UIStroke", { Thickness = 2, Color = INK }, bar)
+					local fill = make("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = PICKED }, bar)
+					corner(fill, 8)
+					local value = label(bar, "", { Name = "Value_" .. key, ZIndex = 2, Font = BODY_FONT, TextScaled = false, TextSize = 14, TextStrokeTransparency = 0.3 })
+					table.insert(refresh, function()
+						local v = Settings.get(key)
+						fill.Size = UDim2.fromScale(v / Settings.VolumeMax, 1)
+						fill.Visible = v > 0
+						value.Text = v == 0 and "Off" or (math.floor(v / Settings.VolumeMax * 100 + 0.5) .. "%")
+					end)
+				end
+			end
+		end
+		label(scroll, "Keys: A / ← and D / → move between the stations in the room, S / ↓ goes back. On a gamepad: D-pad or bumpers, B goes back.", {
+			Size = UDim2.new(1, -10, 0, 48),
+			Font = BODY_FONT,
+			TextScaled = false,
+			TextSize = 13,
+			TextWrapped = true,
+			TextColor3 = TIP,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = nextOrder(),
+		})
+		button(scroll, "Reset to defaults", Color3.fromRGB(110, 60, 70), function()
+			Settings.reset()
+		end, { Name = "ResetSettings", Size = UDim2.new(1, -10, 0, 40), LayoutOrder = nextOrder(), TextScaled = false, TextSize = 18 })
+		label(scroll, "Settings are saved to your account and come back next time you play.", {
+			Size = UDim2.new(1, -10, 0, 34),
+			Font = BODY_FONT,
+			TextScaled = false,
+			TextSize = 12,
+			TextWrapped = true,
+			TextColor3 = TIP,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = nextOrder(),
+		})
+		for _, fn in ipairs(refresh) do
+			fn()
+		end
+		table.insert(ui.settingsLive, { scroll = scroll, refresh = refresh })
+		return scroll
+	end
+end
 
 local selectStation
-local startPull -- set up further down, next to pullMode
 do
 	local function clearBody()
 		for _, child in ipairs(ui.stationBody:GetChildren()) do
 			child:Destroy()
 		end
-		if ui.collectionUI then
-			ui.collectionUI.Visible = false
-		end
+		require(Shared:WaitForChild("DeckBuilderUI")).hide()
+		require(Shared:WaitForChild("ShopUI")).close()
+		-- (the Pack Shelf takes over clicks and hovering only while its panel is open)
+		ui.onMenuClick = nil
+		ui.onMenuHover = nil
+		ui.stationPanel.Size = ui.STATION_SIZE
 	end
 
-	-- Play the bot, or open a table for friends (1v1, 2v2, tournament). See LobbyScreen.
+	-- Play the bot, or open a table for friends (1v1, 2v2, Cup), with one of your own decks or a
+	-- practice deck. See LobbyScreen.
 	local function showDuelTablePanel()
 		clearBody()
 		ui.stationTitle.Text = "Duel Table"
 		LobbyScreen.show(ui.stationBody)
+		require(Shared:WaitForChild("DeckBuilderUI")).request()
 	end
 
-	local function buildCollection()
-		-- Under your level and Gems (top left), above the buttons at the bottom.
-		ui.collectionUI = panel(ui.menuUI, UDim2.new(0.6, 0, 1, -320), UDim2.fromOffset(24, 232), Vector2.new(0, 0))
-		label(ui.collectionUI, "Collection (" .. #CardData.List .. " cards)", { Size = UDim2.new(1, -24, 0, 40), Position = UDim2.fromOffset(12, 8), TextColor3 = Color3.fromRGB(255, 220, 90) })
-		local scroll = make("ScrollingFrame", {
-			Size = UDim2.new(1, -24, 1, -60),
-			Position = UDim2.fromOffset(12, 52),
-			BackgroundTransparency = 1,
-			ScrollBarThickness = 8,
-			CanvasSize = UDim2.new(),
-			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		}, ui.collectionUI)
-		make("UIGridLayout", { CellSize = UDim2.fromOffset(130, 182), CellPadding = UDim2.fromOffset(12, 12) }, scroll)
-		make("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8) }, scroll)
-		for _, id in ipairs(CardData.List) do
-			makeCard(scroll, id, nil, CardData.Cards[id].rarity == "Secret" and "hidden" or nil)
-		end
-	end
-
+	-- The Deck Shelf: your collection, your decks and the deck editor (DeckBuilderUI).
 	local function showDeckShelfPanel()
 		clearBody()
 		ui.stationTitle.Text = "Deck Shelf"
-		if not ui.collectionUI then
-			buildCollection()
-		end
-		ui.collectionUI.Visible = true
-		local scroll = make("ScrollingFrame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 6 }, ui.stationBody)
-		make("UIListLayout", { Padding = UDim.new(0, 2) }, scroll)
-		for _, key in ipairs(StarterDecks.Order) do
-			local deck = StarterDecks[key]
-			label(scroll, deck.name .. " (" .. CardData.Heroes[deck.hero].name .. ")", { Size = UDim2.new(1, 0, 0, 28), TextColor3 = Color3.fromRGB(255, 200, 120) })
-			local counts, order = {}, {}
-			for _, id in ipairs(deck.cards) do
-				if not counts[id] then
-					table.insert(order, id)
-				end
-				counts[id] = (counts[id] or 0) + 1
-			end
-			for _, id in ipairs(order) do
-				label(scroll, counts[id] .. "x  " .. CardData.get(id).name, { Size = UDim2.new(1, 0, 0, 20), Font = BODY_FONT, TextXAlignment = Enum.TextXAlignment.Left })
-			end
-		end
-		label(scroll, "Building your own decks arrives in the next update.", { Size = UDim2.new(1, 0, 0, 36), Font = BODY_FONT, TextWrapped = true, TextColor3 = Color3.fromRGB(200, 200, 220) })
+		require(Shared:WaitForChild("DeckBuilderUI")).showShelf(ui.stationBody)
 	end
 
-	local function showComingSoon(title, text)
-		clearBody()
-		ui.stationTitle.Text = title
-		label(ui.stationBody, text, { Font = BODY_FONT, TextWrapped = true, TextScaled = false, TextSize = 20, TextYAlignment = Enum.TextYAlignment.Top })
-	end
-
-	-- Pack Party: Gems, the Pull button and the drop rates.
+	-- The Pack Shelf: pick a pack (click it on the shelf, or use the arrows), then open it.
 	local function showPackPartyPanel()
 		clearBody()
 		ui.stationTitle.Text = "Pack Party"
-		make("UIListLayout", { Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder }, ui.stationBody)
-		label(ui.stationBody, "Pull the lever for a random card. The rarer it is, the wilder the fight!", { Size = UDim2.new(1, 0, 0, 44), Font = BODY_FONT, TextWrapped = true, TextColor3 = Color3.fromRGB(230, 225, 240), LayoutOrder = 1 })
-		local gemsText = label(ui.stationBody, "", { Size = UDim2.new(1, 0, 0, 30), TextColor3 = Color3.fromRGB(120, 220, 255), LayoutOrder = 2 })
-		local pullButton = button(ui.stationBody, "", Color3.fromRGB(240, 160, 50), function()
-			if startPull then
-				startPull()
-			end
-		end, { Name = "PullButton", Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 3 })
-		ui.pullStatus = label(ui.stationBody, "", { Size = UDim2.new(1, 0, 0, 30), Font = BODY_FONT, TextWrapped = true, TextColor3 = Color3.fromRGB(255, 170, 170), LayoutOrder = 4 })
-		local conn
-		local function refresh()
-			if not gemsText.Parent then
-				conn:Disconnect() -- the panel was closed
-				return
-			end
-			local gems = player:GetAttribute("Gems")
-			gemsText.Text = if gems then "💎 " .. gems .. " Gems" else "💎 Loading your Gems..."
-			pullButton.Text = "PULL!   💎 " .. PullRates.Cost
-			local canPull = gems ~= nil and gems >= PullRates.Cost
-			pullButton.BackgroundColor3 = if canPull then Color3.fromRGB(240, 160, 50) else Color3.fromRGB(110, 100, 125)
-		end
-		conn = player:GetAttributeChangedSignal("Gems"):Connect(refresh)
-		refresh()
-		label(ui.stationBody, "Drop rates", { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 5 })
-		for i, t in ipairs(PullRates.Tiers) do
-			label(ui.stationBody, t.rarity .. "   " .. t.percent .. "%", { Size = UDim2.new(1, 0, 0, 18), Font = BODY_FONT, TextColor3 = rgb(CardData.RarityColors[t.rarity]), TextStrokeTransparency = 0.5, LayoutOrder = 5 + i })
-		end
-		local win = PullRates.WinGems
-		label(ui.stationBody, "Win matches for Gems: bots +" .. win.Easy .. "/+" .. win.Medium .. "/+" .. win.Hard .. ", friends +" .. (PullRates.PvPWinGems or 40) .. ", tournament +" .. (PullRates.CupWinGems or 150), { Size = UDim2.new(1, 0, 0, 40), Font = BODY_FONT, TextWrapped = true, TextColor3 = Color3.fromRGB(200, 200, 220), LayoutOrder = 20 })
+		local PackParty = require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackParty"))
+		ui.stationPanel.Size = UDim2.fromOffset(400, RunService:IsStudio() and 600 or 560)
+		local area = make("Frame", { Name = "PackArea", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, ui.stationBody)
+		PackParty.mount(area, {
+			isActive = function()
+				return mode == "menu" and ui.stationPanel.Visible and area.Parent ~= nil
+			end,
+			onStart = function()
+				-- the opening takes over the camera and the screen until its reveal closes
+				mode = "pack"
+				gui.Enabled = false
+				ui.topGui.Enabled = false
+			end,
+			onEnd = function()
+				if mode == "pack" then
+					mode = "menu"
+				end
+				gui.Enabled = true
+				ui.topGui.Enabled = true
+				lockPlayer()
+			end,
+		})
+		-- clicks and the mouse go to the shelf first (a pack under the mouse lifts up)
+		ui.onMenuClick = PackParty.clickAt
+		ui.onMenuHover = PackParty.hoverAt
 	end
 
-	-- Quests & Rewards (the Trophy Wall): your level, the daily reward, today's three quests and
-	-- the first-win bonus. Everything here comes from attributes the server keeps on your Player.
+	-- The Shop: the Shop window opens on the left; this panel shows your wallet, level and boosts.
+	local function showShopPanel()
+		clearBody()
+		ui.stationTitle.Text = "Shop"
+		local ShopUI = require(Shared:WaitForChild("ShopUI"))
+		ShopUI.stationPanel(ui.stationBody)
+		ShopUI.open()
+	end
+
+	-- The Trophy Wall: your level, the daily reward, today's three quests, the first-win bonus and
+	-- the achievements. Everything here comes from attributes the server keeps on your Player.
 	local function showTrophyPanel()
 		clearBody()
-		ui.stationTitle.Text = "Quests & Rewards"
-		local body = ui.stationBody
+		ui.stationTitle.Text = "Trophy Wall"
+		local body = make("ScrollingFrame", { Name = "TrophyList", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 6 }, ui.stationBody)
 		make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, body)
 		local GOLD = Color3.fromRGB(255, 220, 110)
 		local DIM = Color3.fromRGB(185, 180, 205)
+		local READY = Color3.fromRGB(60, 170, 90)
+		local IDLE = Color3.fromRGB(70, 64, 92)
 		local function box(order, height, name)
-			local f = make("Frame", { Name = name, Size = UDim2.new(1, 0, 0, height), BackgroundColor3 = Color3.fromRGB(44, 38, 64), LayoutOrder = order }, body)
+			local f = make("Frame", { Name = name, Size = UDim2.new(1, -8, 0, height), BackgroundColor3 = Color3.fromRGB(44, 38, 64), LayoutOrder = order }, body)
 			corner(f, 10)
+			make("UIStroke", { Thickness = 2, Color = INK, Transparency = 0.2 }, f)
 			return f
 		end
 		local function bar(parent, pos, size)
@@ -1317,34 +1149,52 @@ do
 			corner(fill, 6)
 			return fill
 		end
+		local function heading(text, order)
+			label(body, text, { Size = UDim2.new(1, -8, 0, 26), TextScaled = false, TextSize = 20, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = order })
+		end
 		-- Level
 		local lv = box(1, 60, "LevelBox")
-		local lvText = label(lv, "", { Size = UDim2.new(0.6, -10, 0, 24), Position = UDim2.fromOffset(10, 6), TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left })
-		local lvNext = label(lv, "", { Size = UDim2.new(0.4, -10, 0, 20), Position = UDim2.new(0.6, 0, 0, 8), Font = BODY_FONT, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Right })
+		local lvText = label(lv, "", { Size = UDim2.new(0.6, -10, 0, 24), Position = UDim2.fromOffset(10, 6), TextScaled = false, TextSize = 18, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left })
+		local lvNext = label(lv, "", { Size = UDim2.new(0.4, -10, 0, 20), Position = UDim2.new(0.6, 0, 0, 8), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Right })
 		local lvFill = bar(lv, UDim2.fromOffset(10, 38), UDim2.new(1, -20, 0, 12))
 		-- Daily reward
 		local daily = box(2, 64, "DailyBox")
-		local dText = label(daily, "", { Size = UDim2.new(1, -130, 0, 24), Position = UDim2.fromOffset(10, 6), TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left })
-		local dSub = label(daily, "", { Size = UDim2.new(1, -130, 0, 20), Position = UDim2.fromOffset(10, 36), Font = BODY_FONT, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
-		local dButton = button(daily, "Claim", Color3.fromRGB(60, 170, 90), function()
-			Remotes.MenuAction:FireServer("ClaimDaily")
-		end, { Name = "ClaimDaily", Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5) })
+		local dText = label(daily, "", { Size = UDim2.new(1, -130, 0, 24), Position = UDim2.fromOffset(10, 6), TextScaled = false, TextSize = 18, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left })
+		local dSub = label(daily, "", { Size = UDim2.new(1, -130, 0, 20), Position = UDim2.fromOffset(10, 36), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextWrapped = true, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+		local dButton = button(daily, "Claim", READY, function()
+			MenuAction:FireServer("ClaimDaily")
+		end, { Name = "ClaimDaily", Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
 		-- First win and streak
-		local extra = label(body, "", { Name = "Bonuses", Size = UDim2.new(1, 0, 0, 22), Font = BODY_FONT, TextColor3 = Color3.fromRGB(255, 205, 140), LayoutOrder = 3 })
-		label(body, "Today's quests", { Size = UDim2.new(1, 0, 0, 26), TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 4 })
+		local extra = label(body, "", { Name = "Bonuses", Size = UDim2.new(1, -8, 0, 22), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(255, 205, 140), LayoutOrder = 3 })
+		heading("Today's quests", 4)
 		local rows = {}
 		for i = 1, Progression.QuestsPerDay do
 			local q = box(4 + i, 60, "Quest" .. i)
 			local r = {}
-			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = BODY_FONT, TextXAlignment = Enum.TextXAlignment.Left })
+			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = BODY_FONT, TextScaled = false, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left })
 			r.fill = bar(q, UDim2.fromOffset(10, 36), UDim2.new(1, -184, 0, 10))
-			r.count = label(q, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 32), Font = BODY_FONT, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
-			r.button = button(q, "", Color3.fromRGB(60, 170, 90), function()
-				Remotes.MenuAction:FireServer("ClaimQuest", { index = i })
-			end, { Name = "ClaimQuest" .. i, Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5) })
+			r.count = label(q, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 32), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+			r.button = button(q, "", READY, function()
+				MenuAction:FireServer("ClaimQuest", { index = i })
+			end, { Name = "ClaimQuest" .. i, Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
 			rows[i] = r
 		end
-		local resetText = label(body, "", { Size = UDim2.new(1, 0, 0, 20), Font = BODY_FONT, TextColor3 = DIM, LayoutOrder = 20 })
+		local resetText = label(body, "", { Size = UDim2.new(1, -8, 0, 20), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = DIM, LayoutOrder = 9 })
+		-- Achievements: one-time goals, claimed once each.
+		heading("Achievements", 10)
+		local achRows = {}
+		for i, a in ipairs(Progression.Achievements) do
+			local f = box(10 + i, 60, "Ach_" .. a.id)
+			local r = { def = a }
+			r.text = label(f, "", { Size = UDim2.new(1, -124, 0, 20), Position = UDim2.fromOffset(10, 5), TextScaled = false, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left })
+			r.sub = label(f, a.text, { Size = UDim2.new(1, -184, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+			r.fill = bar(f, UDim2.fromOffset(10, 43), UDim2.new(1, -184, 0, 8))
+			r.count = label(f, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 38), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+			r.button = button(f, "", READY, function()
+				MenuAction:FireServer("ClaimAchievement", { id = a.id })
+			end, { Name = "ClaimAch_" .. a.id, Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
+			achRows[i] = r
+		end
 
 		local function untilReset()
 			local left = Progression.secondsToReset(os.time())
@@ -1389,14 +1239,27 @@ do
 					local done = progress >= def.target
 					r.button.Text = claimed and "Done" or ("+" .. def.gems .. " 💎")
 					r.button.AutoButtonColor = done and not claimed
-					r.button.BackgroundColor3 = (done and not claimed) and Color3.fromRGB(60, 170, 90) or Color3.fromRGB(70, 64, 92)
+					r.button.BackgroundColor3 = (done and not claimed) and READY or IDLE
 				end
 			end
 			resetText.Text = "New quests in " .. untilReset() .. " · every quest also gives +" .. Progression.QuestXP .. " XP"
+			for _, r in ipairs(achRows) do
+				local a = r.def
+				local progress = player:GetAttribute("Ach_" .. a.id) or 0
+				local claimed = player:GetAttribute("Ach_" .. a.id .. "_Claimed") == true
+				local done = progress >= a.target
+				r.text.Text = (claimed and "🏆 " or "") .. a.name
+				r.text.TextColor3 = claimed and GOLD or WHITE
+				r.count.Text = math.min(progress, a.target) .. "/" .. a.target
+				r.fill.Size = UDim2.fromScale(math.clamp(progress / a.target, 0, 1), 1)
+				r.button.Text = claimed and "Done" or ("+" .. a.gems .. " 💎")
+				r.button.AutoButtonColor = done and not claimed
+				r.button.BackgroundColor3 = (done and not claimed) and READY or IDLE
+			end
 		end
 		local conn
 		conn = player.AttributeChanged:Connect(function()
-			if not body.Parent or not lvText.Parent then
+			if not body.Parent then
 				conn:Disconnect()
 				return
 			end
@@ -1404,46 +1267,51 @@ do
 		end)
 		refresh()
 		task.spawn(function()
-			while lvText.Parent do
+			while body.Parent do
 				task.wait(30)
-				if lvText.Parent then
+				if body.Parent then
 					refresh()
 				end
 			end
 		end)
 	end
 
+	local function showSettingsPanel()
+		clearBody()
+		ui.stationTitle.Text = "Settings"
+		ui.buildSettings(ui.stationBody)
+	end
+
 	local STATIONS = {
 		{ key = "DuelTable", name = "Duel Table", show = showDuelTablePanel },
 		{ key = "DeckShelf", name = "Deck Shelf", show = showDeckShelfPanel },
-		{
-			key = "PackParty",
-			name = "Pack Party",
-			show = showPackPartyPanel,
-		},
-		-- Shop and Settings aren't built yet: they open from the room (click the counter or the radio)
-		-- but get no button at the bottom, so the menu only shows what you can use.
-		{
-			key = "ShopCounter",
-			name = "Shop",
-			nav = false,
-			show = function()
-				showComingSoon("Shop", "Pickles the shopkeeper will sell packs, Gems and cosmetics here.\n\nComing in a later update.")
-			end,
-		},
-		{ key = "TrophyWall", name = "Quests", show = showTrophyPanel },
-		{
-			key = "Radio",
-			name = "Settings",
-			nav = false,
-			show = function()
-				showComingSoon("Settings", "Music and sound settings will live in this radio.\n\nComing in a later update.")
-			end,
-		},
+		{ key = "PackParty", name = "Pack Party", show = showPackPartyPanel },
+		{ key = "ShopCounter", name = "Shop", show = showShopPanel },
+		{ key = "TrophyWall", name = "Trophies", show = showTrophyPanel },
+		{ key = "Radio", name = "Settings", show = showSettingsPanel },
 	}
 	local stationByKey = {}
 	for _, s in ipairs(STATIONS) do
 		stationByKey[s.key] = s
+	end
+
+	-- The station the camera is at (nil = the overview) has its nav button lit up.
+	local navButtons = {}
+	local NAV_IDLE = Color3.fromRGB(34, 30, 52)
+	local NAV_HERE = Color3.fromRGB(86, 64, 28)
+	local NAV_ICONS = { DuelTable = "⚔", DeckShelf = "📚", PackParty = "🎁", ShopCounter = "🛒", TrophyWall = "🏆", Radio = "⚙" }
+	local function markNav()
+		for key, b in pairs(navButtons) do
+			local here = key == currentStation
+			b.BackgroundColor3 = here and NAV_HERE or NAV_IDLE
+			local accent = b:FindFirstChild("Accent")
+			if accent then
+				TweenService:Create(accent, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = here and UDim2.new(0.8, 0, 0, 4) or UDim2.new(0, 0, 0, 4) }):Play()
+			end
+			if here then
+				Juice.pop(b, 1.15, 0.5)
+			end
+		end
 	end
 
 	function selectStation(key)
@@ -1451,43 +1319,150 @@ do
 		if not s or mode ~= "menu" then
 			return
 		end
-		moveCamera(key)
+		if currentStation ~= key then
+			Juice.sound("whoosh", 1, 0.35)
+			-- the panel slides in from the right and settles
+			ui.stationPanel.Position = UDim2.new(1, 60, ui.STATION_POS.Y.Scale, ui.STATION_POS.Y.Offset)
+			TweenService:Create(ui.stationPanel, TweenInfo.new(0.45, Enum.EasingStyle.Back), { Position = ui.STATION_POS }):Play()
+		end
 		currentStation = key
+		markNav()
+		moveCamera(key)
 		ui.stationPanel.Visible = true
 		s.show()
 	end
 
-	ui.navButtons = {}
-	for i, s in ipairs(STATIONS) do
-		if s.nav ~= false then
-			ui.navButtons[s.key] = button(ui.navBar, s.name, Color3.fromRGB(70, 60, 110), function()
-				selectStation(s.key)
-			end, { Name = "Nav" .. s.key, LayoutOrder = i, Size = UDim2.fromOffset(150, 52), TextScaled = false, TextSize = 22 })
-		end
+	local function goBack()
+		currentStation = nil
+		markNav()
+		ui.stationPanel.Visible = false
+		require(Shared:WaitForChild("DeckBuilderUI")).hide()
+		require(Shared:WaitForChild("ShopUI")).close()
+		ui.onMenuClick = nil
+		ui.onMenuHover = nil
+		moveCamera("Overview")
 	end
-	-- A little "!" on Quests when there's something to collect.
+	ui.goBack = goBack
+
+	for i, s in ipairs(STATIONS) do
+		local b = button(ui.navBar, s.name, NAV_IDLE, function()
+			selectStation(s.key)
+		end, { Name = "Nav" .. s.key, LayoutOrder = i, Size = UDim2.fromOffset(150, 52), TextScaled = false, TextSize = 20 })
+		navButtons[s.key] = b
+		b.TextColor3 = Color3.fromRGB(245, 236, 215)
+		b:FindFirstChildOfClass("UIPadding").PaddingLeft = UDim.new(0, 34)
+		b:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(130, 100, 48)
+		label(b, NAV_ICONS[s.key] or "", { Name = "Icon", Size = UDim2.new(0, 24, 1, 0), Position = UDim2.fromOffset(-28, 0), TextScaled = false, TextSize = 22 })
+		local accent = make("Frame", { Name = "Accent", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, -13, 1, 4), Size = UDim2.new(0, 0, 0, 4), BackgroundColor3 = Color3.fromRGB(255, 214, 102), BorderSizePixel = 0 }, b)
+		corner(accent, 2)
+	end
+	ui.navButtons = navButtons
+	-- A little "!" on the Trophy Wall when there's something to collect.
 	do
-		local badge = label(ui.navButtons.TrophyWall, "!", { Name = "Badge", Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, 4, 0, -8), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.fromRGB(230, 70, 80), BackgroundTransparency = 0, Visible = false, ZIndex = 5 })
+		local badge = label(navButtons.TrophyWall, "!", { Name = "Badge", Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, 4, 0, -8), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.fromRGB(230, 70, 80), BackgroundTransparency = 0, Visible = false, ZIndex = 5, TextScaled = false, TextSize = 18 })
 		corner(badge, 12)
+		make("UIStroke", { Thickness = 2, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, badge)
 		local function refreshBadge()
-			badge.Visible = player:GetAttribute("DailyReady") == true or (player:GetAttribute("QuestsReady") or 0) > 0
+			local any = player:GetAttribute("DailyReady") == true or (player:GetAttribute("QuestsReady") or 0) > 0
+			for _, a in ipairs(Progression.Achievements) do
+				if (player:GetAttribute("Ach_" .. a.id) or 0) >= a.target and player:GetAttribute("Ach_" .. a.id .. "_Claimed") ~= true then
+					any = true
+				end
+			end
+			badge.Visible = any
 		end
 		player.AttributeChanged:Connect(function(name)
-			if name == "DailyReady" or name == "QuestsReady" then
+			if name == "DailyReady" or name == "QuestsReady" or string.sub(name, 1, 4) == "Ach_" then
 				refreshBadge()
 			end
 		end)
 		refreshBadge()
 	end
-	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), function()
-		ui.stationPanel.Visible = false
-		currentStation = nil
-		if ui.collectionUI then
-			ui.collectionUI.Visible = false
+	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), goBack, { Name = "NavBack", LayoutOrder = 99, Size = UDim2.fromOffset(110, 52), TextScaled = false, TextSize = 20 })
+
+	-- Keyboard / gamepad: A or Left goes to the station before, D or Right to the next one
+	-- (in the order of the buttons, wrapping around); S, Down or Backspace go back to the overview.
+	local PREV = { [Enum.KeyCode.A] = true, [Enum.KeyCode.Left] = true, [Enum.KeyCode.DPadLeft] = true, [Enum.KeyCode.ButtonL1] = true }
+	local NEXT = { [Enum.KeyCode.D] = true, [Enum.KeyCode.Right] = true, [Enum.KeyCode.DPadRight] = true, [Enum.KeyCode.ButtonR1] = true }
+	local BACK = { [Enum.KeyCode.S] = true, [Enum.KeyCode.Down] = true, [Enum.KeyCode.Backspace] = true, [Enum.KeyCode.ButtonB] = true }
+	local function stepStation(dir)
+		local index = nil
+		for i, s in ipairs(STATIONS) do
+			if s.key == currentStation then
+				index = i
+			end
 		end
-		moveCamera("Overview")
-	end, { LayoutOrder = 99, Size = UDim2.fromOffset(110, 52), TextScaled = false, TextSize = 22 })
+		if not index then
+			index = dir > 0 and 1 or #STATIONS
+		else
+			index = (index - 1 + dir) % #STATIONS + 1
+		end
+		selectStation(STATIONS[index].key)
+	end
+	UserInputService.InputBegan:Connect(function(input)
+		-- (not "processed by GUI": a focused button must not eat the keys; text boxes still do)
+		if mode ~= "menu" or UserInputService:GetFocusedTextBox() then
+			return
+		end
+		local k = input.KeyCode
+		if k == nil then
+			return
+		end
+		if PREV[k] then
+			stepStation(-1)
+		elseif NEXT[k] then
+			stepStation(1)
+		elseif BACK[k] and currentStation then
+			goBack()
+		end
+	end)
+
+	-- A hook for the developer panel (ServerStorage.DevControls, only given to developers):
+	-- "freeRoll" opens the Pack Party and pulls without spending Gems. The server checks
+	-- DevAccess before it honours a free roll, so this hook gives normal players nothing.
+	local hook = Instance.new("BindableFunction")
+	hook.Name = "ClientHook"
+	hook.OnInvoke = function(what, count, tier)
+		if what == "freeRoll" then
+			if mode ~= "menu" then
+				return false, "finish your match (or pack) first"
+			end
+			local PackParty = require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackParty"))
+			if PackParty.isPlaying() then
+				return false, "a pack is already opening"
+			end
+			selectStation("PackParty")
+			PackParty.request(count == 10 and 10 or 1, tier, nil, true)
+			return true
+		end
+		return false, "unknown request"
+	end
+	hook.Parent = script
 end
+
+---------------------------------------------------------------------------
+-- Top right, in the room and at the table: 👥 Party and ⚙, side by side under Roblox's own
+-- buttons. ⚙ opens the Settings station in the room and the match menu at the table.
+---------------------------------------------------------------------------
+ui.topGui = make("ScreenGui", { Name = "DeckWarsTopRight", ResetOnSpawn = false, DisplayOrder = 8, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, player:WaitForChild("PlayerGui"))
+pcall(function()
+	ui.topGui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+end)
+ui.topBar = make("Frame", { Name = "TopBar", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 8), Size = UDim2.fromOffset(240, 44), BackgroundTransparency = 1 }, ui.topGui)
+make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Right, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, ui.topBar)
+ui.gearButton = button(ui.topBar, "⚙", Color3.fromRGB(60, 56, 84), function()
+	if mode == "match" then
+		if ui.toggleMatchMenu then
+			ui.toggleMatchMenu()
+		end
+	elseif mode == "menu" then
+		if currentStation == "Radio" then
+			ui.goBack()
+		else
+			selectStation("Radio")
+		end
+	end
+end, { Name = "GearButton", Size = UDim2.fromOffset(48, 44), LayoutOrder = 2, TextScaled = false, TextSize = 26 })
 
 ---------------------------------------------------------------------------
 -- The daily reward pop-up (once a visit, when today's reward is waiting) and the replies to
@@ -1496,7 +1471,7 @@ end
 
 local function chime(pitch)
 	pcall(function()
-		require(Shared:WaitForChild("PullSounds")).play("ding", { volume = 0.5, pitch = pitch or 1 })
+		TableSounds.play("ding", { volume = 0.5 * Settings.get("sfx") / 8, pitch = pitch or 1 })
 	end)
 end
 
@@ -1509,7 +1484,7 @@ label(ui.dailyPopup, "Come back every day: the rewards grow, and day 7 is the bi
 ui.dailyTiles = make("Frame", { Name = "Days", Size = UDim2.new(1, -24, 0, 78), Position = UDim2.fromOffset(12, 80), BackgroundTransparency = 1 }, ui.dailyPopup)
 make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6) }, ui.dailyTiles)
 ui.dailyClaim = button(ui.dailyPopup, "Claim", Color3.fromRGB(60, 170, 90), function()
-	Remotes.MenuAction:FireServer("ClaimDaily")
+	MenuAction:FireServer("ClaimDaily")
 end, { Name = "ClaimDaily", Size = UDim2.fromOffset(220, 50), Position = UDim2.new(0.5, -6, 1, -14), AnchorPoint = Vector2.new(1, 1) })
 button(ui.dailyPopup, "Later", Color3.fromRGB(80, 74, 104), function()
 	ui.dailyPopup.Visible = false
@@ -1570,8 +1545,14 @@ Remotes:WaitForChild("LobbyEvent").OnClientEvent:Connect(function(payload)
 	end
 	if payload.what == "daily" then
 		ui.dailyPopup.Visible = false
-		LobbyScreen.toast("🎁 Daily reward: +" .. tostring(payload.gems) .. " 💎 (day " .. tostring(payload.day) .. ")")
+		local coins = (tonumber(payload.coins) or 0) > 0 and ("  +" .. tostring(payload.coins) .. " 🪙") or ""
+		LobbyScreen.toast("🎁 Daily reward: +" .. tostring(payload.gems) .. " 💎" .. coins .. " (day " .. tostring(payload.day) .. ")")
 		chime(1)
+	elseif payload.what == "achievement" then
+		local def = Progression.AchievementById[tostring(payload.id)]
+		LobbyScreen.toast("🏆 " .. (def and def.name or "Achievement") .. ": +" .. tostring(payload.gems) .. " 💎")
+		chime(1.3)
+		Juice.confetti(gui, 0.5, 0.35, 40)
 	elseif payload.what == "quest" then
 		local text = "📜 Quest done: +" .. tostring(payload.gems) .. " 💎 and +" .. tostring(payload.xp) .. " XP"
 		for _, up in ipairs(payload.levelUps or {}) do
@@ -1614,9 +1595,9 @@ end
 ---------------------------------------------------------------------------
 
 -- The signs over the stations in the room: small, soft labels in title case (they used to be big
--- outlined capitals that ran off the edges of the screen). The Trophy Wall is where the quests are.
+-- outlined capitals that ran off the edges of the screen). The Trophy Wall holds the quests and achievements.
 do
-	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Quests" }
+	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Trophy Wall" }
 	for _, d in ipairs(stations:GetDescendants()) do
 		if d:IsA("BillboardGui") and d.Name == "Sign" then
 			local text = d:FindFirstChildWhichIsA("TextLabel")
@@ -1754,7 +1735,7 @@ function prefs.set(key, value)
 			prefs.queued = false
 			local send = prefs.pending
 			prefs.pending = {}
-			Remotes.MenuAction:FireServer("SavePrefs", send)
+			MenuAction:FireServer("SavePrefs", send)
 		end)
 	end
 end
@@ -1772,7 +1753,8 @@ LobbyScreen.init({
 	BLACK = BLACK,
 	BODY_FONT = BODY_FONT,
 	player = player,
-	WinGems = PullRates.WinGems,
+	WinGems = ShopCatalog.Match.winGems,
+	myDecks = ui.myDecks,
 	getMode = function()
 		return mode
 	end,
@@ -1783,6 +1765,13 @@ LobbyScreen.init({
 	backdrops = Backdrops,
 	prefs = prefs,
 })
+
+-- Your saved decks arrive (or change at the Deck Shelf): the Duel Table's deck list follows.
+require(Shared:WaitForChild("DeckBuilderUI")).onDecks(function()
+	if mode == "menu" and ui.stationPanel.Visible and currentStation == "DuelTable" then
+		LobbyScreen.refresh()
+	end
+end)
 
 PartyScreen.init({
 	ui = ui,
@@ -1841,6 +1830,9 @@ MatchScreen.init({
 	setMode = function(m)
 		mode = m
 	end,
+	sfxScale = function()
+		return Settings.get("sfx") / 8
+	end,
 	onEnterMatch = function()
 		-- The world around the table (picked on the Duel Table panel; "Card Den" keeps the room).
 		local ok, used = pcall(Backdrops.apply, Backdrops.choice, room, duelTable)
@@ -1873,6 +1865,9 @@ MatchScreen.init({
 			ui.collectionUI.Visible = false
 		end
 		highlight.Enabled = false
+		require(Shared:WaitForChild("DeckBuilderUI")).hide()
+		require(Shared:WaitForChild("ShopUI")).close()
+		ui.matchTop.Visible = true
 		hideCharacter(true)
 		actionCam.reset()
 		if not showIntro(used) then
@@ -1883,6 +1878,8 @@ MatchScreen.init({
 		Backdrops.clear()
 		setStationSigns(true)
 		ui.menuUI.Visible = true
+		ui.matchTop.Visible = false
+		ui.matchSettings.Visible = false
 		hideCharacter(false)
 		actionCam.reset()
 		-- Back at the Duel Table panel, ready for the next game (the same table, after a friends' match).
@@ -1905,164 +1902,155 @@ player.AttributeChanged:Connect(function(name)
 end)
 applyPrefs()
 
--- Pack openings. While one plays, mode is "pull": updateCamera leaves the camera alone, the
--- room's station clicks and hover highlight are off, and the menu is hidden. The opening then
--- moves workspace.CurrentCamera itself until it calls pullMode.exit().
-local pullMode = {}
-
--- Takes the camera for an opening. Returns false (and does nothing) unless you're in the room.
-function pullMode.enter()
-	if mode ~= "menu" then
-		return false
-	end
-	mode = "pull"
-	setStationSigns(false)
-	ui.menuUI.Visible = false
-	ui.stationPanel.Visible = false
-	if ui.collectionUI then
-		ui.collectionUI.Visible = false
-	end
-	highlight.Enabled = false
-	cam.shake = 0
-	camera.CameraType = Enum.CameraType.Scriptable
-	return true
-end
-
--- Gives the camera back to the room. It jumps to camKey (a name in CAMS, default "PackParty").
-function pullMode.exit(camKey)
-	if mode ~= "pull" then
-		return
-	end
-	mode = "menu"
-	setStationSigns(true)
-	ui.menuUI.Visible = true
-	moveCamera(camKey or "PackParty", true)
-end
-
--- Pulls. startPull asks the server for a card (it takes the Gems and saves the card first),
--- then plays the opening and shows the reveal card. Done goes back to the Pack Party panel.
+---------------------------------------------------------------------------
+-- The top-right corner: 👥 Party next to ⚙, in the room and at the table. At the table the ⚙ menu
+-- (how to play, speed, sound, action camera, settings, match log, leave) and the match log open
+-- under it.
+---------------------------------------------------------------------------
 do
-	local PullCinematic = require(Shared:WaitForChild("PullCinematic"))
-	PullCinematic.preload() -- load the sounds now, so the first pull isn't silent
-	local pulling = false
+	ui.partyButton.Parent = ui.topBar
+	ui.partyButton.LayoutOrder = 1
+	ui.partyButton.Size = UDim2.fromOffset(140, 44)
+	ui.partyPanel.Parent = ui.topGui
+	ui.partyPanel.AnchorPoint = Vector2.new(1, 0)
+	ui.partyPanel.Position = UDim2.new(1, -16, 0, 60)
 
-	local function say(text)
-		if ui.pullStatus and ui.pullStatus.Parent then
-			ui.pullStatus.Text = text
+	ui.matchTop = make("Frame", { Name = "MatchTop", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false }, ui.topGui)
+	ui.menuButton.Visible = false -- (the ⚙ in the top bar opens this menu now)
+	ui.menuPanel.Parent = ui.matchTop
+	ui.menuPanel.Position = UDim2.new(1, -16, 0, 60)
+	ui.logFrame.Parent = ui.matchTop
+	ui.logFrame.Position = UDim2.new(1, -16, 0, 60)
+	ui.toggleMatchMenu = function()
+		ui.partyPanel.Visible = false
+		MatchScreen.toggleMenu()
+	end
+
+	-- The in-match settings window (the same options as the Settings station in the room).
+	ui.matchSettings = panel(ui.matchUI, UDim2.fromOffset(420, 540), UDim2.fromScale(0.5, 0.5), Vector2.new(0.5, 0.5))
+	ui.matchSettings.Name = "MatchSettings"
+	ui.matchSettings.Visible = false
+	ui.matchSettings.ZIndex = 41
+	headingStyle(label(ui.matchSettings, "Settings", { Size = UDim2.new(1, -24, 0, 34), Position = UDim2.fromOffset(12, 10), TextScaled = false, TextSize = 26, TextColor3 = WHITE }))
+	button(ui.matchSettings, "Done", Color3.fromRGB(60, 180, 90), function()
+		ui.matchSettings.Visible = false
+	end, { Name = "SettingsDone", Size = UDim2.new(1, -24, 0, 42), Position = UDim2.new(0, 12, 1, -52), TextScaled = false, TextSize = 20 })
+	local body = make("Frame", { Size = UDim2.new(1, -24, 1, -116), Position = UDim2.fromOffset(12, 54), BackgroundTransparency = 1 }, ui.matchSettings)
+	ui.buildSettings(body)
+
+	-- Two more lines in the ⚙ menu: the action camera on / off, and the full settings window.
+	ui.leaveButton.LayoutOrder = 9
+	ui.camButton = button(ui.menuPanel, "", Color3.fromRGB(70, 66, 100), function()
+		Settings.set("actionCam", not actionCam.on) -- (applied below, under "Applying settings")
+	end, { Name = "ActionCamButton", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 5 })
+	button(ui.menuPanel, "⚙ All settings", Color3.fromRGB(70, 66, 100), function()
+		ui.menuPanel.Visible = false
+		ui.matchSettings.Visible = true
+	end, { Name = "SettingsButton", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 6 })
+
+	-- The 💬 emote button (emotes come from the Shop); bubbles pop up over the heroes.
+	require(Shared:WaitForChild("ShopUI")).mountEmotes(ui.matchUI, function()
+		return MatchScreen.heroPart(true)
+	end, function()
+		return MatchScreen.heroPart(false)
+	end)
+end
+
+---------------------------------------------------------------------------
+-- Applying settings: every change takes effect at once and is saved to your account
+---------------------------------------------------------------------------
+do
+	local Lighting = game:GetService("Lighting")
+	local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
+	local sunRays = Lighting:FindFirstChildOfClass("SunRaysEffect")
+	local baseShadows = Lighting.GlobalShadows
+	local baseBloom = bloom and bloom.Enabled
+	local baseSunRays = sunRays and sunRays.Enabled
+	local baseBlur = depthOfField and depthOfField.Enabled
+	local lampShadows = {} -- [light] = whether it casts shadows on High
+	for _, d in ipairs(room:GetDescendants()) do
+		if d:IsA("Light") then
+			lampShadows[d] = d.Shadows
 		end
 	end
 
-	-- Plays the opening for a card the player already has, then the reveal.
-	-- afterwards(again) runs when the reveal closes; again = true means "Pull again".
-	local function playOpening(cardId, tier, seed, copies, afterwards)
-		if not pullMode.enter() then
-			return false
-		end
-		local opening
-		local ok, err = pcall(function()
-			opening = PullCinematic.play({
-				cardId = cardId,
-				tier = tier,
-				seed = seed,
-				camera = camera,
-				buildModel = buildModel,
-				onReveal = function(fromPoint)
-					local function close(again)
-						opening:finish()
-						pullMode.exit()
-						afterwards(again)
-					end
-					showCardReveal(cardId, {
-						from = fromPoint,
-						copies = copies,
-						onDone = function()
-							close(false)
-						end,
-						onPullAgain = function()
-							close(true)
-						end,
-					})
-				end,
-			})
-		end)
-		if not ok then
-			warn("[Pulls] The opening couldn't start: " .. tostring(err))
-			if opening then
-				opening:finish()
+	local function apply(key, value)
+		if key == "speed" then
+			MatchScreen.setBasePace(Settings.Pace[value] or 1)
+		elseif key == "actionCam" then
+			actionCam.on = value
+			if not value and actionCam.release then
+				actionCam.release(0)
 			end
-			pullMode.exit()
-			return false
+			ui.camButton.Text = value and "🎥 Action cam: On" or "🎥 Action cam: Off"
+		elseif key == "lean" then
+			ATTACK_CAMERA = value
+			if not value then
+				cam.leanTarget = 0
+			end
+		elseif key == "shake" then
+			cam.shakeScale = Settings.ShakeScale[value] or 1
+			if value == "Off" then
+				cam.shake = 0
+			end
+		elseif key == "graphics" then
+			local low = value == "Low"
+			Lighting.GlobalShadows = baseShadows and not low
+			if bloom then
+				bloom.Enabled = baseBloom and not low
+			end
+			if sunRays then
+				sunRays.Enabled = baseSunRays and not low
+			end
+			for light, shadows in pairs(lampShadows) do
+				if light.Parent then
+					light.Shadows = shadows and not low
+				end
+			end
+		elseif key == "blur" then
+			if depthOfField then
+				depthOfField.Enabled = value and baseBlur ~= false
+			end
 		end
-		return true
+		-- (sfx and music are read by the sound players each time they play)
+	end
+	for key, value in pairs(Settings.Values) do
+		apply(key, value)
 	end
 
-	function startPull()
-		if pulling or mode ~= "menu" then
-			return
-		end
-		local gems = player:GetAttribute("Gems")
-		if gems == nil then
-			say("Still loading your Gems...")
-			return
-		end
-		if gems < PullRates.Cost then
-			say("You need " .. PullRates.Cost .. " Gems for a pull. Win matches to earn more!")
-			return
-		end
-		local remote = Remotes:FindFirstChild("RequestPull")
-		if not remote then
-			say("Pulls aren't open yet.")
-			return
-		end
-		pulling = true
-		say("")
-		shakeCamera(0.25) -- the machine rattles while the server rolls (it never hints at the rarity)
-		PullCinematic.sound("charge", { volume = 0.5, pitch = 1.6 })
-		local ok, result = pcall(function()
-			return remote:InvokeServer()
-		end)
-		if not ok or type(result) ~= "table" or not result.ok or type(result.cardId) ~= "string" or not CardData.Cards[result.cardId] then
-			pulling = false
-			say(if type(result) == "table" and type(result.message) == "string" then result.message else "Something went wrong, and no Gems were spent. Try again!")
-			return
-		end
-		local started = playOpening(result.cardId, result.tier, result.seed, result.copies, function(again)
-			pulling = false
-			if again then
-				startPull()
+	local saveQueued = false
+	local changedHere = false
+	Settings.onChanged(function(key, value, fromLoad)
+		apply(key, value)
+		for i = #ui.settingsLive, 1, -1 do
+			local open = ui.settingsLive[i]
+			if open.scroll.Parent == nil then
+				table.remove(ui.settingsLive, i)
 			else
-				selectStation("PackParty")
+				for _, fn in ipairs(open.refresh) do
+					fn()
+				end
 			end
-		end)
-		if not started then
-			pulling = false
-			say("You got " .. CardData.Cards[result.cardId].name .. "! It's in your collection.")
 		end
-	end
-
-	-- Studio only: play any card's opening without the server (nothing is spent or saved).
-	-- During a playtest, switch the command bar to the Client and run, for example:
-	--   game.Players.LocalPlayer.PlayerScripts.PullPreview:Fire("toaster_knight")
-	-- An optional second value is the number of copies for the badge (1 shows "NEW!").
-	if RunService:IsStudio() then
-		local preview = Instance.new("BindableEvent")
-		preview.Name = "PullPreview"
-		preview.Event:Connect(function(cardId, copies)
-			local def = type(cardId) == "string" and CardData.Cards[cardId]
-			if not def or pulling then
-				return
+		if not fromLoad then
+			changedHere = true
+			if not saveQueued then
+				-- wait a moment so clicking + five times is one save
+				saveQueued = true
+				task.delay(1.5, function()
+					saveQueued = false
+					MenuAction:FireServer("SaveSettings", Settings.Values)
+				end)
 			end
-			pulling = true
-			local started = playOpening(cardId, PullRates.tierOf(def.rarity), math.random(1, 1e6), copies or 1, function()
-				pulling = false
-				selectStation("PackParty")
-			end)
-			if not started then
-				pulling = false
-			end
-		end)
-		preview.Parent = script.Parent
-	end
+		end
+	end)
+	MenuAction.OnClientEvent:Connect(function(what, data)
+		-- your saved settings arrive from the server (ignored if you already changed something)
+		if what == "Settings" and not changedHere then
+			Settings.load(data)
+		end
+	end)
+	MenuAction:FireServer("LoadSettings")
 end
 
 ---------------------------------------------------------------------------
@@ -2095,6 +2083,9 @@ UserInputService.InputBegan:Connect(function(input, processedByGui)
 		return
 	end
 	if mode == "menu" then
+		if ui.onMenuClick and ui.onMenuClick(pos) then
+			return -- (a pack on the Pack Shelf took the click)
+		end
 		local station = stationAt(pos, true)
 		if station then
 			selectStation(station.Name)
@@ -2167,12 +2158,19 @@ do
 		if mode == "menu" then
 			local mouse = UserInputService:GetMouseLocation()
 			local station = stationAt(mouse)
-			if station then
+			if ui.onMenuHover and ui.onMenuHover(mouse) then
+				highlight.Enabled = false -- (a pack on the shelf lifts up instead)
+			elseif station then
 				highlight.Adornee = station
 				highlight.Enabled = true
+				-- the hovered station glows with a soft gold pulse
+				highlight.FillTransparency = 0.82 + math.sin(clock * 5) * 0.06
+				highlight.OutlineTransparency = 0.1 + math.sin(clock * 5) * 0.1
 			else
 				highlight.Enabled = false
 			end
+		elseif mode ~= "match" then
+			highlight.Enabled = false
 		elseif mode == "match" then
 			hideTimer += dt
 			if hideTimer > 0.5 then
@@ -2187,4 +2185,38 @@ do
 	end)
 end
 
-moveCamera("Overview", true)
+-- The opening: the title screen over a slow camera push across the room. PLAY flies the camera
+-- in from low over the table up to the overview, and the menu pops in piece by piece.
+do
+	local TitleScreen = require(Shared:WaitForChild("TitleScreen"))
+	mode = "title"
+	ui.menuUI.Visible = false
+	ui.topBar.Visible = false
+	moveCamera("TitleFrom", true)
+	glideCamera(CAMS.TitleTo[1], CAMS.TitleTo[2], 40, CAMS.TitleTo[3])
+	TitleScreen.show({
+		onPlay = function()
+			mode = "menu"
+			moveCamera("Entrance", true)
+			glideCamera(CAMS.Overview[1], CAMS.Overview[2], 2.4)
+			task.wait(0.5)
+			ui.menuUI.Visible = true
+			ui.topBar.Visible = true
+			Juice.popIn(ui.menuTitle, 0.1, { twist = -6, sound = false })
+			Juice.popIn(ui.profile, 0.2, { twist = 0, sound = false })
+			local hint = ui.menuUI:FindFirstChild("MenuHint")
+			if hint then
+				hint.TextTransparency = 1
+				TweenService:Create(hint, TweenInfo.new(0.6), { TextTransparency = 0 }):Play()
+			end
+			for _, b in ipairs(ui.navBar:GetChildren()) do
+				if b:IsA("GuiButton") then
+					Juice.popIn(b, 0.35 + b.LayoutOrder % 20 * 0.06, { twist = 0, pitch = 0.9 + (b.LayoutOrder % 20) * 0.05 })
+				end
+			end
+			if ui.checkDaily then
+				ui.checkDaily()
+			end
+		end,
+	})
+end
