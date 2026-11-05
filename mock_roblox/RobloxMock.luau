@@ -1254,6 +1254,13 @@ end
 function methods.SetCoreGuiEnabled(self, t, on)
 	assert(typeof(t) == "EnumItem" and t.EnumType == "CoreGuiType", "SetCoreGuiEnabled needs a CoreGuiType")
 end
+-- TextChannel:DisplaySystemMessage (the chat's system lines are logged in M.chatLog)
+M.chatLog = {}
+function methods.DisplaySystemMessage(self, text)
+	assert(rec(self).className == "TextChannel", "DisplaySystemMessage on " .. rec(self).className)
+	assert(type(text) == "string", "DisplaySystemMessage needs a string")
+	table.insert(M.chatLog, text)
+end
 function methods.GetMouseLocation()
 	return Vector2.new(640, 360)
 end

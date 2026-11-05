@@ -381,8 +381,36 @@ local function addToHall(entry)
 end
 
 local function announce(entry)
-	PlazaEvent:FireAllClients({ kind = "bigPull", name = entry.name, card = entry.card, rarity = entry.rarity, far = entry.far })
+	PlazaEvent:FireAllClients({ kind = "bigPull", name = entry.name, card = entry.card, rarity = entry.rarity, shiny = entry.shiny, far = entry.far, userId = entry.userId })
 	addToHall(entry)
+end
+
+-- Cross-server messages leave at most one every CrossServerGap seconds; the rest wait in line.
+local crossQueue = {}
+local crossBusy = false
+local function publishCross(entry)
+	if not MessagingService then
+		return
+	end
+	table.insert(crossQueue, entry)
+	if crossBusy then
+		return
+	end
+	crossBusy = true
+	task.spawn(function()
+		while #crossQueue > 0 do
+			local left = Plaza.CrossServerGap - (time() - lastCross)
+			if left > 0 then
+				task.wait(left)
+			end
+			local e = table.remove(crossQueue, 1)
+			lastCross = time()
+			pcall(function()
+				MessagingService:PublishAsync(Plaza.CrossServerTopic, { name = e.name, card = e.card, shiny = e.shiny, job = game.JobId })
+			end)
+		end
+		crossBusy = false
+	end)
 end
 
 feed.Event:Connect(function(player, cards)
@@ -390,10 +418,14 @@ feed.Event:Connect(function(player, cards)
 		return
 	end
 	local ids = {}
+	local shinyOf = {}
 	for _, c in ipairs(cards) do
 		local id = type(c) == "table" and c.id or c
 		if type(id) == "string" and CardData.Cards[id] then
 			table.insert(ids, id)
+			if type(c) == "table" and c.shiny == true then
+				shinyOf[id] = true
+			end
 		end
 	end
 	local d = dataOf(player)
@@ -403,21 +435,24 @@ feed.Event:Connect(function(player, cards)
 	if d then
 		refresh(player)
 	end
-	-- the rarest card of the pull, if it is worth a banner
+	-- the rarest card of the pull (a Shiny one first), if it is worth a banner
 	local sorted = Plaza.sortRarest(table.clone(ids))
 	local best = sorted[1]
-	local level = best and Plaza.announceLevel(best)
+	for _, id in ipairs(sorted) do
+		if shinyOf[id] then
+			best = id
+			break
+		end
+	end
+	local level = best and Plaza.announceLevel(best, shinyOf[best])
 	if not level then
 		return
 	end
-	local entry = { name = player.DisplayName, card = best, rarity = CardData.Cards[best].rarity, at = os.time() }
+	local entry = { name = player.DisplayName, card = best, rarity = CardData.Cards[best].rarity, shiny = shinyOf[best] or nil, userId = player.UserId, at = os.time() }
 	task.delay(Plaza.FeedDelay, function()
 		announce(entry)
-		if level == "cross" and MessagingService and time() - lastCross >= Plaza.CrossServerGap then
-			lastCross = time()
-			pcall(function()
-				MessagingService:PublishAsync(Plaza.CrossServerTopic, { name = entry.name, card = entry.card, job = game.JobId })
-			end)
+		if level == "cross" then
+			publishCross(entry)
 		end
 	end)
 end)
@@ -434,7 +469,7 @@ if MessagingService then
 				if not card then
 					return
 				end
-				announce({ name = tostring(m.name):sub(1, 30), card = m.card, rarity = card.rarity, at = os.time(), far = true })
+				announce({ name = tostring(m.name):sub(1, 30), card = m.card, rarity = card.rarity, shiny = m.shiny == true or nil, at = os.time(), far = true })
 			end)
 		end)
 	end)

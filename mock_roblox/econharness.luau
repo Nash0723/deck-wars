@@ -38,6 +38,16 @@ end
 M.service("ContentProvider").Parent = game -- (TableSounds preloads its sounds)
 M.service("SocialService").Parent = game -- (PartyScreen invites friends)
 M.service("GuiService").Parent = game
+do -- the chat (Secret pulls are posted in it)
+	local tcs = M.service("TextChatService")
+	tcs.Parent = game
+	local channels = Instance.new("Folder")
+	channels.Name = "TextChannels"
+	channels.Parent = tcs
+	local general = Instance.new("TextChannel")
+	general.Name = "RBXGeneral"
+	general.Parent = channels
+end
 M.service("ProximityPromptService").Parent = game -- (the Plaza's prompts)
 local camera = Instance.new("Camera")
 camera.Name = "Camera"
@@ -64,7 +74,7 @@ for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackArt", "PackOpen", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local function remoteFolder(name, list)
@@ -268,6 +278,28 @@ end
 local ShopCatalog = makeEnv(clientScript, clientCache).require(shared.ShopCatalog)
 local CardData = makeEnv(clientScript, clientCache).require(shared.CardData)
 local Economy = makeEnv(nil, serverCache).require(serverModules.EconomyManager)
+local ServerProgression = makeEnv(nil, serverCache).require(shared.Progression)
+
+-- Every match the server records on the save, with what it paid (for the Trophy Road checks).
+local matchLog = {}
+do
+	local PlayerDataMod = makeEnv(nil, serverCache).require(ServerScriptService.PlayerData)
+	local record = PlayerDataMod.recordMatch
+	PlayerDataMod.recordMatch = function(who, m)
+		local out = record(who, m)
+		table.insert(matchLog, { m = m, out = out })
+		return out
+	end
+end
+-- The Trophy Road rule: a match that lasted long enough earns Progression.trophiesFor, a too
+-- short one earns nothing.
+local function expectedTrophies(m)
+	local rule = ShopCatalog.Match
+	if (tonumber(m.seconds) or 0) < rule.minSeconds or (tonumber(m.turns) or 0) < rule.minTurns then
+		return 0
+	end
+	return ServerProgression.trophiesFor(m)
+end
 
 ---------------------------------------------------------------------------
 -- Joining
@@ -658,6 +690,8 @@ do
 	local MatchScreen = makeEnv(clientScript, clientCache).require(shared.MatchScreen)
 	local F, S = MatchScreen.F, MatchScreen.S
 	local gemsBefore = player:GetAttribute("Gems")
+	local trophiesBefore = player:GetAttribute("Trophies") or 0
+	local logged0 = #matchLog
 	click(named("NavDuelTable"), "Duel Table station")
 	M.advance(1.5)
 	click(named("PlayBot"), "Sit down and play (bot)")
@@ -793,18 +827,18 @@ do
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
 	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
 	F.showResult = showResult
-	-- Trophies follow the server's rules: any match that went the distance earns some, one that
-	-- ended too soon (ShopCatalog.Match.minSeconds / minTurns) earns none.
-	local trophies = player:GetAttribute("Trophies") or 0
+	-- Trophies follow the Trophy Road rule for how this match actually went: the match seed comes
+	-- from the clock, so the bot can win in a few turns, and a match shorter than
+	-- ShopCatalog.Match.minSeconds / minTurns earns nothing by design.
+	check(#matchLog == logged0 + 1, "the match was recorded on the save (" .. (#matchLog - logged0) .. ")")
 	check(seenRewards ~= nil, "the result came with its rewards")
-	if seenRewards then
-		print("note match rewards: note " .. tostring(seenRewards.note) .. ", trophies " .. tostring(seenRewards.trophies))
-		if seenRewards.note == "too short" then
-			check(trophies == 0 and seenRewards.trophies == nil, "a match that ended too soon earns no trophies (" .. trophies .. ")")
-		else
-			check(trophies > 0, "the match earned trophies (" .. trophies .. ")")
-			check(trophies == seenRewards.trophies, "the Trophy count matches the result screen (" .. trophies .. " vs " .. tostring(seenRewards.trophies) .. ")")
-		end
+	local rec = matchLog[#matchLog]
+	if rec then
+		local want = expectedTrophies(rec.m)
+		local got = (player:GetAttribute("Trophies") or 0) - trophiesBefore
+		print("note match result: " .. tostring(rec.m.result) .. " after " .. string.format("%.0f", rec.m.seconds or 0) .. " s and " .. tostring(rec.m.turns) .. " turns, " .. got .. " trophies, note " .. tostring(seenRewards and seenRewards.note))
+		check(got == want, "the match earned the trophies the Trophy Road rule gives it (" .. got .. ", want " .. want .. ")")
+		check(seenRewards and (seenRewards.trophies or 0) == want, "the result screen reports those trophies (" .. tostring(seenRewards and seenRewards.trophies) .. ")")
 	end
 end
 
@@ -927,6 +961,7 @@ do
 	check(named("NavCampaign") ~= nil and named("NavPlazaDoor") ~= nil, "the nav bar has Campaign and Plaza buttons")
 
 	local gems0 = player:GetAttribute("Gems")
+	local campLogged0 = #matchLog
 	click(named("NavCampaign"), "Campaign station")
 	M.advance(2)
 	check(named("StationTitle") and named("StationTitle").Text == "Campaign", "the Campaign panel opens")
@@ -990,6 +1025,19 @@ do
 		end
 	end
 	check(won, "act 1 was beaten within 3 tries")
+	do
+		local want, earnedAny = 60, false
+		for i = campLogged0 + 1, #matchLog do
+			want += expectedTrophies(matchLog[i].m)
+		end
+		for _, rec in ipairs(matchLog) do
+			if expectedTrophies(rec.m) > 0 then
+				earnedAny = true
+			end
+		end
+		check(saveData().progress.trophies == want and player:GetAttribute("Trophies") == want, "the Campaign stages added their trophies to the road (" .. tostring(player:GetAttribute("Trophies")) .. ", want " .. want .. ")")
+		check(earnedAny, "a match that went the distance earned trophies")
+	end
 	if won then
 		local d = saveData()
 		local clear = d and d.campaign and d.campaign.clears["Den:1:N"]
@@ -1145,6 +1193,29 @@ do
 	check(inHall, "the pull is on the Hall of Pulls")
 	check(friend:GetAttribute("BestRarity") == "Mythic", "the friend's best pull is remembered")
 	check(friend:GetAttribute("HubTitle") == Plaza.PullTitles.Mythic, "and earns a title (" .. tostring(friend:GetAttribute("HubTitle")) .. ")")
+	check(#M.chatLog == 0, "a Mythic pull isn't posted in the chat")
+
+	-- a Secret pull goes in everyone's chat (after the same wait)
+	local secret = nil
+	for _, id in ipairs(CardData.List) do
+		if CardData.Cards[id].rarity == "Secret" and not CardData.Cards[id].token then
+			secret = secret or id
+		end
+	end
+	if secret then
+		ServerScriptService.PullFeed:Fire(friend, { "jelly_bean_scout", secret })
+		M.advance(2)
+		check(#M.chatLog == 0, "the chat waits too, so it doesn't spoil the reveal")
+		M.advance(Plaza.FeedDelay)
+		local line = M.chatLog[#M.chatLog] or ""
+		check(string.find(line, "jaault", 1, true) and string.find(line, CardData.Cards[secret].name, 1, true) and string.find(line, "Secret", 1, true), "a Secret pull is posted in the chat: " .. line)
+		-- later: a Shiny card goes in the chat whatever its rarity
+		local n0 = #M.chatLog
+		ServerScriptService.PullFeed:Fire(friend, { { id = "jelly_bean_scout", shiny = true } })
+		M.advance(Plaza.FeedDelay + 1)
+		local sline = M.chatLog[#M.chatLog] or ""
+		check(#M.chatLog == n0 + 1 and string.find(sline, "Shiny", 1, true) ~= nil, "a Shiny pull is posted too: " .. sline)
+	end
 
 	-- leaderboards (no OrderedDataStore here: this server's players)
 	M.advance(Plaza.BoardSeconds)

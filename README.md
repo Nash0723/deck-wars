@@ -148,8 +148,31 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 - Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends comes later.
 
 
+## Opening a pack: slash it open
+Opening a pack is now something you do, not something you watch. The chosen pack leaps off the shelf into your hands, in front of its own scene, and you **slash it open**: press and swipe across it with the mouse (or your finger), fast, like a blade. A quick swipe that cuts most of the way across slices the pack in two along the line you drew; the halves fly apart, light and the pack's own burst pour out of the cut, and the card rises out face down. A slow drag or a short flick only scratches it. Space / Enter / gamepad A slash along the dotted guide, a ghost blade shows how after a few seconds, and a pack nobody touches opens itself after 9 seconds.
+
+**No rarity spoilers.** Nothing before the card turns over says how rare it is: the pack, its scene, the cut, the light and the face-down card look exactly the same for every pull (the simulated Studio checks this by comparing a Common opening with a Secret one). The old "EPIC OR BETTER" tease, the rarity-coloured rip and the glowing face-down cards are gone. Tap the card (or wait) and it lifts and shudders, then flips: only then do you see the rarity, with a burst, the scene washing into the card's colour, its sound, confetti for Legendary and up. Then the stat card. A 10-pack deals all ten cards face down, even the best one; tap each to flip it, or Reveal all, and the best gets a BEST PULL ribbon.
+
+**Every pack has its own look and scene** (`src/packbrawl/PackArt.luau`, all drawn from frames, no uploads):
+
+| Pack | The pack | Its scene | When you cut it |
+|---|---|---|---|
+| Brawl Pack | crimped foil, gold DW crest, lightning | spotlights over a crowd, rising sparks | stars |
+| Sugar Rush | striped candy wrapper, frilled ends, sprinkles, lollipop window | candy hills and lollipops, falling sprinkles | candy bits |
+| Scrap Heap | riveted tin, hazard band, rust | scrap piles, a crane hook, embers | bolts and scrap |
+| Storm Front | frosted pouch with a cloud top, lightning bolt, rain inside | cloud banks, rain, thunder flashes | sparks |
+| Burrow Bunch | tied burlap sack, leaves, paw stamp | moonlit grass that sways, fireflies, falling leaves | leaves |
+| Midnight Mall | neon shopping bag, eyes peeking out (they blink) | a dark row of shops, flickering MIDNIGHT MALL sign, fog | spooky puffs |
+| Overclock | circuit cartridge, grip ridges, LED meter, porthole | a neon grid floor, rising 0s and 1s | circuit bits |
+
+**The fight is now a replay.** The Pack Brawl was built around rarer cards bringing a bigger fight, so before the card it gave the rarity away. Now it plays after the reveal, only if you press **Watch the Brawl** (on the stat card, or on the fan once every card is up). It is the same fight as before, in the pack's world.
+
+**Secret pulls in the chat.** When anyone pulls a Secret, a line goes into everyone's chat, in every server ("🌍 Nash pulled a Secret card: Omega Microwave!"), after the same 15 second wait as the banners so it never spoils the puller's own reveal (your own line waits until your opening is over). Shiny cards are ready for it: a pull marked `shiny = true` goes in the chat whatever its rarity (`Plaza.ChatRarity`, `Plaza.chatWorthy`, `Plaza.chatLine` in `src/shared/Plaza.luau`). The place now sets TextChatService > ChatVersion to TextChatService.
+
+Where to tweak it: slash rules (`MinCut`, `MinSpeed`, `AutoHint`, `AutoOpen`) at the top of `src/packbrawl/PackOpen.luau`; pack shapes, fonts, cut guide, scenes and bursts in `PackArt.Designs`; the flip and stat card in `Reveal.single`, the fan in `Reveal.fan` (`Reveal.AutoFlip`).
+
 ## Pack Brawl: the pack-opening cinematic
-Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
+(Since the slash update this fight is the optional "Watch the Brawl" replay after the reveal; see above.) Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
 
 It is part of the main game: walk to the Pack Party corner (click the Pack Shelf, or the Pack Party button), pick a pack and press "Open 1" or "Open 10". While you test in Studio there is also one button per tier to preview that tier's cinematic (those only work in Studio or for developers, so live players can't force a Secret). During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP. Pulls cost Gems (see "The Pack Shelf" below).
 
@@ -167,11 +190,11 @@ The Pack Party corner has a lit display shelf with seven packs: the **Brawl Pack
 
 Hover a pack and it lifts; click it (or use the arrows, the dots, or Q / E) and it comes forward off the shelf, its riser lights up and its mascot hops. The panel shows the pack's name, what's inside and the exact chance of every card (Roblox requires showing the odds of paid random items), plus your Gems. Every pack has the same rarity odds; a themed pack only changes which card of that rarity you get: 3 in 4 cards come from its family and 1 in 4 from the shared spells and buildings. If the family has no card of the rolled rarity (most have no Secret), the card comes from every card of that rarity, so a Secret can still turn up anywhere. Prices: 1 pack = 100 Gems, 10 packs = 900 Gems (and a 10-pull always holds an Epic or better).
 
-Opening: the chosen pack leaps off the shelf at the camera, you tap it open (the pack tease), the Pack Brawl plays, and then the best card gets its own reveal: the pack drops in, its top rips off with light pouring out, the card rises face down, flips, and slides aside for a **stat card** (rarity, family, terrain, Attack / Health / Cost bars that count up, keywords, ability text, how many you own). Tap once to jump to the finished stat card, tap again to close. A 10-pull then shows the fan of all ten cards.
+Opening: see "Opening a pack: slash it open" above. After the flip the card slides aside for a **stat card** (rarity, family, terrain, Attack / Health / Cost bars that count up, keywords, ability text, how many you own). Tap once to jump to the finished stat card, tap again to close.
 
 The server decides everything: it takes the Gems first (refunds them if anything fails), rolls the cards, saves them to your collection and only then tells the client what to show. It uses the economy's `EconomyManager` (ServerStorage > DeckWarsServer); if that isn't in the place, a test wallet gives everyone 1000 Gems per visit and nothing is saved.
 
-Where to tweak it: packs, names, colors, prices and the 75% family share are at the top of `src/packbrawl/Packs.luau` (keep one pack per line: `gen_world.py` reads it to color the shelf, so run `python3 gen_world.py` after changing colors). The shelf model is made by `gen_world.py` (`build_pack_shelf`, position `SHELF_AT`). Hover/selection motion: `src/packbrawl/PackShelf.luau`. The rip and stat card: `Reveal.single` and `Reveal.statCard` in `src/packbrawl/Reveal.luau`. `python3 preview/shelf.py` renders a rough picture of the corner.
+Where to tweak it: packs, names, colors, prices and the 75% family share are at the top of `src/packbrawl/Packs.luau` (keep one pack per line: `gen_world.py` reads it to color the shelf, so run `python3 gen_world.py` after changing colors). The shelf model is made by `gen_world.py` (`build_pack_shelf`, position `SHELF_AT`). Hover/selection motion: `src/packbrawl/PackShelf.luau`. The flip and stat card: `Reveal.single` and `Reveal.statCard` in `src/packbrawl/Reveal.luau`. `python3 preview/shelf.py` renders a rough picture of the corner.
 
 The separate test place still builds, for trying the cinematic on its own:
 
@@ -199,6 +222,7 @@ Rarity tiers are now Common, Rare, Epic, Mythic, Legendary, Secret (low to high)
 | `Director` | Plays the cues on one clock; skip, fast-forward and cleanup |
 | `Arena`, `Fighters`, `CamRig`, `Fx`, `Poses` | The Brawl Box, moving the creature models, the camera, effects, victory poses and ultimates |
 | `Sfx`, `Reveal` | Sound and the card reveal / 10-card fan |
+| `PackOpen`, `PackArt` | Slashing the pack open, and every pack's own design and scene |
 
 ### Sounds
 All sounds were made from scratch for this project by `tools/make_sounds.py` (no samples), so you own them. Nash uploaded them to Roblox, and their ids are in the project files (SoundService > PackBrawlSounds in `default.project.json` and `pullcinematic.project.json`), so every build has sound. Music (`brawl`, `theme`) plays through its own SoundGroup so the Music and Sound effects settings work separately.
@@ -421,7 +445,7 @@ Joining the game now shows a title screen over the card room while the camera dr
 - The menu title uses the same gold logo look as the title screen.
 
 ### Opening a pack
-Before the Pack Brawl, the pack rises into your hands. Tap it (or press Space) three times: each tap jolts it, cracks it, and light leaks out of the cracks. The light's color teases the pull ("EPIC OR BETTER"). It never promises more than you really got, and for Mythic and up it stops one tier short so the brawl can still surprise you. After the last tap the pack shakes and flies off into the ring, where the brawl picks it up. An untouched pack opens by itself after 5 seconds, and "Pack fights: Quick" needs only one tap. Code: `src/packbrawl/PackTease.luau` (`Taps`, `QuickTaps`, `AutoOpen`, and `capFor` for the tease rule).
+(Replaced by the slash, see "Opening a pack: slash it open".) Before the Pack Brawl, the pack rises into your hands. Tap it (or press Space) three times: each tap jolts it, cracks it, and light leaks out of the cracks. The light's color teases the pull ("EPIC OR BETTER"). It never promises more than you really got, and for Mythic and up it stops one tier short so the brawl can still surprise you. After the last tap the pack shakes and flies off into the ring, where the brawl picks it up. An untouched pack opens by itself after 5 seconds, and "Pack fights: Quick" needs only one tap. Code: `src/packbrawl/PackTease.luau` (`Taps`, `QuickTaps`, `AutoOpen`, and `capFor` for the tease rule).
 
 After the brawl the rarity name slams in above the card with sparks in its color (a flash for Epic and up, a confetti shower for Legendary and Secret), and the card hovers while you look at it. In a 10-pull the cards are dealt in one by one, and face-down Epic-and-up cards glow in their rarity color before you flip them.
 
