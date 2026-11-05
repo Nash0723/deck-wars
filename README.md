@@ -55,6 +55,7 @@ tools/luaurun/target/release/luaurun tests/packbrawl_tests.luau src/packbrawl sr
 tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl  # saves, session locks, Gems/Coins, Shop, boosts, Robux receipts
 tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the whole game in a simulated Studio: title, daily reward, Shop, dev panel, a full bot match
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
+tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox                           # the room's props answering the mouse (hover, click, back in place)
 ```
 
 `-D NAME=VALUE` sets a setting before the script runs, for example `-D SOAK_GAMES=200` for more bot games in the rules tests (put it before the script path).
@@ -65,7 +66,7 @@ GitHub runs the rules tests, the Pack Brawl tests and the economy tests and buil
 | Path | What it is |
 | --- | --- |
 | `default.project.json` | The Rojo project: where each file goes in the Roblox place, plus the Lighting settings |
-| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes), DeckRules (what a deck may hold, the starter collection), DeckBuilderUI (the Deck Shelf) |
+| `src/shared/` | ReplicatedStorage > DeckWars: CardData, MatchEngine (all the rules), BotBrain, StarterDecks, Rng, CreatureModelData, CreatureBuilder, Settings, Juice (menu motion and UI sounds), TitleScreen, ShopCatalog (prices and rewards), ShopUI (the Shop, counters and toasts), Cosmetics (board themes, card backs, emotes), DeckRules (what a deck may hold, the starter collection), DeckBuilderUI (the Deck Shelf), RoomLife (the room's props answering the mouse) |
 | `src/server/` | ServerScriptService > MatchServer, EconomyServer (saves, Shop, Robux, dev tools), PlayerDecks (your saved decks and the starter grant) |
 | `src/econ/` | ServerStorage > DeckWarsServer: EconomyManager, ProfileStore (session-locked saves), DevAccess (who's a developer) |
 | `src/devcontrols/` | ServerStorage > DevControls: the developer panel, copied only to developers |
@@ -208,6 +209,24 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 - A move looks wrong on one creature: tweak its keyframes in `Moves.luau`, or its rig in `Rig.Overrides`.
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
+
+## The room answers your mouse
+Point at things in the room and they react. Click them (or tap them on a phone) and they do something bigger. Every now and then one of them fidgets on its own, and Pickles blinks. The mouse turns into a pointing hand over anything that reacts. The idea comes from the clickable props in the corners of digital card game boards and from cozy room games, where poking the scenery is half the fun. Everything happens on your own screen only. The moment you sit down at the table, every prop snaps back to where it was.
+
+| Where | Point at it | Click it |
+| --- | --- | --- |
+| Deck Shelf | a binder slides half out and tips toward you, and its neighbours wobble; card boxes lift and turn; the reading lamp brightens and nods | the binder pops out and back; a box hops and spins; the lamp flickers |
+| Pack Party | balloons rise and sway on their strings; speakers thump with the beat; the disco ball spins faster; the dance floor lights up under the cursor, with a ring running out from each tile you cross; the lid of a mini-pack jar lifts | a balloon bounces; a speaker kicks and sends a ring across the dance floor; the disco ball whirls; a jar's lid pops up |
+| Shop | Pickles waves (and his eyes follow your cursor all the time); the register's drawer slides out and its digits flicker; candy jars wobble; boxes on the back shelf tip forward; packs on the counter lift; touching the awning sends a wave along its stripes | Pickles jumps and spins; the drawer shoots out with a ding and the keys press; a jar hops and its candy rattles; a pack on the counter flips |
+| Trophy Wall | a trophy lifts, turns and shines; pennants flutter; certificates hang a little crooked | the trophy jumps, spins and sparkles; a certificate swings |
+| Settings radio | the radio bops to its own beat, the needle sweeps, the knobs turn, the antenna wobbles and the music notes float | the radio hops and tunes across the dial |
+| The room | the fire flares; candle flames grow; the clock's hands swing round to the time on your computer; the little trophy on the mantel turns; pendant lamps sway; plants rustle; curtains sway; stars in the windows twinkle; posters lift off the wall | the fire roars; a candle puffs out and lights again; the clock hops and chimes; a lamp swings; a plant shakes; a shooting star crosses the window |
+
+The door and the painting over the fireplace are left alone on purpose: they become the way out to the Plaza and the Campaign map.
+
+**Change it:** everything is in `ReplicatedStorage > DeckWars > RoomLife`. Each kind of prop has one block (`def("binder", {...})`) with the part names it uses, how far it moves on hover (`move`) and its sounds (`hoverSound`, `clickSound`: a name from TableSounds, a volume and a pitch). Props are found by part name and grouped by distance, so you can move things around in Studio and they keep working. A new prop needs a new block. `RoomLife.idleFidgets = false` turns off the fidgeting on its own. Sounds follow the Settings sound effects volume.
+
+**Tested:** `luaurun mock_roblox/roomharness.luau mock_roblox` points at and clicks every kind of prop in the simulated Studio. It checks that each one moves the right way (toward the room, never into the wall), never flies off, and goes back exactly where it was, including after a long sweep across the whole room. The whole-game run (`econharness`) also points at a binder and clicks a trophy through the real client, then checks that every prop is back in place at the table. Not checked in real Studio yet.
 
 ## The merged game (Nash's build + jaault's build)
 One place, one save. From jaault's build: the hub room look, the match backgrounds and props, the fonts, levels and XP, quests on the Trophy Wall, the Party and ⚙ buttons top right, the Duel Table modes (Bot, 1v1, 2v2, Cup) and the lane board, now with **two rows per lane** (Front and Back) plus a building slot. From Nash's build: the title screen, the station icons, the developer panel with free rolls (DNash2307 and donatjalt), the deck builder and its rules, the Pack Shelf with the Pack Brawl openings (now played inside the pack's own world), the Shop (packs for Gems, items for Coins), the settings and the hover placement preview. New: achievements on the Trophy Wall, Shift, overkill, Ranged from the Back row, and a bolder outlined cartoon look for buttons and panels.

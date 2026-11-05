@@ -62,6 +62,9 @@ jobs:
           tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox | tee econharness.log
           grep -q "MOCK RESULT: 0 errors, 0 warnings" econharness.log
 
+      - name: The room's props answering the mouse in the simulated Studio (hover, click, back in place)
+        run: tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox
+
       - name: Pack Brawl in the simulated Studio (every tier, skip, fast-forward, 10-pull)
         run: |
           tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl | tee pullharness.log
