@@ -599,7 +599,94 @@ function Scripts.build(cast)
 		end
 		return x.t < y.t
 	end)
+	Scripts.addEnv(b.cues, cast)
 	return { tier = cast.tier, length = length, cues = b.cues, fighters = cast.fighters, winner = cast.winner, fakeOut = cast.fakeOut }
+end
+
+-- The world's escalation (biome pulls): "env" cues that raise the world level 0..5 as the fight
+-- climbs. Levels: 0 Calm, 1 Stir, 2 Quake, 3 Awaken, 4 Sky Break, 5 World Turn (Secret only).
+-- The world only climbs on beats the fight already has, one level per beat, and never above the
+-- level of the rarest crasher seen so far, so the world gives away nothing the fight hasn't.
+-- Legendary's level 4 opens with its tornado or golden card, Secret's level 5 with the crack.
+-- By the winner's entrance the world has reached the pulled tier's level (missing levels cascade).
+-- Fake endings calm the world (calm = true) and the crack slams it back (slam = true).
+-- Big hits at the top level send a pulse (pulse = cue kind) for landmark strikes.
+-- cues must be sorted by time; the env cues are merged in, still sorted.
+Scripts.EnvBeats = { hype = true, arena = true, beam = true, brawlball = true, tornado = true, bigcard = true, crack = true }
+Scripts.EnvPulses = { detonate = true, ultimate = true, bigcard = true }
+Scripts.EnvCascadeGap = 0.15
+local ENV_RANK = { Common = 1, Rare = 2, Epic = 3, Mythic = 4, Legendary = 5, Secret = 6 }
+function Scripts.addEnv(cues, cast)
+	local target = math.min((ENV_RANK[cast.tier] or 1) - 1, 5)
+	local level, allowed = 0, 0
+	local env = {}
+	local function emit(t, fields)
+		fields.t = t
+		fields.k = "env"
+		fields.level = level
+		table.insert(env, fields)
+	end
+	local winnerIn = nil
+	for _, c in ipairs(cues) do
+		if c.k == "enter" and c.who == cast.winner and not winnerIn then
+			winnerIn = c.t
+		end
+	end
+	local cascaded = false
+	for _, c in ipairs(cues) do
+		-- before the winner's entrance lands, catch up any level the timeline had no beat for
+		if not cascaded and winnerIn and c.t >= winnerIn then
+			cascaded = true
+			local cap = math.min(target, 4)
+			local k = 0
+			while level < cap do
+				level += 1
+				emit(winnerIn + k * Scripts.EnvCascadeGap, { cascade = true })
+				k += 1
+			end
+			allowed = math.max(allowed, level)
+		end
+		if c.k == "hype" and ENV_RANK[c.tier] then
+			allowed = math.max(allowed, math.min(ENV_RANK[c.tier] - 1, 4))
+		elseif (c.k == "tornado" or c.k == "bigcard") and target >= 4 then
+			allowed = math.max(allowed, 4)
+		elseif c.k == "crack" and target >= 5 then
+			allowed = 5
+		end
+		if Scripts.EnvBeats[c.k] and level < allowed then
+			level += 1
+			emit(c.t, {})
+		elseif Scripts.EnvPulses[c.k] and level >= 3 then
+			emit(c.t, { pulse = c.k })
+		end
+		if c.k == "fakepose" then
+			emit(c.t, { calm = true })
+		elseif c.k == "fakecrack" then
+			emit(c.t, { slam = true })
+		end
+	end
+	-- (a timeline with no winner entrance never happens, but never end below the tier either)
+	while level < math.min(target, 4) do
+		level += 1
+		emit(cues[#cues].t, { cascade = true })
+	end
+	if #env == 0 then
+		return
+	end
+	for i, c in ipairs(cues) do
+		c.order = i
+	end
+	local n = #cues
+	for i, e in ipairs(env) do
+		e.order = n + i
+		table.insert(cues, e)
+	end
+	table.sort(cues, function(x, y)
+		if x.t == y.t then
+			return x.order < y.order
+		end
+		return x.t < y.t
+	end)
 end
 
 -- Swings: every hit (and every dodged punch) gets a "swing" cue for the attacker, started early

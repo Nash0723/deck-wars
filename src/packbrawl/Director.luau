@@ -14,6 +14,7 @@ local here = script.Parent
 local Kit = require(here:WaitForChild("Kit"))
 local Scripts = require(here:WaitForChild("Scripts"))
 local Arena = require(here:WaitForChild("Arena"))
+local BiomeStage = require(here:WaitForChild("BiomeStage"))
 local Fighters = require(here:WaitForChild("Fighters"))
 local CamRig = require(here:WaitForChild("CamRig"))
 local Fx = require(here:WaitForChild("Fx"))
@@ -44,7 +45,7 @@ local function setting(key, default)
 	end
 	return v
 end
-local LIGHTING_PROPS = { "ClockTime", "Brightness", "Ambient", "OutdoorAmbient", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "FogEnd", "GlobalShadows" }
+local LIGHTING_PROPS = { "ClockTime", "Brightness", "Ambient", "OutdoorAmbient", "ColorShift_Top", "ColorShift_Bottom", "ExposureCompensation", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "FogEnd", "GlobalShadows" }
 
 local function controls(on)
 	local player = Players.LocalPlayer
@@ -96,13 +97,18 @@ function Director.play(script_, onDone)
 			table.insert(self.disabledEffects, e)
 		end
 	end
-	Lighting.ClockTime = 0
-	Lighting.Brightness = 1
-	Lighting.Ambient = rgb(74, 64, 96)
-	Lighting.OutdoorAmbient = rgb(40, 35, 60)
-	Lighting.ExposureCompensation = 0
-	Lighting.EnvironmentDiffuseScale = 0.3
-	Lighting.EnvironmentSpecularScale = 0.6
+	-- a biome pull (script_.world set) is fought on the Duel Table inside that world, which brings
+	-- its own sky and light; otherwise the Brawl Box floats in the dark
+	local biome = script_.world ~= nil and BiomeStage.available()
+	if not biome then
+		Lighting.ClockTime = 0
+		Lighting.Brightness = 1
+		Lighting.Ambient = rgb(74, 64, 96)
+		Lighting.OutdoorAmbient = rgb(40, 35, 60)
+		Lighting.ExposureCompensation = 0
+		Lighting.EnvironmentDiffuseScale = 0.3
+		Lighting.EnvironmentSpecularScale = 0.6
+	end
 	Lighting.FogEnd = 100000
 	Lighting.GlobalShadows = setting("graphics", "High") ~= "Low"
 
@@ -116,7 +122,20 @@ function Director.play(script_, onDone)
 	self.folder = make("Folder", { Name = "PackBrawlScene" }, workspace)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	self.gui = make("ScreenGui", { Name = "PackBrawlGui", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 50, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
-	self.arena = Arena.new(self.folder)
+	if biome then
+		local winner = script_.fighters[script_.winner]
+		local ok, stage = pcall(BiomeStage.new, self.folder, script_.world, {
+			tier = self.tier,
+			low = setting("graphics", "High") == "Low",
+		})
+		if ok then
+			self.arena = stage
+			self.winnerColor = winner and Kit.FamilyColor[winner.family]
+		else
+			warn("[PackBrawl] biome stage failed, using the Brawl Box: " .. tostring(stage))
+		end
+	end
+	self.arena = self.arena or Arena.new(self.folder)
 	self.fx = Fx.new(self.folder, self.gui)
 	self.sfx = Sfx.new()
 	self.fighters = {}
@@ -311,6 +330,9 @@ function Director:stop()
 		self.beam = nil
 	end
 	self.sfx:destroy()
+	if self.arena and self.arena.destroy then
+		pcall(self.arena.destroy, self.arena)
+	end
 	self.folder:Destroy()
 	self.gui:Destroy()
 	self.bloom:Destroy()
@@ -991,6 +1013,9 @@ H.reassemble = function(d, c)
 	local w = d:fighter(c.who)
 	w.extraY = 0
 	d.arena:unshear()
+	if d.arena.rebuild then
+		d.arena:rebuild(d.winnerColor or Kit.tierColor("Secret", d.now))
+	end
 	d.fx:sparks(w:center(), Kit.prism(d.now), 40)
 	d.fx:shock(w.pos + Vector3.new(0, 0.15, 0), Kit.prism(d.now), 30)
 end
@@ -1026,6 +1051,10 @@ H.pose = function(d, c)
 			f:hide()
 		end
 	end
+	-- biome pulls: Take the Top, the table rises with the winner on it
+	if d.arena.podium then
+		d.arena:podium(c.tier, d.now)
+	end
 	local finishT = d.script.length
 	local dur = math.max(finishT - c.t - 0.45, 0.6)
 	local w = d:fighter(c.who)
@@ -1041,6 +1070,13 @@ H.wipe = function(d, c)
 	local p = d.camera:WorldToViewportPoint(w:center())
 	d.fx:wipe(Kit.tierColor(c.tier, d.now), Vector2.new(p.X, p.Y), 0.25, c.tier == "Secret")
 	d.finishing = true
+end
+
+-- The world's escalation (biome pulls only; the Brawl Box ignores it).
+H.env = function(d, c)
+	if d.arena.setLevel then
+		d.arena:setLevel(c, d.now)
+	end
 end
 
 H.finish = function(d)

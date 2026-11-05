@@ -31,6 +31,8 @@ local PackTease = require(here:WaitForChild("PackTease"))
 local PackShelf = require(here:WaitForChild("PackShelf"))
 local Packs = require(here:WaitForChild("Packs"))
 local PullRates = require(here:WaitForChild("PullRates"))
+local BiomeFx = require(here:WaitForChild("BiomeFx"))
+local BiomeStage = require(here:WaitForChild("BiomeStage"))
 local CardData = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("CardData"))
 local Juice = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("Juice"))
 local Settings = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("Settings"))
@@ -41,6 +43,85 @@ local WHITE = rgb(255, 255, 255)
 local GEM = "💎"
 
 local PackParty = {}
+
+-- The match world the player picked on the Duel Table panel (the Brawl Pack opens there).
+local function tableWorld()
+	local ok, choice = pcall(function()
+		local m = ReplicatedStorage:FindFirstChild("DeckWars") and ReplicatedStorage.DeckWars:FindFirstChild("Backdrops")
+		return m and require(m).choice
+	end)
+	return ok and choice or nil
+end
+
+-- The world a pack opens in, as the panel names it.
+local function worldName(packId)
+	local key = BiomeFx.PackWorld[packId]
+	if key then
+		return BiomeFx.recipe(key).name
+	end
+	local choice = tableWorld()
+	if choice and BiomeFx.IsWorld[choice] then
+		return BiomeFx.recipe(choice).name .. " (your table's world)"
+	end
+	return "a surprise world"
+end
+
+-- The Dive: the camera swings from the pack corner down into the Duel Table, and the board's
+-- colour fills the screen just as the biome stage takes over (it starts hidden in fog).
+local function dive(color, onDone)
+	local camera = workspace.CurrentCamera
+	local room = workspace:FindFirstChild("MenuRoom")
+	local duel = room and room:FindFirstChild("DuelTable", true)
+	local top = duel and duel:FindFirstChild("TableTop", true)
+	if not (camera and top and top:IsA("BasePart")) or Settings.get("packFights") == "Quick" then
+		onDone()
+		return
+	end
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local gui = make("ScreenGui", { Name = "PackDive", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 49 }, playerGui)
+	local veil = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BackgroundTransparency = 1, BorderSizePixel = 0 }, gui)
+	local savedType = camera.CameraType
+	camera.CameraType = Enum.CameraType.Scriptable
+	local from, fov0 = camera.CFrame, camera.FieldOfView
+	local target = top.Position + Vector3.new(0, top.Size.Y / 2, 0)
+	local mid = CFrame.lookAt(target + Vector3.new(0, 16, 15), target)
+	local close = CFrame.lookAt(target + Vector3.new(0, 4, 3.5), target)
+	local elapsed = 0
+	local DUR = 1.0
+	local conn
+	conn = RunService.RenderStepped:Connect(function(dt)
+		elapsed += dt
+		local a = math.clamp(elapsed / DUR, 0, 1)
+		local e = a * a * (3 - 2 * a)
+		if e < 0.6 then
+			camera.CFrame = from:Lerp(mid, e / 0.6)
+		else
+			camera.CFrame = mid:Lerp(close, (e - 0.6) / 0.4)
+		end
+		camera.FieldOfView = fov0 + (50 - fov0) * e
+		veil.BackgroundTransparency = 1 - math.clamp((a - 0.72) / 0.28, 0, 1)
+		if a >= 1 then
+			conn:Disconnect()
+			-- the veil covers the screen: put the camera back so the cinematic restores it there
+			camera.CFrame = from
+			camera.CameraType = savedType
+			camera.FieldOfView = fov0
+			onDone()
+			-- the stage is up behind the veil: let it go
+			local fade = 0
+			local c2
+			c2 = RunService.RenderStepped:Connect(function(dt2)
+				fade += dt2
+				local b = math.clamp(fade / 0.3, 0, 1)
+				veil.BackgroundTransparency = b
+				if b >= 1 then
+					c2:Disconnect()
+					gui:Destroy()
+				end
+			end)
+		end
+	end)
+end
 
 local state = {
 	busy = false,
@@ -147,6 +228,10 @@ local function onResult(result)
 	local cast = Casting.build(id, result.seed)
 	local brawl = Scripts.build(cast)
 	brawl.pack = pack
+	-- biome pulls: the fight happens on the Duel Table inside the pack's world
+	if BiomeStage.available() then
+		brawl.world = BiomeFx.worldFor(pack.id, result.seed, tableWorld())
+	end
 	state.playing = true
 	local o = state.opts
 	if o and o.onStart then
@@ -157,7 +242,16 @@ local function onResult(result)
 	PackShelf.launch(pack.id)
 	task.delay(PackShelf.has() and 0.3 or 0, function()
 		PackTease.play({ tier = CardData.get(id).rarity, count = #result.cards, quick = Settings.get("packFights") == "Quick", pack = pack }, function()
-			Director.play(brawl, function()
+			local function startBrawl(fn)
+				if brawl.world then
+					dive(Kit.tierColor("Common", 0):Lerp(Packs.color(pack, "color"), 0.7), function()
+						Director.play(brawl, fn)
+					end)
+				else
+					Director.play(brawl, fn)
+				end
+			end
+			startBrawl(function()
 				local function back()
 					local def = CardData.get(id)
 					local owned = result.uniqueOwned and string.format(" You own %d different cards.", result.uniqueOwned) or ""
@@ -309,7 +403,7 @@ local function showPack(id, fromShelf)
 	ui.name.Text = def.name
 	ui.name.TextColor3 = main:Lerp(WHITE, 0.35)
 	ui.nameStroke.Color = Packs.color(def, "dark")
-	local where = def.family and (def.family .. " family · " .. def.terrain) or "All six families"
+	local where = (def.family and (def.family .. " family") or "All six families") .. " · opens in " .. worldName(def.id)
 	ui.tagline.Text = where .. "\n" .. def.tagline
 	ui.accent.BackgroundColor3 = main
 	ui.accentGrad.Color = ColorSequence.new(main, accent)

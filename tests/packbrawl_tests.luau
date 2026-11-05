@@ -69,7 +69,7 @@ end
 
 -- Casting + scripts for every pullable card and many seeds
 local KNOWN = {
-	pack = true, hype = true, cam = true, sfx = true, enter = true, music = true, lunge = true, hit = true,
+	pack = true, env = true, hype = true, cam = true, sfx = true, enter = true, music = true, lunge = true, hit = true,
 	shock = true, word = true, pose = true, sting = true, wipe = true, finish = true, shove = true, spin = true,
 	hitstop = true, arena = true, clash = true, marker = true, slowmo = true, move = true, beam = true,
 	timestop = true, flick = true, timeresume = true, detonate = true, flash = true, shake = true,
@@ -110,6 +110,30 @@ for _, id in ipairs(ids) do
 
 		local s = Scripts.build(cast)
 		scriptsBuilt += 1
+		-- the world's escalation: only up, one level per cue, never past the tier, level 5 only
+		-- for Secret, the pulled tier's level reached by the pose, nothing before the first crasher
+		do
+			local target = math.min(PullRates.Rank[tier] - 1, 5)
+			local lvl, okEnv, reachedAt, poseT = 0, true, (target == 0) and 0 or nil, nil
+			for _, c in ipairs(s.cues) do
+				if c.k == "pose" then
+					poseT = c.t
+				elseif c.k == "env" then
+					if c.pulse or c.calm or c.slam then
+						okEnv = okEnv and c.level == lvl
+					else
+						okEnv = okEnv and c.level == lvl + 1
+						lvl = c.level
+					end
+					okEnv = okEnv and c.t >= 0 and c.t <= s.length and c.level <= target
+					if lvl == target and not reachedAt then
+						reachedAt = c.t
+					end
+				end
+			end
+			okEnv = okEnv and lvl == target and reachedAt ~= nil and poseT ~= nil and reachedAt <= poseT
+			check(okEnv, "world escalation for " .. id .. " seed " .. seed)
+		end
 		local want = Scripts.Length[tier] + (cast.fakeOut and Scripts.FakeOutLength or 0)
 		local okS = math.abs(s.length - want) < 1e-6
 		local entered, out, enterT = {}, {}, {}
