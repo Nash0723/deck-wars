@@ -838,18 +838,18 @@ do
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
 	check(Workspace:FindFirstChild("IdleTable") ~= nil, "the resting board is back after the match")
 	F.showResult = showResult
-	check(seenRewards ~= nil, "the result came with its rewards")
 	-- Trophies follow the Trophy Road rule for how this match actually went: the match seed comes
 	-- from the clock, so the bot can win in a few turns, and a match shorter than
 	-- ShopCatalog.Match.minSeconds / minTurns earns nothing by design.
 	check(#matchLog == logged0 + 1, "the match was recorded on the save (" .. (#matchLog - logged0) .. ")")
+	check(seenRewards ~= nil, "the result came with its rewards")
 	local rec = matchLog[#matchLog]
 	if rec then
 		local want = expectedTrophies(rec.m)
 		local got = (player:GetAttribute("Trophies") or 0) - trophiesBefore
-		print("note match result: " .. tostring(rec.m.result) .. " after " .. string.format("%.0f", rec.m.seconds or 0) .. " s and " .. tostring(rec.m.turns) .. " turns, " .. got .. " trophies")
+		print("note match result: " .. tostring(rec.m.result) .. " after " .. string.format("%.0f", rec.m.seconds or 0) .. " s and " .. tostring(rec.m.turns) .. " turns, " .. got .. " trophies, note " .. tostring(seenRewards and seenRewards.note))
 		check(got == want, "the match earned the trophies the Trophy Road rule gives it (" .. got .. ", want " .. want .. ")")
-		check((rec.out and rec.out.trophies or 0) == want, "the result screen reports those trophies")
+		check(seenRewards and (seenRewards.trophies or 0) == want, "the result screen reports those trophies (" .. tostring(seenRewards and seenRewards.trophies) .. ")")
 	end
 end
 
