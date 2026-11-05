@@ -147,7 +147,8 @@ end
 -- Tab 2: Deck & Field Cosmetics (and deck slots)
 ---------------------------------------------------------------------------
 
--- kind = "board" (table skin), "cardback" or "emote". price = { Coins = n } or { Gems = n };
+-- kind = "board" (table skin), "cardback", "emote" or "backdrop" (match background).
+-- price = { Coins = n } or { Gems = n };
 -- default items are owned by everyone. The look of each one lives in Cosmetics.luau.
 ShopCatalog.Cosmetics = {
 	-- Board themes: recolor the duel table's felt, rim, board frame and inlays.
@@ -171,13 +172,33 @@ ShopCatalog.Cosmetics = {
 	{ id = "emote_grr", kind = "emote", name = "Grr!", icon = "😤", price = { Coins = 300 } },
 	{ id = "emote_fire", kind = "emote", name = "On fire!", icon = "🔥", price = { Coins = 700 } },
 	{ id = "emote_gg", kind = "emote", name = "Good game", icon = "👑", price = { Gems = 120 } },
+	-- Match backgrounds: the world around the Duel Table in your matches (see Backdrops). Picked
+	-- at the Deck Shelf. `backdrop` is the Backdrops key. Some are sold here, the others are
+	-- earned on the Trophy Road (road = true: no price, Progression.TrophyRoad hands them out).
+	{ id = "bg_room", kind = "backdrop", backdrop = "Room", name = "Card Den", default = true, blurb = "The cozy room you start in." },
+	{ id = "bg_random", kind = "backdrop", backdrop = "Random", name = "Surprise me", default = true, blurb = "A different world you own every match." },
+	{ id = "bg_candy", kind = "backdrop", backdrop = "Candy", name = "Gumdrop Plaza", price = { Coins = 1500 }, blurb = "A peppermint plaza under a rainbow, with a candy castle and a cupcake mountain." },
+	{ id = "bg_ice", kind = "backdrop", backdrop = "Ice", name = "Frostglass Lake", price = { Coins = 1500 }, blurb = "A frozen lake under the northern lights, ringed by glowing crystals." },
+	{ id = "bg_mall", kind = "backdrop", backdrop = "Mall", name = "Midnight Mall", price = { Gems = 300 }, blurb = "A haunted parking lot under a low moon, and a mall that never closes." },
+	{ id = "bg_meadow", kind = "backdrop", backdrop = "Meadow", name = "Sunset Grasslands", road = true, blurb = "Wildflower hills, a lily pond and a giant treehouse at sunset." },
+	{ id = "bg_fire", kind = "backdrop", backdrop = "Fire", name = "Ember Caldera", road = true, blurb = "An obsidian plaza in a ring of torches, between lava rivers and volcanoes." },
+	{ id = "bg_space", kind = "backdrop", backdrop = "Space", name = "Cosmic Void", road = true, blurb = "A floating asteroid among ringed planets, nebulas and shooting stars." },
 }
 ShopCatalog.CosmeticById = {}
 for i, c in ipairs(ShopCatalog.Cosmetics) do
 	c.order = i
 	ShopCatalog.CosmeticById[c.id] = c
 end
-ShopCatalog.DefaultEquipped = { board = "board_walnut", cardback = "back_indigo" }
+ShopCatalog.DefaultEquipped = { board = "board_walnut", cardback = "back_indigo", backdrop = "bg_room" }
+-- Cosmetic kinds that are worn one at a time (equipped); emotes are just owned.
+ShopCatalog.EquipKinds = { board = true, cardback = true, backdrop = true }
+-- The background cosmetic for a Backdrops key ("Candy" -> the bg_candy entry).
+ShopCatalog.BackdropByKey = {}
+for _, c in ipairs(ShopCatalog.Cosmetics) do
+	if c.kind == "backdrop" then
+		ShopCatalog.BackdropByKey[c.backdrop] = c
+	end
+end
 
 -- Deck slots: how many saved decks you can keep.
 ShopCatalog.DeckSlots = { start = 3, max = 10, price = { Coins = 600 } }

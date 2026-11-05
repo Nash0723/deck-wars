@@ -1,7 +1,9 @@
 -- Pack Party: pick a pack (on the 3D Pack Shelf or with the arrows), see what's inside and the
 -- exact odds, and open 1 or 10 for Gems. The server rolls the pull and takes the Gems; this plays
--- the show: the 3D pack leaps off the shelf, the Pack Tease (tap it open), the Pack Brawl, then
--- the reveal (pack rip, card flip, stat card) and, for 10 packs, the card fan.
+-- the show: the 3D pack leaps off the shelf into your hands, in front of its own scene, and you
+-- slash it open (PackOpen); the card waits face down until you flip it (Reveal.single) or, for 10
+-- packs, the cards deal out face down (Reveal.fan). Nothing shows the rarity before a card turns
+-- over. Afterwards "Watch the Brawl" plays the best card's Pack Brawl fight, if you want it.
 -- Used by the main game's Pack Party corner and by the test place's panel.
 --
 --   PackParty.mount(parent, {
@@ -28,7 +30,7 @@ local Casting = require(here:WaitForChild("Casting"))
 local Scripts = require(here:WaitForChild("Scripts"))
 local Director = require(here:WaitForChild("Director"))
 local Reveal = require(here:WaitForChild("Reveal"))
-local PackTease = require(here:WaitForChild("PackTease"))
+local PackOpen = require(here:WaitForChild("PackOpen"))
 local PackShelf = require(here:WaitForChild("PackShelf"))
 local Packs = require(here:WaitForChild("Packs"))
 local PullRates = require(here:WaitForChild("PullRates"))
@@ -239,41 +241,51 @@ local function onResult(result)
 		o.onStart()
 	end
 	status("")
-	-- the 3D pack leaps off the shelf, then it is in your hands (tap it open), then it flies into the Brawl Box
+	local quick = Settings.get("packFights") == "Quick"
+	local function back()
+		local def = CardData.get(id)
+		local owned = result.uniqueOwned and string.format(" You own %d different cards.", result.uniqueOwned) or ""
+		status(string.format("Last pull: %s (%s).%s", def.name, def.rarity, owned))
+		finish(result)
+	end
+	-- Watch the Brawl: the best card's fight, after the reveal (the dive into the table first)
+	local function watch()
+		local function afterFight()
+			-- the fight ends on a wipe in the card's colour: let it fade into the room
+			local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+			local g = make("ScreenGui", { Name = "PackBrawlOut", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 49 }, playerGui)
+			local veil = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Kit.tierColor(CardData.get(id).rarity, 0), BorderSizePixel = 0 }, g)
+			Juice.tween(veil, 0.5, { BackgroundTransparency = 1 }).Completed:Connect(function()
+				g:Destroy()
+			end)
+			back()
+		end
+		if brawl.world and not (state.opts and state.opts.noDive) then
+			dive(Kit.tierColor("Common", 0):Lerp(Packs.color(pack, "color"), 0.7), function()
+				Director.play(brawl, afterFight)
+			end)
+		else
+			Director.play(brawl, afterFight)
+		end
+	end
+	-- the 3D pack leaps off the shelf, then it is in your hands: slash it open
 	PackShelf.launch(pack.id)
 	task.delay(PackShelf.has() and 0.3 or 0, function()
-		PackTease.play({ tier = CardData.get(id).rarity, count = #result.cards, quick = Settings.get("packFights") == "Quick", pack = pack }, function()
-			local function startBrawl(fn)
-				if brawl.world and not (state.opts and state.opts.noDive) then
-					dive(Kit.tierColor("Common", 0):Lerp(Packs.color(pack, "color"), 0.7), function()
-						Director.play(brawl, fn)
-					end)
-				else
-					Director.play(brawl, fn)
-				end
-			end
-			startBrawl(function()
-				local function back()
-					local def = CardData.get(id)
-					local owned = result.uniqueOwned and string.format(" You own %d different cards.", result.uniqueOwned) or ""
-					status(string.format("Last pull: %s (%s).%s", def.name, def.rarity, owned))
-					finish(result)
-				end
+		PackOpen.play({ pack = pack, count = #result.cards, quick = quick }, function(handoff)
+			if #result.cards > 1 then
+				Reveal.fan({ cards = result.cards, best = best, isNew = result.isNew, pack = pack, handoff = handoff, onDone = back, onWatch = watch })
+			else
 				Reveal.single({
 					id = id,
 					isNew = result.isNew and result.isNew[best],
 					dupes = result.dupes and result.dupes[best],
 					pack = pack,
-					count = #result.cards,
-					onDone = function()
-						if #result.cards > 1 then
-							Reveal.fan({ cards = result.cards, best = best, isNew = result.isNew, onDone = back })
-						else
-							back()
-						end
-					end,
+					quick = quick,
+					handoff = handoff,
+					onDone = back,
+					onWatch = watch,
 				})
-			end)
+			end
 		end)
 	end)
 end
@@ -580,7 +592,7 @@ function PackParty.mount(parent, opts)
 	end)
 	ui.balance = make("TextLabel", { Name = "GemBalance", Position = UDim2.new(0, 0, 1, -(54 + B)), Size = UDim2.new(0.5, 0, 0, 22), BackgroundTransparency = 1, Text = "", Font = Enum.Font.GothamBlack, TextSize = 16, TextColor3 = rgb(140, 220, 255), TextXAlignment = Enum.TextXAlignment.Left }, holder)
 	make("TextLabel", { Name = "KeysHint", Position = UDim2.new(0.5, 0, 1, -(54 + B)), Size = UDim2.new(0.5, 0, 0, 22), BackgroundTransparency = 1, Text = "Q / E: other packs", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = rgb(150, 145, 170), TextXAlignment = Enum.TextXAlignment.Right }, holder)
-	ui.status = make("TextLabel", { Name = "PackStatus", Position = UDim2.new(0, 0, 1, -(32 + B)), Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Text = "Click a pack on the shelf. Hold the screen to fast-forward a fight.", Font = Enum.Font.GothamMedium, TextSize = 12, TextWrapped = true, TextColor3 = rgb(200, 200, 220), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, holder)
+	ui.status = make("TextLabel", { Name = "PackStatus", Position = UDim2.new(0, 0, 1, -(32 + B)), Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Text = "Click a pack on the shelf, then slash it open.", Font = Enum.Font.GothamMedium, TextSize = 12, TextWrapped = true, TextColor3 = rgb(200, 200, 220), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top }, holder)
 	if previews then
 		make("TextLabel", { Name = "PreviewTitle", Position = UDim2.new(0, 0, 1, -48), Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, Text = "Studio only: preview a tier's cinematic (free)", Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = rgb(160, 155, 180), TextXAlignment = Enum.TextXAlignment.Left }, holder)
 		local n = #PullRates.Tiers

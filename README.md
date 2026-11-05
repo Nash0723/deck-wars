@@ -148,8 +148,31 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 - Known limits: one duel table, so only one player per server should play a bot at a time. Table matches have no sound yet (only Pack Brawl does). Playing friends comes later.
 
 
+## Opening a pack: slash it open
+Opening a pack is now something you do, not something you watch. The chosen pack leaps off the shelf into your hands, in front of its own scene, and you **slash it open**: press and swipe across it with the mouse (or your finger), fast, like a blade. A quick swipe that cuts most of the way across slices the pack in two along the line you drew; the halves fly apart, light and the pack's own burst pour out of the cut, and the card rises out face down. A slow drag or a short flick only scratches it. Space / Enter / gamepad A slash along the dotted guide, a ghost blade shows how after a few seconds, and a pack nobody touches opens itself after 9 seconds.
+
+**No rarity spoilers.** Nothing before the card turns over says how rare it is: the pack, its scene, the cut, the light and the face-down card look exactly the same for every pull (the simulated Studio checks this by comparing a Common opening with a Secret one). The old "EPIC OR BETTER" tease, the rarity-coloured rip and the glowing face-down cards are gone. Tap the card (or wait) and it lifts and shudders, then flips: only then do you see the rarity, with a burst, the scene washing into the card's colour, its sound, confetti for Legendary and up. Then the stat card. A 10-pack deals all ten cards face down, even the best one; tap each to flip it, or Reveal all, and the best gets a BEST PULL ribbon.
+
+**Every pack has its own look and scene** (`src/packbrawl/PackArt.luau`, all drawn from frames, no uploads):
+
+| Pack | The pack | Its scene | When you cut it |
+|---|---|---|---|
+| Brawl Pack | crimped foil, gold DW crest, lightning | spotlights over a crowd, rising sparks | stars |
+| Sugar Rush | striped candy wrapper, frilled ends, sprinkles, lollipop window | candy hills and lollipops, falling sprinkles | candy bits |
+| Scrap Heap | riveted tin, hazard band, rust | scrap piles, a crane hook, embers | bolts and scrap |
+| Storm Front | frosted pouch with a cloud top, lightning bolt, rain inside | cloud banks, rain, thunder flashes | sparks |
+| Burrow Bunch | tied burlap sack, leaves, paw stamp | moonlit grass that sways, fireflies, falling leaves | leaves |
+| Midnight Mall | neon shopping bag, eyes peeking out (they blink) | a dark row of shops, flickering MIDNIGHT MALL sign, fog | spooky puffs |
+| Overclock | circuit cartridge, grip ridges, LED meter, porthole | a neon grid floor, rising 0s and 1s | circuit bits |
+
+**The fight is now a replay.** The Pack Brawl was built around rarer cards bringing a bigger fight, so before the card it gave the rarity away. Now it plays after the reveal, only if you press **Watch the Brawl** (on the stat card, or on the fan once every card is up). It is the same fight as before, in the pack's world.
+
+**Secret pulls in the chat.** When anyone pulls a Secret, a line goes into everyone's chat, in every server ("🌍 Nash pulled a Secret card: Omega Microwave!"), after the same 15 second wait as the banners so it never spoils the puller's own reveal (your own line waits until your opening is over). Shiny cards are ready for it: a pull marked `shiny = true` goes in the chat whatever its rarity (`Plaza.ChatRarity`, `Plaza.chatWorthy`, `Plaza.chatLine` in `src/shared/Plaza.luau`). The place now sets TextChatService > ChatVersion to TextChatService.
+
+Where to tweak it: slash rules (`MinCut`, `MinSpeed`, `AutoHint`, `AutoOpen`) at the top of `src/packbrawl/PackOpen.luau`; pack shapes, fonts, cut guide, scenes and bursts in `PackArt.Designs`; the flip and stat card in `Reveal.single`, the fan in `Reveal.fan` (`Reveal.AutoFlip`).
+
 ## Pack Brawl: the pack-opening cinematic
-Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
+(Since the slash update this fight is the optional "Watch the Brawl" replay after the reveal; see above.) Every pack pull is a fight in the Brawl Box, and the card you pulled always wins. The rarer the card, the more creatures crash the fight first: Common is a 4 second 1v1, Secret is 15 seconds of chaos that cracks the screen. The full blueprint (script for every tier, camera, effects, sound, Roblox setup) is in the design doc: https://claude.ai/artifact/3kHVcDqDcoNJascS8k77S6
 
 It is part of the main game: walk to the Pack Party corner (click the Pack Shelf, or the Pack Party button), pick a pack and press "Open 1" or "Open 10". While you test in Studio there is also one button per tier to preview that tier's cinematic (those only work in Studio or for developers, so live players can't force a Secret). During a cinematic, hold the mouse (or Space) to play it 3x faster, or press SKIP. Pulls cost Gems (see "The Pack Shelf" below).
 
@@ -167,11 +190,11 @@ The Pack Party corner has a lit display shelf with seven packs: the **Brawl Pack
 
 Hover a pack and it lifts; click it (or use the arrows, the dots, or Q / E) and it comes forward off the shelf, its riser lights up and its mascot hops. The panel shows the pack's name, what's inside and the exact chance of every card (Roblox requires showing the odds of paid random items), plus your Gems. Every pack has the same rarity odds; a themed pack only changes which card of that rarity you get: 3 in 4 cards come from its family and 1 in 4 from the shared spells and buildings. If the family has no card of the rolled rarity (most have no Secret), the card comes from every card of that rarity, so a Secret can still turn up anywhere. Prices: 1 pack = 100 Gems, 10 packs = 900 Gems (and a 10-pull always holds an Epic or better).
 
-Opening: the chosen pack leaps off the shelf at the camera, you tap it open (the pack tease), the Pack Brawl plays, and then the best card gets its own reveal: the pack drops in, its top rips off with light pouring out, the card rises face down, flips, and slides aside for a **stat card** (rarity, family, terrain, Attack / Health / Cost bars that count up, keywords, ability text, how many you own). Tap once to jump to the finished stat card, tap again to close. A 10-pull then shows the fan of all ten cards.
+Opening: see "Opening a pack: slash it open" above. After the flip the card slides aside for a **stat card** (rarity, family, terrain, Attack / Health / Cost bars that count up, keywords, ability text, how many you own). Tap once to jump to the finished stat card, tap again to close.
 
 The server decides everything: it takes the Gems first (refunds them if anything fails), rolls the cards, saves them to your collection and only then tells the client what to show. It uses the economy's `EconomyManager` (ServerStorage > DeckWarsServer); if that isn't in the place, a test wallet gives everyone 1000 Gems per visit and nothing is saved.
 
-Where to tweak it: packs, names, colors, prices and the 75% family share are at the top of `src/packbrawl/Packs.luau` (keep one pack per line: `gen_world.py` reads it to color the shelf, so run `python3 gen_world.py` after changing colors). The shelf model is made by `gen_world.py` (`build_pack_shelf`, position `SHELF_AT`). Hover/selection motion: `src/packbrawl/PackShelf.luau`. The rip and stat card: `Reveal.single` and `Reveal.statCard` in `src/packbrawl/Reveal.luau`. `python3 preview/shelf.py` renders a rough picture of the corner.
+Where to tweak it: packs, names, colors, prices and the 75% family share are at the top of `src/packbrawl/Packs.luau` (keep one pack per line: `gen_world.py` reads it to color the shelf, so run `python3 gen_world.py` after changing colors). The shelf model is made by `gen_world.py` (`build_pack_shelf`, position `SHELF_AT`). Hover/selection motion: `src/packbrawl/PackShelf.luau`. The flip and stat card: `Reveal.single` and `Reveal.statCard` in `src/packbrawl/Reveal.luau`. `python3 preview/shelf.py` renders a rough picture of the corner.
 
 The separate test place still builds, for trying the cinematic on its own:
 
@@ -199,6 +222,7 @@ Rarity tiers are now Common, Rare, Epic, Mythic, Legendary, Secret (low to high)
 | `Director` | Plays the cues on one clock; skip, fast-forward and cleanup |
 | `Arena`, `Fighters`, `CamRig`, `Fx`, `Poses` | The Brawl Box, moving the creature models, the camera, effects, victory poses and ultimates |
 | `Sfx`, `Reveal` | Sound and the card reveal / 10-card fan |
+| `PackOpen`, `PackArt` | Slashing the pack open, and every pack's own design and scene |
 
 ### Sounds
 All sounds were made from scratch for this project by `tools/make_sounds.py` (no samples), so you own them. Nash uploaded them to Roblox, and their ids are in the project files (SoundService > PackBrawlSounds in `default.project.json` and `pullcinematic.project.json`), so every build has sound. Music (`brawl`, `theme`) plays through its own SoundGroup so the Music and Sound effects settings work separately.
@@ -213,6 +237,31 @@ To change a sound: upload a new file (View > Asset Manager > Bulk Import) or pic
 - A move looks wrong on one creature: tweak its keyframes in `Moves.luau`, or its rig in `Rig.Overrides`.
 
 `preview/brawl.py` renders rough frames of the cinematic from the simulated Studio (`-D SNAP=1`), to check camera framing without Roblox.
+
+## Match backgrounds, the Trophy Road and the table at rest
+
+**Picking a background.** The world around the Duel Table in your matches is now picked at the **Deck Shelf**: the "🌄 Match background" button over your decks fills the big panel with every world. 👁 tries one on: the world goes up around the table, the camera floats through it and a bar at the bottom lets you wear it, buy it, step to the next one (◀ ▶, A / D) or go back (Back, Esc, Backspace). The Duel Table panel no longer has a background row. Campaign stages still bring their own world.
+
+**Unlocking them.** Backgrounds are cosmetics (`ShopCatalog.Cosmetics`, kind `"backdrop"`), saved and equipped like board themes and card backs:
+
+| World | How you get it |
+| --- | --- |
+| Card Den, Surprise me | Free ("Surprise me" picks one of the worlds you own) |
+| Gumdrop Plaza, Frostglass Lake | Shop, 1,500 Coins each |
+| Midnight Mall | Shop, 300 Gems |
+| Sunset Grasslands, Ember Caldera, Cosmic Void | Trophy Road (45, 140 and 320 trophies), can't be bought |
+
+They also show in the Shop's Deck & Field tab.
+
+**The Trophy Road** (top of the Trophy Wall): every match that went the distance earns trophies, and they never go down. A win against a bot earns 4 / 6 / 9 (Easy / Medium / Hard), a win against people 10, a Cup win 25 more, a loss or draw 1. The road has 12 stops with Coins, Gems and the three backgrounds; tap a stop you've reached to claim it. Numbers live in `Progression.Trophies` and `Progression.TrophyRoad`; the server keeps the count in the save (`progress.trophies`, `progress.road`) and shows it as the `Trophies` and `RoadClaimed` attributes. The match result screen shows the trophies a match earned.
+
+**Livelier worlds.** Every world now has moving parts (`LIFE` in `Backdrops.luau`, run by `Backdrops.update`): a candy Ferris wheel, gumdrop balloons and a shimmering rainbow; a windmill and butterflies at sunset; floating ice shards, a rippling aurora and a glowing snow-fox spirit; lava bombs from the volcanoes, breathing lava and flickering torches; a circling moon, a space station and shooting stars; flickering lamps, a runaway cart, ghost wisps and a buzzing MALL sign.
+
+**The table at rest** (`IdleTable.luau`). Between matches the table used to show the old 5x6 tile board. It now shows the lane board at rest, exactly where the match board rises: 4 lanes a side with inlaid Front and Back rings and a building slab, brass caps, a gold seam with a Deck Wars medallion, all in your board theme's colours. Two of the game's big creatures face off in the middle lanes and swap every half minute; the rings breathe and a soft light runs along the seam. The old tile parts are hidden (each keeps its look in the `IdleTransparency` attribute, and the pull stage's copy of the table puts them back).
+
+**Fix: the Pack Shelf glowing in other worlds.** The shelf re-lit its pack lights every frame, so they showed through a match background. The shelf now pauses while a background hides the room (`PackShelf.suspend`).
+
+**Tested** in the simulated Studio (`econharness`): the resting board and its showcase, the picker's 8 worlds, a preview with moving parts and a dark Pack Shelf (this check fails without the fix), stepping worlds, buying and wearing one from the preview, the match played in it, trophies from the match, claiming Trophy Road stops (once each, not before you reach them) and a background unlocked from the road. Economy tests cover buying, wearing and the road-only rule. Not checked in real Studio yet.
 
 ## The Campaign and the Plaza
 Two new ways out of the room, built like the hubs of tower-defense and gacha games on Roblox (a world map of stages with stars, and a shared lobby where everyone shows off), with Deck Wars' own worlds, opponents and rewards.
@@ -396,7 +445,7 @@ Joining the game now shows a title screen over the card room while the camera dr
 - The menu title uses the same gold logo look as the title screen.
 
 ### Opening a pack
-Before the Pack Brawl, the pack rises into your hands. Tap it (or press Space) three times: each tap jolts it, cracks it, and light leaks out of the cracks. The light's color teases the pull ("EPIC OR BETTER"). It never promises more than you really got, and for Mythic and up it stops one tier short so the brawl can still surprise you. After the last tap the pack shakes and flies off into the ring, where the brawl picks it up. An untouched pack opens by itself after 5 seconds, and "Pack fights: Quick" needs only one tap. Code: `src/packbrawl/PackTease.luau` (`Taps`, `QuickTaps`, `AutoOpen`, and `capFor` for the tease rule).
+(Replaced by the slash, see "Opening a pack: slash it open".) Before the Pack Brawl, the pack rises into your hands. Tap it (or press Space) three times: each tap jolts it, cracks it, and light leaks out of the cracks. The light's color teases the pull ("EPIC OR BETTER"). It never promises more than you really got, and for Mythic and up it stops one tier short so the brawl can still surprise you. After the last tap the pack shakes and flies off into the ring, where the brawl picks it up. An untouched pack opens by itself after 5 seconds, and "Pack fights: Quick" needs only one tap. Code: `src/packbrawl/PackTease.luau` (`Taps`, `QuickTaps`, `AutoOpen`, and `capFor` for the tease rule).
 
 After the brawl the rarity name slams in above the card with sparks in its color (a flash for Epic and up, a confetti shower for Legendary and Secret), and the card hovers while you look at it. In a 10-pull the cards are dealt in one by one, and face-down Epic-and-up cards glow in their rarity color before you flip them.
 

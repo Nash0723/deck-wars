@@ -72,7 +72,7 @@ Cosmetics.Boards = {
 	},
 }
 
-local equipped = { board = ShopCatalog.DefaultEquipped.board, cardback = ShopCatalog.DefaultEquipped.cardback }
+local equipped = { board = ShopCatalog.DefaultEquipped.board, cardback = ShopCatalog.DefaultEquipped.cardback, backdrop = ShopCatalog.DefaultEquipped.backdrop }
 local listeners = {}
 
 local function duelTable()
@@ -223,13 +223,16 @@ function Cosmetics.setEquipped(eq)
 	end
 	local boardChanged = eq.board ~= nil and eq.board ~= equipped.board
 	local backChanged = eq.cardback ~= nil and eq.cardback ~= equipped.cardback
+	local worldChanged = eq.backdrop ~= nil and eq.backdrop ~= equipped.backdrop
 	equipped.board = eq.board or equipped.board
 	equipped.cardback = eq.cardback or equipped.cardback
+	equipped.backdrop = eq.backdrop or equipped.backdrop
 	if boardChanged or not Cosmetics._painted then
 		Cosmetics._painted = true
 		Cosmetics.applyBoard(duelTable(), equipped.board)
 	end
-	if boardChanged or backChanged then
+	if boardChanged or backChanged or worldChanged or not Cosmetics._told then
+		Cosmetics._told = true
 		for _, fn in ipairs(listeners) do
 			task.spawn(fn, equipped)
 		end

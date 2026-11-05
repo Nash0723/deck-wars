@@ -2672,6 +2672,10 @@ function MatchScreen.init(ctx)
 				order += 1
 				F.rewardRow("+" .. up.gems .. " 💎  Level " .. up.level .. "!", Color3.fromRGB(255, 220, 120), order)
 			end
+			if (tonumber(rw.trophies) or 0) > 0 then
+				order += 1
+				F.rewardRow("+" .. rw.trophies .. " 🏆  Trophy Road", Color3.fromRGB(255, 196, 90), order)
+			end
 			if rw.levelBefore then
 				order += 1
 				F.xpBar(rw, order)

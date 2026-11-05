@@ -28,7 +28,7 @@ local function buildSpellCard(def)
 	Kit.part({ Name = "Frame", Size = Vector3.new(2.4, 3.3, 0.08), CFrame = CFrame.new(0, 1.9, 0.03), Color = Kit.TierColor[def.rarity] or fam, Material = Enum.Material.Neon }, model)
 	local g = make("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0.3, CanvasSize = Vector2.new(220, 310) }, card)
 	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.25), Position = UDim2.fromScale(0.05, 0.05), BackgroundTransparency = 1, Text = def.name, TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(40, 30, 60) }, g)
-	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.4), Position = UDim2.fromScale(0.05, 0.35), BackgroundTransparency = 1, Text = "✦", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = Kit.TierColor[def.rarity] or fam }, g)
+	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.4), Position = UDim2.fromScale(0.05, 0.35), BackgroundTransparency = 1, Text = "★", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = Kit.TierColor[def.rarity] or fam }, g)
 	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.18), Position = UDim2.fromScale(0.05, 0.78), BackgroundTransparency = 1, Text = "SPELL", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(90, 80, 110) }, g)
 	return model, { height = 3.5, width = 2.4, depth = 0.2 }
 end

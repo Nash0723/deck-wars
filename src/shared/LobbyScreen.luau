@@ -568,48 +568,6 @@ function LobbyScreen.init(ctx)
 		end, { Name = "LeaveLobby", Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 24, TextScaled = false, TextSize = 17 })
 	end
 
-	-- The background you'll play in (see Backdrops): only on your screen, so it can be picked any time.
-	function L.renderBackdrop(body)
-		local BD = ctx.backdrops
-		if not BD then
-			return
-		end
-		local list = BD.List
-		local index = 1
-		for i, b in ipairs(list) do
-			if b.key == BD.choice then
-				index = i
-			end
-		end
-		local function choose(i)
-			local b = list[(i - 1) % #list + 1]
-			BD.choice = b.key
-			if ctx.prefs then
-				ctx.prefs.set("Backdrop", b.key)
-			end
-			LobbyScreen.toast(b.emoji .. " " .. b.name .. ": " .. b.blurb)
-			L.render()
-		end
-		heading(body, "Background", 5)
-		local r = row(body, 40, 6)
-		r.Name = "Backdrop"
-		small(r, "◀", Color3.fromRGB(70, 60, 110), function()
-			choose(index - 1)
-		end, 40, 1, "BackdropPrev")
-		local current = list[index]
-		local b = button(r, "", Color3.fromRGB(255, 255, 255), function()
-			choose(index + 1)
-		end, { Name = "BackdropName", Size = UDim2.new(1, -92, 1, 0), LayoutOrder = 2, TextScaled = false })
-		-- The button shows the world's colours, with its name on top.
-		local swatch = make("Frame", { Name = "Swatch", Size = UDim2.new(1, 16, 1, 8), Position = UDim2.fromOffset(-8, -4), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = b.ZIndex }, b)
-		corner(swatch, 10)
-		make("UIGradient", { Color = ColorSequence.new(current.colors[1], current.colors[2]), Rotation = 0 }, swatch)
-		make("TextLabel", { Name = "BackdropText", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = current.emoji .. "  " .. current.name, Font = TITLE, TextSize = 17, TextColor3 = WHITE, TextStrokeColor3 = KC.ink, TextStrokeTransparency = 0.3, ZIndex = b.ZIndex + 1 }, b)
-		small(r, "▶", Color3.fromRGB(70, 60, 110), function()
-			choose(index + 1)
-		end, 40, 3, "BackdropNext")
-	end
-
 	function L.render()
 		local body = L.body
 		if not (body and body.Parent and ctx.duelPanelOpen()) then
@@ -716,7 +674,6 @@ function LobbyScreen.init(ctx)
 			txt(info, (FAMILY_EMOJI[deck.family] or "") .. "  " .. deck.name .. "  ·  Hero " .. CardData.Heroes[deck.hero].name, 16, familyColor(deck.family):Lerp(WHITE, 0.5), { Font = TITLE, LayoutOrder = 1 })
 			txt(info, (rule and (rule.text .. ".") or deck.blurb or ""), 13, KC.dim, { LayoutOrder = 2 })
 		end
-		L.renderBackdrop(body)
 		if lobby then
 			L.renderLobby(body, lobby)
 		elseif L.tab == "Bot" then
@@ -731,7 +688,8 @@ function LobbyScreen.init(ctx)
 		end)
 	end
 
-	-- Your saved deck, bot difficulty and background (see prefs in DeckWarsClient).
+	-- Your saved deck and bot difficulty (see prefs in DeckWarsClient). The match background is
+	-- picked at the Deck Shelf now (BackdropPicker) and saved with your cosmetics.
 	function LobbyScreen.applyPrefs(prefs)
 		local deck = prefs.get("Deck")
 		if type(deck) == "string" and (StarterDecks[deck] or string.match(deck, "^s%d+$")) then
@@ -740,10 +698,6 @@ function LobbyScreen.init(ctx)
 		local diff = prefs.get("Difficulty")
 		if table.find(DIFFS, diff) then
 			L.difficulty = diff
-		end
-		local bd = prefs.get("Backdrop")
-		if ctx.backdrops and type(bd) == "string" and ctx.backdrops.ByKey[bd] then
-			ctx.backdrops.choice = bd
 		end
 		L.render()
 	end

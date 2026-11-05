@@ -89,7 +89,7 @@ end
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
 pb.Parent = ReplicatedStorage
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackArt", "PackOpen", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local remotes = Instance.new("Folder")
@@ -302,6 +302,90 @@ local function scene()
 	return Workspace:FindFirstChild("PackBrawlScene")
 end
 
+local TIER_WORDS = { COMMON = true, RARE = true, EPIC = true, MYTHIC = true, LEGENDARY = true, SECRET = true }
+-- Does anything on this screen name a rarity? (Nothing may before the card turns over.)
+local function namesRarity(root)
+	for _, d in ipairs(root:GetDescendants()) do
+		if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Name ~= "CardName" then
+			for w in string.gmatch(string.upper(d.Text), "%a+") do
+				if TIER_WORDS[w] and d.Visible and d.TextTransparency < 1 then
+					local hidden = false
+					local a = d.Parent
+					while a and a ~= root do
+						if a:IsA("GuiObject") and not a.Visible then
+							hidden = true
+						end
+						a = a.Parent
+					end
+					if not hidden then
+						return d:GetFullName() .. " = " .. d.Text
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+-- What the opening screen is made of (names and classes, not the ambient bits): the same for every rarity.
+local function fingerprint(root)
+	local counts = {}
+	for _, d in ipairs(root:GetDescendants()) do
+		local amb = false
+		local a = d.Parent
+		while a and a ~= root do
+			if a.Name == "Ambient" then
+				amb = true
+			end
+			a = a.Parent
+		end
+		if not amb and d.Name ~= "Ambient" and d.Name ~= "Blade" and d.Name ~= "Confetti" and d.Name ~= "Star" then
+			local k = d.ClassName .. ":" .. d.Name
+			counts[k] = (counts[k] or 0) + 1
+		end
+	end
+	local keys = {}
+	for k, n in pairs(counts) do
+		table.insert(keys, k .. "=" .. n)
+	end
+	table.sort(keys)
+	return table.concat(keys, ",")
+end
+local fingerprints = {}
+
+-- A swipe across the pack through the real input events (screen pixels), one point per frame.
+local function swipe(from, to, steps)
+	local function input(kind, p)
+		return { UserInputType = kind, Position = Vector3.new(p.X, p.Y, 0) }
+	end
+	UserInputService.InputBegan:Fire(input(Enum.UserInputType.MouseButton1, from), false)
+	for i = 1, steps do
+		M.advance(STEP)
+		UserInputService.InputChanged:Fire(input(Enum.UserInputType.MouseMovement, from:Lerp(to, i / steps)), false)
+	end
+	M.advance(STEP)
+	UserInputService.InputEnded:Fire(input(Enum.UserInputType.MouseButton1, to), false)
+end
+
+-- Taps through whatever reveal is showing until it is gone.
+local function finishReveal()
+	for _ = 1, 6 do
+		local rv = playerGui:FindFirstChild("PackBrawlReveal")
+		local fan = playerGui:FindFirstChild("PackBrawlFan")
+		if fan then
+			click(fan:FindFirstChild("Done", true), "Done")
+		elseif rv then
+			click(rv:FindFirstChild("Tap"), "Tap")
+		else
+			return true
+		end
+		M.advance(1.2)
+	end
+	return playerGui:FindFirstChild("PackBrawlReveal") == nil and playerGui:FindFirstChild("PackBrawlFan") == nil
+end
+
+-- opts: slash = "swipe" (default) | "key" | "auto" (nobody touches it) ; watch = true plays the
+-- Pack Brawl afterwards (Watch the Brawl) ; fan = true for 10 packs ; watchReveal = let it play out
 local function playThrough(label, startFn, opts)
 	opts = opts or {}
 	local errors0 = M.errors
@@ -309,144 +393,220 @@ local function playThrough(label, startFn, opts)
 	lastResult = nil
 	M.advance(1.6) -- server cooldown
 	startFn()
-	-- the Pack Tease: tap the pack open (or wait and let it open by itself)
-	local tease = waitFor(function()
-		return playerGui:FindFirstChild("PackTease") ~= nil
+	-- the pack in your hands, in front of its scene
+	local opened = waitFor(function()
+		return playerGui:FindFirstChild("PackOpen") ~= nil
 	end, 2)
-	check(tease, label .. ": the pack rises up to be tapped open")
-	if tease then
-		local g = playerGui:FindFirstChild("PackTease")
-		check(scene() == nil, label .. ": the brawl waits for the pack")
-		M.advance(0.6)
-		if opts.autoOpen then
-			local opened = waitFor(function()
-				return playerGui:FindFirstChild("PackTease") == nil
-			end, 9)
-			check(opened, label .. ": an untouched pack opens by itself")
-		else
-			for _ = 1, 3 do
-				if g.Parent then
-					click(g:FindFirstChild("TapPack"), "tap the pack")
-					M.advance(0.3)
-				end
-			end
-			local tierShown = g:FindFirstChild("Tease") and g.Tease.Text or ""
-			local real = lastResult and CardData.get(lastResult.cards[lastResult.best]).rarity
-			local shownTier = string.match(tierShown, "^(%a+) OR BETTER$")
-			local order = { COMMON = 1, RARE = 2, EPIC = 3, MYTHIC = 4, LEGENDARY = 5, SECRET = 6 }
-			local realIdx = order[string.upper(real or "COMMON")]
-			check(shownTier == nil or order[shownTier] <= realIdx, label .. ": the tease (" .. tierShown .. ") never promises more than the real pull (" .. tostring(real) .. ")")
-			check(realIdx < 4 or (shownTier ~= nil and order[shownTier] == realIdx - 1), label .. ": Mythic and up tease one step short, so the brawl still surprises")
-			check(g:FindFirstChild("Crack", true) ~= nil, label .. ": taps crack the pack")
-		end
-		waitFor(function()
-			return scene() ~= nil
-		end, 3)
-		check(playerGui:FindFirstChild("PackTease") == nil or scene() ~= nil, label .. ": the pack flies into the ring")
-	end
-	if opts.afterTease then
-		opts.afterTease()
-	end
-	local started = waitFor(function()
-		return scene() ~= nil
-	end, 2)
-	check(started, label .. ": the Brawl Box scene appears")
-	if not started then
+	check(opened, label .. ": the pack comes up in front of its own scene")
+	if not opened then
 		return
 	end
-	check(camera.CameraType == Enum.CameraType.Scriptable, label .. ": camera is scripted during the brawl")
-	check(not controlsOn, label .. ": player controls are off during the brawl")
-	check(placeBloom.Enabled == false, label .. ": the place's own bloom is switched off during the brawl")
+	local g = playerGui:FindFirstChild("PackOpen")
+	local PO = makeEnv(clientScript, clientCache).require(pb:WaitForChild("PackOpen"))
+	check(scene() == nil, label .. ": no fight before the pack is open")
+	check(g:FindFirstChild("Scene") ~= nil and g:FindFirstChild("Scene"):FindFirstChild("Scenery") ~= nil, label .. ": the scene has its scenery")
+	M.advance(0.9)
+	local said = namesRarity(g)
+	check(said == nil, label .. ": nothing names the rarity before the slash (" .. tostring(said) .. ")")
+	local packF = g:FindFirstChild("Pack", true)
+	check(packF and packF:FindFirstChild("CutGuide") ~= nil, label .. ": the pack shows where to cut")
+	if lastResult and lastResult.packId and opts.fingerprint then
+		local fp = fingerprint(g)
+		local key = lastResult.packId .. "/" .. #lastResult.cards
+		if fingerprints[key] then
+			check(fingerprints[key].fp == fp, label .. ": the opening looks exactly like the " .. fingerprints[key].label .. " one (it gives nothing away)")
+		else
+			fingerprints[key] = { fp = fp, label = label }
+		end
+	end
+	if opts.slash == "auto" then
+		local cut = waitFor(function()
+			return g:FindFirstChild("HalfA", true) ~= nil
+		end, 12)
+		check(cut, label .. ": a pack nobody slashes opens by itself")
+		check(g:FindFirstChild("Blade", true) ~= nil or cut, label .. ": a ghost blade showed how")
+	elseif opts.slash == "key" then
+		PO.keyHook()
+		local cut = waitFor(function()
+			return g:FindFirstChild("HalfA", true) ~= nil
+		end, 1)
+		check(cut, label .. ": Space slashes along the guide")
+	else
+		-- a slow drag only scratches it
+		swipe(Vector2.new(420, 330), Vector2.new(860, 330), 80)
+		check(g:FindFirstChild("HalfA", true) == nil, label .. ": a slow drag doesn't cut the pack")
+		-- a short flick that doesn't reach across doesn't either
+		swipe(Vector2.new(600, 330), Vector2.new(660, 330), 3)
+		check(g:FindFirstChild("HalfA", true) == nil, label .. ": a short flick doesn't cut it")
+		-- a real slash, slightly tilted
+		swipe(Vector2.new(400, 300), Vector2.new(880, 340), 6)
+		local cut = g:FindFirstChild("HalfA", true) ~= nil and g:FindFirstChild("HalfB", true) ~= nil
+		check(cut, label .. ": a fast swipe across slices the pack in two")
+		local lc = PO.lastCut
+		check(lc and math.abs(lc.angle - math.deg(math.atan2(40, 480))) < 1, label .. ": it splits along the line you drew (" .. tostring(lc and lc.angle) .. "°)")
+		check(g:FindFirstChild("SlashArea") ~= nil, label .. ": clicks don't fall through to the room")
+	end
+	check(g:FindFirstChild("CardHolder", true) ~= nil, label .. ": the card comes out of the pack face down")
+	said = namesRarity(g)
+	check(said == nil, label .. ": still nothing names the rarity after the cut (" .. tostring(said) .. ")")
+	-- the reveal takes over the same screen
+	local guiName = opts.fan and "PackBrawlFan" or "PackBrawlReveal"
+	local revealed = waitFor(function()
+		return playerGui:FindFirstChild(guiName) ~= nil
+	end, 2)
+	check(revealed, label .. ": the reveal takes over")
+	check(playerGui:FindFirstChild("PackOpen") == nil, label .. ": (on the same screen)")
 	local id = lastResult and lastResult.cards[lastResult.best]
-	local cast = Casting.build(id, lastResult.seed)
-	local brawl = Scripts.build(cast)
-	local fighters = #scene():GetChildren()
-	local t0 = M.now()
-	if opts.whileRunning then
-		opts.whileRunning(brawl)
-	end
-	local snapAt = opts.snaps or {}
-	local snapIndex = 1
-	local revealed, took = waitFor(function()
-		local el = M.now() - t0
-		if snapAt[snapIndex] and el >= snapAt[snapIndex] then
-			snapshot(string.format("%s_%05.2f", label, el))
-			snapIndex += 1
-		end
-		return playerGui:FindFirstChild("PackBrawlReveal") ~= nil
-	end, 40)
-	local elapsed = M.now() - t0
-	check(revealed, string.format("%s: %s (%s%s) plays and reaches the card reveal after %.2f s (script %.2f s)", label, id, cast.tier, cast.fakeOut and ", fake ending" or "", elapsed, brawl.length))
-	if opts.expect then
-		check(opts.expect(elapsed, brawl), label .. ": timing is as expected")
-	end
-	check(scene() == nil and playerGui:FindFirstChild("PackBrawlGui") == nil, label .. ": scene and cinematic GUI are cleaned up")
-	check(camera.CameraType == Enum.CameraType.Custom and camera.FieldOfView == 70, label .. ": camera is given back")
-	check(controlsOn and placeBloom.Enabled and Lighting.ClockTime == 20 and camera:FindFirstChild("PackBrawlGrade") == nil, label .. ": controls, lighting and post effects are restored")
-	check(SoundService:FindFirstChild("PackBrawl") == nil, label .. ": sounds are cleaned up")
-	if not opts.skipSoundCheck then
-		check((M.soundsPlayed or 0) > sounds0, label .. ": sounds played")
-	end
-	-- the reveal: tap too early does nothing, then tap to continue
-	local reveal = playerGui:FindFirstChild("PackBrawlReveal")
-	if reveal then
-		local def = CardData.get(id)
-		local stageF = reveal:FindFirstChild("Stage")
-		check(stageF ~= nil and stageF:FindFirstChild("Pack") ~= nil, label .. ": the reveal starts with the pack")
-		local ripped = waitFor(function()
-			return reveal:FindFirstChild("RipLight", true) ~= nil
-		end, 2)
-		check(ripped, label .. ": the pack rips open with light pouring out")
-		local stats = stageF and stageF:FindFirstChild("StatCard")
-		if opts.watchReveal then
-			local hint = reveal:FindFirstChild("Hint")
-			local settled = waitFor(function()
-				return hint.TextTransparency < 0.5
-			end, 6)
-			check(settled, label .. ": left alone, the reveal ends on the stat card with 'Tap to continue'")
-			check(stageF:FindFirstChild("Pack") == nil, label .. ": the empty pack has fallen away")
-		else
-			click(reveal:FindFirstChild("Tap"), "Tap")
-			check(playerGui:FindFirstChild("PackBrawlReveal") ~= nil, label .. ": an early tap jumps to the stat card, it doesn't close the reveal")
-			M.advance(0.3)
-		end
-		local front = reveal:FindFirstChild("Front", true)
-		check(front and front.Visible, label .. ": the card has flipped face up")
-		check(stats and stats.Position.X.Scale < 0.9, label .. ": the stat card is on screen")
-		local atkRow = stats and stats:FindFirstChild("Attack")
-		local costRow = stats and stats:FindFirstChild("Cost")
-		check(costRow and costRow.Value.Text == tostring(def.cost), label .. ": the stat card shows the cost (" .. tostring(costRow and costRow.Value.Text) .. ")")
-		if def.type == "Creature" then
-			check(atkRow and atkRow.Value.Text == tostring(def.atk), label .. ": the stat card shows the attack (" .. tostring(atkRow and atkRow.Value.Text) .. ")")
-		else
-			check(atkRow == nil, label .. ": no attack bar for a " .. def.type)
-		end
-		M.advance(1)
-		click(reveal:FindFirstChild("Tap"), "Tap")
-		M.advance(1)
-		check(playerGui:FindFirstChild("PackBrawlReveal") == nil, label .. ": tapping closes the card reveal")
-		if opts.fan then
-			local fan = playerGui:FindFirstChild("PackBrawlFan")
-			check(fan ~= nil, label .. ": the 10-card fan appears")
-			if fan then
-				click(button("RevealAll"), "Reveal all")
-				M.advance(1.5)
-				local fronts = 0
-				for _, d in ipairs(fan:GetDescendants()) do
-					if d.Name == "Front" and d:IsA("GuiObject") and d.Visible then
-						fronts += 1
-					end
+	local def = id and CardData.get(id)
+	if opts.fan then
+		local fan = playerGui:FindFirstChild("PackBrawlFan")
+		if fan then
+			M.advance(1)
+			local fronts, backs = 0, 0
+			for _, d in ipairs(fan:GetDescendants()) do
+				if d.Name == "Front" and d:IsA("GuiObject") and d.Visible then
+					fronts += 1
+				elseif d.Name == "Back" and d:IsA("GuiObject") and d.Visible then
+					backs += 1
 				end
-				check(fronts == 10, label .. ": Reveal all flips all 10 cards (" .. fronts .. ")")
+			end
+			check(fronts == 0 and backs == 10, label .. ": all 10 cards are dealt face down, even the best (" .. fronts .. " up)")
+			check(findIn(fan, function(d)
+				return d.Name == "Aura" or d.Name == "BestRibbon"
+			end) == nil, label .. ": no glow hints at what is under a card")
+			said = namesRarity(fan)
+			check(said == nil, label .. ": nothing names a rarity before the cards turn (" .. tostring(said) .. ")")
+			local firstFlip = findIn(fan, function(d)
+				return d.Name == "Flip"
+			end)
+			click(firstFlip, "flip one card")
+			M.advance(0.6)
+			fronts = 0
+			for _, d in ipairs(fan:GetDescendants()) do
+				if d.Name == "Front" and d:IsA("GuiObject") and d.Visible then
+					fronts += 1
+				end
+			end
+			check(fronts == 1, label .. ": tapping a card flips just that one")
+			click(button("RevealAll"), "Reveal all")
+			M.advance(2.5)
+			fronts = 0
+			for _, d in ipairs(fan:GetDescendants()) do
+				if d.Name == "Front" and d:IsA("GuiObject") and d.Visible then
+					fronts += 1
+				end
+			end
+			check(fronts == 10, label .. ": Reveal all flips the rest (" .. fronts .. ")")
+			check(fan:FindFirstChild("BestRibbon", true) ~= nil, label .. ": the best pull gets its ribbon once all are up")
+			local watchB = fan:FindFirstChild("WatchBrawl", true)
+			check(watchB ~= nil, label .. ": Watch the Brawl is offered")
+			if opts.watch and watchB then
+				click(watchB, "Watch the Brawl")
+			else
 				click(button("Done"), "Done")
 				M.advance(1)
 				check(playerGui:FindFirstChild("PackBrawlFan") == nil, label .. ": the fan closes")
 			end
 		end
-		check(playerGui:FindFirstChild("PackBrawlReveal") == nil, label .. ": the reveal closes and the game is back")
-		local panel = playerGui:FindFirstChild("PackPartyTest")
-		check(panel and panel.Enabled, label .. ": the test panel is back")
+	else
+		local reveal = playerGui:FindFirstChild("PackBrawlReveal")
+		if reveal and def then
+			local stageF = reveal:FindFirstChild("Stage")
+			local front = reveal:FindFirstChild("Front", true)
+			check(front and not front.Visible, label .. ": the card waits face down")
+			said = namesRarity(reveal)
+			check(said == nil, label .. ": nothing names the rarity before the flip (" .. tostring(said) .. ")")
+			local stats = stageF and stageF:FindFirstChild("StatCard")
+			if opts.watchReveal then
+				local hint = reveal:FindFirstChild("Hint")
+				local settled = waitFor(function()
+					return front.Visible and hint.Text == "Tap to continue" and hint.TextTransparency < 0.5
+				end, 12)
+				check(settled, label .. ": left alone, the card flips itself and ends on the stat card")
+			else
+				click(reveal:FindFirstChild("Tap"), "Tap (flip)")
+				M.advance(0.2)
+				check(not front.Visible, label .. ": the card lifts and shudders before it turns")
+				M.advance(0.5)
+				check(front.Visible, label .. ": then it flips face up")
+				local word = reveal:FindFirstChild("RarityWord", true)
+				check(word and string.upper(def.rarity) == word.Text, label .. ": and only now the rarity shows (" .. tostring(word and word.Text) .. ")")
+				click(reveal:FindFirstChild("Tap"), "Tap (skip)")
+				check(playerGui:FindFirstChild("PackBrawlReveal") ~= nil, label .. ": an early tap jumps to the stat card, it doesn't close the reveal")
+				M.advance(0.4)
+			end
+			check(stats and stats.Position.X.Scale < 0.9, label .. ": the stat card is on screen")
+			local atkRow = stats and stats:FindFirstChild("Attack")
+			local costRow = stats and stats:FindFirstChild("Cost")
+			check(costRow and costRow.Value.Text == tostring(def.cost), label .. ": the stat card shows the cost (" .. tostring(costRow and costRow.Value.Text) .. ")")
+			if def.type == "Creature" then
+				check(atkRow and atkRow.Value.Text == tostring(def.atk), label .. ": the stat card shows the attack (" .. tostring(atkRow and atkRow.Value.Text) .. ")")
+			else
+				check(atkRow == nil, label .. ": no attack bar for a " .. def.type)
+			end
+			M.advance(0.5)
+			local watchB = reveal:FindFirstChild("WatchBrawl")
+			check(watchB ~= nil, label .. ": Watch the Brawl is offered")
+			if opts.watch and watchB then
+				click(watchB, "Watch the Brawl")
+			else
+				click(reveal:FindFirstChild("Tap"), "Tap")
+				M.advance(1)
+				check(playerGui:FindFirstChild("PackBrawlReveal") == nil, label .. ": tapping closes the card reveal")
+			end
+		end
 	end
+	local elapsed, brawl, fighters = 0, nil, 0
+	if opts.watch then
+		local started = waitFor(function()
+			return scene() ~= nil
+		end, 3)
+		if opts.beforeBrawl then
+			opts.beforeBrawl()
+		end
+		check(started, label .. ": Watch the Brawl starts the fight")
+		check(playerGui:FindFirstChild("PackBrawlReveal") == nil and playerGui:FindFirstChild("PackBrawlFan") == nil, label .. ": the reveal is gone during the fight")
+		if not started then
+			return
+		end
+		check(camera.CameraType == Enum.CameraType.Scriptable, label .. ": camera is scripted during the brawl")
+		check(not controlsOn, label .. ": player controls are off during the brawl")
+		check(placeBloom.Enabled == false, label .. ": the place's own bloom is switched off during the brawl")
+		local cast = Casting.build(id, lastResult.seed)
+		brawl = Scripts.build(cast)
+		fighters = #scene():GetChildren()
+		local t0 = M.now()
+		if opts.whileRunning then
+			opts.whileRunning(brawl)
+		end
+		local snapAt = opts.snaps or {}
+		local snapIndex = 1
+		local ended = waitFor(function()
+			local el = M.now() - t0
+			if snapAt[snapIndex] and el >= snapAt[snapIndex] then
+				snapshot(string.format("%s_%05.2f", label, el))
+				snapIndex += 1
+			end
+			return scene() == nil and playerGui:FindFirstChild("PackBrawlGui") == nil
+		end, 40)
+		elapsed = M.now() - t0
+		check(ended, string.format("%s: %s (%s%s) fights to the end after %.2f s (script %.2f s)", label, id, cast.tier, cast.fakeOut and ", fake ending" or "", elapsed, brawl.length))
+		if opts.expect then
+			check(opts.expect(elapsed, brawl), label .. ": timing is as expected")
+		end
+		M.advance(0.7)
+		check(playerGui:FindFirstChild("PackBrawlOut") == nil, label .. ": the fight's last wipe fades into the room")
+		check(camera.CameraType == Enum.CameraType.Custom and camera.FieldOfView == 70, label .. ": camera is given back")
+		check(controlsOn and placeBloom.Enabled and Lighting.ClockTime == 20 and camera:FindFirstChild("PackBrawlGrade") == nil, label .. ": controls, lighting and post effects are restored")
+		check(SoundService:FindFirstChild("PackBrawl") == nil, label .. ": sounds are cleaned up")
+	end
+	if not opts.skipSoundCheck then
+		check((M.soundsPlayed or 0) > sounds0, label .. ": sounds played")
+	end
+	M.advance(0.8)
+	check(playerGui:FindFirstChild("PackBrawlReveal") == nil and playerGui:FindFirstChild("PackBrawlFan") == nil and playerGui:FindFirstChild("PackOpen") == nil, label .. ": everything closes and the game is back")
+	local panel = playerGui:FindFirstChild("PackPartyTest")
+	check(panel and panel.Enabled, label .. ": the test panel is back")
 	check(M.errors == errors0, label .. ": no script errors")
 	return elapsed, brawl, fighters
 end
@@ -466,6 +626,8 @@ for _, tier in ipairs(TIERS) do
 	playThrough(tier, function()
 		click(button("Preview_" .. tier), "Preview " .. tier)
 	end, {
+		watch = true,
+		fingerprint = true,
 		snaps = SNAPS[tier],
 		expect = function(elapsed, brawl)
 			-- hit-stops and slow motion add a little real time
@@ -478,6 +640,8 @@ end
 playThrough("Skip Rare", function()
 	click(button("Preview_Rare"), "Preview Rare")
 end, {
+	watch = true,
+	slash = "key",
 	whileRunning = function()
 		M.advance(1.0)
 		local gui = playerGui:FindFirstChild("PackBrawlGui")
@@ -493,6 +657,8 @@ end, {
 playThrough("Skip Secret", function()
 	click(button("Preview_Secret"), "Preview Secret")
 end, {
+	watch = true,
+	slash = "key",
 	whileRunning = function(brawl)
 		M.advance(1.0)
 		local skip = playerGui:FindFirstChild("PackBrawlGui"):FindFirstChild("Skip")
@@ -516,7 +682,9 @@ local fakeInput = { UserInputType = Enum.UserInputType.MouseButton1, KeyCode = E
 playThrough("Fast-forward Legendary", function()
 	click(button("Preview_Legendary"), "Preview Legendary")
 end, {
-	afterTease = function()
+	watch = true,
+	slash = "key",
+	beforeBrawl = function()
 		UserInputService.InputBegan:Fire(fakeInput, false)
 	end,
 	expect = function(elapsed, brawl)
@@ -528,7 +696,7 @@ UserInputService.InputEnded:Fire(fakeInput, false)
 -- 4) a 10-pull with the card fan
 playThrough("10-pull", function()
 	click(button("Open10"), "Open 10")
-end, { fan = true })
+end, { fan = true, watch = true })
 check(lastResult and #lastResult.cards == 10, "10-pull gives 10 cards")
 
 check(lastResult and lastResult.packId == "brawl" and lastResult.price == 900, "the 10-pull came from the Brawl Pack and cost 900 Gems")
@@ -559,7 +727,7 @@ do
 end
 playThrough("Open 1 Spooky", function()
 	click(button("Open1"), "Open 1")
-end, { autoOpen = true, watchReveal = true })
+end, { slash = "auto", watchReveal = true })
 if lastResult then
 	local def = CardData.get(lastResult.cards[1])
 	check(lastResult.packId == "spooky", "the pull came from the Spooky pack")
@@ -573,7 +741,7 @@ do
 	local errors0 = M.errors
 	click(button("Open1"), "Open 1 with no Gems")
 	M.advance(0.5)
-	check(playerGui:FindFirstChild("PackTease") == nil and Workspace:FindFirstChild("PackBrawlScene") == nil, "with no Gems nothing opens")
+	check(playerGui:FindFirstChild("PackOpen") == nil and Workspace:FindFirstChild("PackBrawlScene") == nil, "with no Gems nothing opens")
 	check(findIn(playerGui, function(d)
 		return d.Name == "PackStatus" and string.find(d.Text, "Not enough Gems", 1, true) ~= nil
 	end) ~= nil, "the panel says there aren't enough Gems")
@@ -595,7 +763,7 @@ for round = 1, extra do
 	for _, tier in ipairs(TIERS) do
 		playThrough(tier .. " #" .. (round + 1), function()
 			click(button("Preview_" .. tier), "Preview " .. tier)
-		end, { skipSoundCheck = true })
+		end, { skipSoundCheck = true, slash = "key", watch = (round == 1) })
 	end
 end
 
@@ -742,13 +910,7 @@ do
 	waitFor(function()
 		return playerGui:FindFirstChild("PackBrawlReveal") ~= nil
 	end, 40)
-	local rv = playerGui:FindFirstChild("PackBrawlReveal")
-	if rv then
-		click(rv:FindFirstChild("Tap"), "Tap")
-		M.advance(0.5)
-		click(rv:FindFirstChild("Tap"), "Tap")
-		M.advance(1)
-	end
+	check(finishReveal(), "the Overclock pull's reveal closes")
 	check(EM.getBalance(player, "Gems") == start - 100, "100 Gems were spent from the save")
 	check(player:GetAttribute("Gems") == start - 100, "and the player's Gems show it")
 	local card = lastResult and lastResult.cards[1]
@@ -764,13 +926,7 @@ do
 	waitFor(function()
 		return playerGui:FindFirstChild("PackBrawlReveal") ~= nil
 	end, 40)
-	rv = playerGui:FindFirstChild("PackBrawlReveal")
-	if rv then
-		click(rv:FindFirstChild("Tap"), "Tap")
-		M.advance(0.5)
-		click(rv:FindFirstChild("Tap"), "Tap")
-		M.advance(1)
-	end
+	check(finishReveal(), "the Sugar Rush pull's reveal closes")
 	check(M.errors == errors0, "EconomyManager pulls: no script errors")
 end
 
@@ -785,4 +941,9 @@ for _, n in ipairs(SfxNames) do
 	end
 end
 print("Sounds never played in this run: " .. (#missing > 0 and table.concat(missing, ", ") or "none"))
+for _, line in ipairs(M.log) do
+	if string.sub(line, 1, 6) == "error:" and not string.find(line, "CHECK FAILED", 1, true) then
+		print("LOGGED " .. line)
+	end
+end
 print(string.format("MOCK RESULT: %d errors, %d warnings", M.errors, M.warnings))

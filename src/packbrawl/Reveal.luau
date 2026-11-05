@@ -1,12 +1,17 @@
--- The card reveal after a Pack Brawl (pack rip, card flip, stat card), and the card fan for 10-pulls.
--- UI only, animated with TweenService (the brawl clock has stopped by now).
+-- The card reveal after you slash a pack open (PackOpen.luau hands over its screen): the card
+-- waits face down in the pack's scene until you tap it, then flips, and only then does its rarity
+-- show (burst, colours, sound). Then the stat card. For 10 packs, the card fan: every card face
+-- down, tap each one (or Reveal all). Both can offer "Watch the Brawl" (the Pack Brawl fight of
+-- the best card, played after the reveal). UI only, animated with TweenService.
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent:WaitForChild("Kit"))
-local PackTease = require(script.Parent:WaitForChild("PackTease"))
+local PackArt = require(script.Parent:WaitForChild("PackArt"))
+local PackOpen = require(script.Parent:WaitForChild("PackOpen"))
+local Packs = require(script.Parent:WaitForChild("Packs"))
 local DeckWars = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(DeckWars:WaitForChild("CardData"))
 local CreatureBuilder = require(DeckWars:WaitForChild("CreatureBuilder"))
@@ -63,22 +68,10 @@ local function newGui(name)
 	return make("ScreenGui", { Name = name, IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 60, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
 end
 
--- The Deck Wars card back.
-local function cardBack(parent)
-	local back = make("Frame", { Name = "Back", Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(32, 38, 74) }, parent)
-	corner(back, 16)
-	make("UIStroke", { Thickness = 6, Color = rgb(242, 230, 201) }, back)
-	local ring = make("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.7, 0.5), BackgroundTransparency = 1 }, back)
-	make("UIStroke", { Thickness = 5, Color = rgb(242, 230, 201) }, ring)
-	corner(ring, 200)
-	label(back, "DECK\nWARS", { Size = UDim2.fromScale(0.6, 0.25), Position = UDim2.fromScale(0.2, 0.375), TextColor3 = rgb(242, 230, 201) })
-	return back
-end
-
 -- A creature (or building) turning slowly inside the card art.
 local function addArt(art, def)
 	if not CreatureBuilder.has(def.id) then
-		label(art, def.type == "Spell" and "✦" or "?", { TextColor3 = Kit.TierColor[def.rarity] or WHITE, Size = UDim2.fromScale(0.6, 0.8), Position = UDim2.fromScale(0.2, 0.1) })
+		label(art, def.type == "Spell" and "★" or "?", { TextColor3 = Kit.TierColor[def.rarity] or WHITE, Size = UDim2.fromScale(0.6, 0.8), Position = UDim2.fromScale(0.2, 0.1) })
 		return nil
 	end
 	local model = CreatureBuilder.build(def.id)
@@ -330,43 +323,115 @@ local function statCard(parent, def, opts)
 	return panel, fill
 end
 
--- Single card reveal, after the Pack Brawl. Starts on a full screen of the tier color (where the
--- wipe left off), then:
---   1. the pack drops in, shakes and RIPS open: the top tears off, light blasts out, shreds fly,
---   2. the card shoots up out of it face down and flips over (rarity word, sparks, confetti),
+-- Fades everything under `root` out (frames, text, strokes, images) over `time` seconds.
+local function fadeAll(root, time)
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("GuiObject") then
+			if d.BackgroundTransparency < 1 then
+				tween(d, time, { BackgroundTransparency = 1 })
+			end
+			if d:IsA("TextLabel") or d:IsA("TextButton") then
+				tween(d, time, { TextTransparency = 1 })
+			elseif d:IsA("ImageLabel") or d:IsA("ImageButton") or d:IsA("ViewportFrame") then
+				tween(d, time, { ImageTransparency = 1 })
+			end
+		elseif d:IsA("UIStroke") then
+			tween(d, time, { Transparency = 1 })
+		end
+	end
+end
+Reveal.fadeAll = fadeAll
+
+-- The screen to reveal on: the one PackOpen handed over, or a fresh one (tests, previews).
+local function takeOver(opts, count)
+	local h = opts.handoff
+	if not h then
+		local pack = opts.pack
+		local gui, scene, stage, stageScale = PackOpen.newScreen(pack, "PackReveal")
+		local cards = {}
+		for i = 1, count do
+			local holder = count > 1 and PackOpen.cardHolder(stage, PackOpen.FanW, PackOpen.FanH) or PackOpen.cardHolder(stage, PackOpen.CardW, PackOpen.CardH)
+			holder.CardScale.Scale = count > 1 and 1 or 0.9
+			cards[i] = holder
+		end
+		h = { gui = gui, scene = scene, stage = stage, stageScale = stageScale, cards = cards, pack = pack, count = count }
+	end
+	h.gui.Name = count > 1 and "PackBrawlFan" or "PackBrawlReveal"
+	return h
+end
+
+-- The rarity moment, when a card turns face up: everything here is in the card's colours.
+local function rarityBurst(gui, stage, holder, tier, big)
+	local color = Kit.TierColor[tier] or WHITE
+	local rank = RANK[tier] or 1
+	local ring = make("Frame", { Name = "Burst", AnchorPoint = Vector2.new(0.5, 0.5), Position = holder.Position, Size = UDim2.fromOffset(60, 60), BackgroundTransparency = 1, ZIndex = 15 }, stage)
+	corner(ring, 1000)
+	local st = make("UIStroke", { Thickness = big and 14 or 8, Color = color, Transparency = 0.1 }, ring)
+	if tier == "Secret" then
+		rainbowGradient(st)
+	end
+	local size = (big and 520 or 260) + rank * (big and 40 or 20)
+	tween(ring, big and 0.6 or 0.45, { Size = UDim2.fromOffset(size, size) }, Enum.EasingStyle.Quad)
+	tween(st, big and 0.6 or 0.45, { Transparency = 1, Thickness = 2 }, Enum.EasingStyle.Quad).Completed:Connect(function()
+		ring:Destroy()
+	end)
+	local p = holder.AbsolutePosition + holder.AbsoluteSize / 2
+	local sz = gui.AbsoluteSize
+	local sx, sy = 0.5, 0.5
+	if sz.X > 0 and sz.Y > 0 and p.X > 0 then
+		sx, sy = p.X / sz.X, p.Y / sz.Y
+	end
+	Juice.stars(gui, sx, sy, (big and 8 or 4) + rank * (big and 3 or 2), { text = "★", color = tier ~= "Secret" and color:Lerp(WHITE, 0.3) or nil, speed = big and (1 + rank * 0.15) or 0.7, size = big and (18 + rank * 2) or 16 })
+	if rank >= 3 and big then
+		Juice.flash(gui, color, 0.35, 0.55)
+	end
+	if rank >= 5 then
+		Juice.confetti(gui, sx, sy, (big and 30 or 14) + (rank - 5) * 25, { colors = tier == "Secret" and { rgb(255, 80, 80), rgb(255, 230, 80), rgb(80, 220, 255), rgb(220, 90, 255), WHITE } or { color, color:Lerp(WHITE, 0.5), WHITE } })
+	end
+	if big or rank >= 3 then
+		Juice.sound("sting_" .. tier, 1, big and 0.6 or 0.4)
+	else
+		Juice.sound("pop", 0.85 + rank * 0.08, 0.45)
+	end
+	if tier == "Secret" then
+		Juice.sound("choir", 1, big and 0.6 or 0.35)
+	end
+end
+
+-- A gold button at the bottom of the screen.
+local function bottomButton(gui, name, text, x, colorBg, colorText)
+	local b = make("TextButton", { Name = name, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, x, 1, -26), Size = UDim2.fromOffset(220, 52), BackgroundColor3 = colorBg, Text = text, Font = TITLE, TextSize = 22, TextColor3 = colorText or INK, AutoButtonColor = true, ZIndex = 45 }, gui)
+	corner(b, 14)
+	make("UIStroke", { Thickness = 2, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, b)
+	Juice.button(b)
+	return b
+end
+
+-- Single card reveal, after the slash. The card waits face down in the pack's scene:
+--   1. tap it (or wait): it lifts and shudders (the same for every rarity), then flips,
+--   2. face up, the rarity shows: a burst, the scene washes to the card's colour, its sound,
 --   3. the card slides left and the stat card slides in: bars fill up, keywords, ability.
--- Tapping before the end jumps straight to the finished stat card; tap again to continue.
--- opts = { id, isNew, dupes, pack (from Packs.luau, optional), count (1 or 10), onDone }
+-- Tapping during 2-3 jumps to the finished stat card; tap again to continue.
+-- opts = { id, isNew, dupes, pack, handoff (from PackOpen), quick, onDone, onWatch }
+Reveal.AutoFlip = 6 -- seconds before a card nobody taps flips by itself
 function Reveal.single(opts)
 	local RunService = game:GetService("RunService")
+	local UserInputService = game:GetService("UserInputService")
 	local def = CardData.get(opts.id)
 	local tier = def.rarity
 	local color = Kit.TierColor[tier] or WHITE
 	local rank = RANK[tier] or 1
-	local gui = newGui("PackBrawlReveal")
-	local bg = make("Frame", { Name = "Background", Size = UDim2.fromScale(1, 1), BackgroundColor3 = color, BorderSizePixel = 0 }, gui)
-	if tier == "Secret" then
-		rainbowGradient(bg)
-	end
-	-- soft rays behind everything
-	local rays = make("Frame", { Name = "Rays", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1 }, bg)
-	for k = 0, 11 do
-		local holder = make("Frame", { Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1, Rotation = k * 30 }, rays)
-		make("Frame", { AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(1400, 70), BackgroundColor3 = WHITE, BackgroundTransparency = 0.88, BorderSizePixel = 0 }, holder)
-	end
-	tween(bg, 0.5, { BackgroundColor3 = color:Lerp(rgb(10, 8, 20), 0.6) })
-
-	-- everything sits on a 760 x 560 stage that shrinks to fit small screens
-	local stage = make("Frame", { Name = "Stage", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(760, 560), BackgroundTransparency = 1 }, gui)
-	local stageScale = make("UIScale", { Scale = 1 }, stage)
-	local function fit()
-		local s = gui.AbsoluteSize
-		if s.X > 0 and s.Y > 0 then
-			stageScale.Scale = math.min(1, s.X / 780, s.Y / 580)
-		end
-	end
-	fit()
-	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	local h = takeOver(opts, 1)
+	local gui, scene, stage = h.gui, h.scene, h.stage
+	local holder = h.cards[1]
+	local scale = holder:FindFirstChild("CardScale")
+	local back = holder:FindFirstChild("Back")
+	local CARD_W, CARD_H = PackOpen.CardW, PackOpen.CardH
+	local stamp = opts.isNew and "NEW" or ("+1" .. ((opts.dupes and opts.dupes > 1) and (" (x" .. opts.dupes .. ")") or ""))
+	local front, animate, stampLabel = Reveal.cardFace(holder, opts.id, stamp)
+	front.Visible = false
+	local stats, fillStats = statCard(stage, def, opts)
+	stats.Visible = false -- (it waits off to the side; hidden so wide screens can't see it early)
 
 	local tweens = {}
 	local function tw(inst, time, goals, style, dir)
@@ -375,213 +440,180 @@ function Reveal.single(opts)
 		return t
 	end
 
-	-- the card: a holder whose width is squeezed to fake a 3D flip; hidden behind the pack at first
-	local CARD_W, CARD_H = 300, 420
-	local holder = make("Frame", { Name = "CardHolder", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.56), Size = UDim2.fromOffset(CARD_W, CARD_H), BackgroundTransparency = 1, Visible = false, ZIndex = 2 }, stage)
-	local scale = make("UIScale", { Scale = 0.62 }, holder)
-	local back = cardBack(holder)
-	local stamp = opts.isNew and "NEW" or ("+1" .. ((opts.dupes and opts.dupes > 1) and (" (x" .. opts.dupes .. ")") or ""))
-	local front, animate, stampLabel = Reveal.cardFace(holder, opts.id, stamp)
-	front.Visible = false
-	local stats, fillStats = statCard(stage, def, opts)
+	-- a soft glow behind the face-down card (the pack's colour, not the card's)
+	local packMain = Packs.color(scene.pack, "accent")
+	local aura = make("Frame", { Name = "CardAura", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 26, 1, 26), BackgroundTransparency = 1, ZIndex = 0 }, holder)
+	corner(aura, 26)
+	local auraStroke = make("UIStroke", { Thickness = 10, Color = packMain:Lerp(WHITE, 0.4), Transparency = 0.5 }, aura)
+	local backShine = Juice.shine(back, 2.4, UDim.new(0, 16))
 
-	-- the pack (the same art as the Pack Tease)
-	local pack = PackTease.buildPack(stage, opts.count or 1, opts.pack)
-	pack.Position = UDim2.fromScale(0.5, -0.45)
-	pack.Rotation = -14
-	local glow = make("Frame", { Name = "PackGlow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.56), Size = UDim2.fromOffset(268, 368), BackgroundTransparency = 1, ZIndex = 1 }, stage)
-	corner(glow, 26)
-	local glowStroke = make("UIStroke", { Thickness = 16, Color = color, Transparency = 1 }, glow)
+	local hint = label(gui, "TAP THE CARD TO FLIP IT", { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -30), Size = UDim2.fromOffset(420, 28), TextColor3 = WHITE, Font = Enum.Font.GothamBlack, TextTransparency = 1, ZIndex = 44 })
+	make("UIStroke", { Thickness = 2, Color = INK }, hint)
+	tween(hint, 0.3, { TextTransparency = 0 })
 
-	local word, title
-	local stage2Done, statsShown, ready, done, skipped = false, false, false, false, false
-	local hint = label(gui, "Tap to continue", { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(300, 26), TextColor3 = rgb(230, 225, 240), Font = BODY, TextTransparency = 1, ZIndex = 30 })
+	local state = "waiting" -- waiting, flipping, shown, ready, closing
+	local skipped = false
+	local word
+	local watch
 
 	local function showWord(instant)
 		if word then
 			return
 		end
-		word = label(stage, string.upper(tier), { Name = "RarityWord", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.055), Size = UDim2.fromOffset(500, 60), Font = Enum.Font.GothamBlack, TextColor3 = tier == "Secret" and WHITE or color, ZIndex = 29 })
+		word = label(stage, string.upper(tier), { Name = "RarityWord", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.045), Size = UDim2.fromOffset(420, 48), Font = Enum.Font.GothamBlack, TextColor3 = tier == "Secret" and WHITE or color, ZIndex = 29 })
 		make("UIStroke", { Thickness = 4, Color = INK }, word)
 		if tier == "Secret" then
 			rainbowGradient(word)
 		end
 		if not instant then
-			Juice.pop(word, 2.2, 0.6)
+			Juice.pop(word, 1.8, 0.6)
+		end
+	end
+
+	local function setReady()
+		if state == "closing" then
+			return
+		end
+		state = "ready"
+		hint.Text = "Tap to continue"
+		hint.Font = BODY
+		tween(hint, 0.3, { TextTransparency = 0.15 })
+		if opts.onWatch and not watch then
+			watch = bottomButton(gui, "WatchBrawl", "▶  Watch the Brawl", 0, rgb(255, 194, 26))
+			watch.Position = UDim2.new(1, -140, 1, -24)
+			Juice.popIn(watch, 0)
+			watch.Activated:Connect(function()
+				if state ~= "ready" then
+					return
+				end
+				state = "closing"
+				fadeAll(gui, 0.35)
+				task.delay(0.38, function()
+					gui:Destroy()
+					opts.onWatch()
+				end)
+			end)
 		end
 	end
 
 	-- 3. the stat card
+	local statsShown = false
 	local function showStats(instant)
 		if statsShown then
 			return
 		end
 		statsShown = true
+		stats.Visible = true
+		tween(hint, 0.15, { TextTransparency = 1 })
 		if instant then
 			holder.Position = UDim2.fromScale(0.29, 0.53)
+			scale.Scale = 1
 			stats.Position = UDim2.fromScale(0.715, 0.53)
+			fillStats(true)
+			task.delay(0.2, setReady)
 		else
 			Juice.sound("whoosh", 1.1, 0.45)
 			tw(holder, 0.45, { Position = UDim2.fromScale(0.29, 0.53), Rotation = 0 }, Enum.EasingStyle.Back)
+			tw(scale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
 			tw(stats, 0.5, { Position = UDim2.fromScale(0.715, 0.53) }, Enum.EasingStyle.Back)
-		end
-		if instant then
-			fillStats(true)
-		else
 			task.delay(0.3, function()
 				if stats.Parent and not skipped then
 					fillStats(false)
 				end
 			end)
+			task.delay(1.1, function()
+				if not skipped then
+					setReady()
+				end
+			end)
 		end
-		task.delay(instant and 0.25 or 1.2, function()
-			if gui.Parent and not done then
-				ready = true
-				tween(hint, 0.3, { TextTransparency = 0.2 })
-			end
-		end)
 	end
 
-	-- 2b. the flip
-	local function flip(instant)
-		if stage2Done then
+	local function faceUp(instant)
+		back.Visible = false
+		front.Visible = true
+		aura.Visible = false
+		backShine.Visible = false
+		holder.Size = UDim2.fromOffset(CARD_W, CARD_H)
+		scene.tint(color, 0.2 + rank * 0.05, instant and 0.01 or 0.6)
+		if stampLabel then
+			stampLabel.TextSize = 80
+			stampLabel.TextTransparency = instant and 0 or stampLabel.TextTransparency
+		end
+		showWord(instant)
+	end
+
+	-- 1 + 2. the lift, the shudder and the flip
+	local function flip()
+		if state ~= "waiting" then
 			return
 		end
-		stage2Done = true
-		if instant then
-			back.Visible = false
-			front.Visible = true
-			holder.Size = UDim2.fromOffset(CARD_W, CARD_H)
-			scale.Scale = 1
-			if stampLabel then
-				stampLabel.TextSize = 80
-				stampLabel.TextTransparency = 0
-			end
-			showWord(true)
-			return
-		end
-		local squeeze = tw(holder, 0.18, { Size = UDim2.fromOffset(0, CARD_H) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		squeeze.Completed:Connect(function()
+		state = "flipping"
+		tween(hint, 0.15, { TextTransparency = 1 })
+		Juice.sound("charge", 1.25, 0.45)
+		tw(scale, 0.3, { Scale = 1.02 }, Enum.EasingStyle.Quad)
+		tw(auraStroke, 0.3, { Transparency = 0.1, Thickness = 16 })
+		Juice.shake(holder, 5, 0.3)
+		task.delay(opts.quick and 0.15 or 0.32, function()
 			if skipped then
 				return
 			end
-			back.Visible = false
-			front.Visible = true
-			local open = tw(holder, 0.28, { Size = UDim2.fromOffset(CARD_W, CARD_H) }, Enum.EasingStyle.Back)
-			Juice.sound("pop", 0.8 + rank * 0.08, 0.6)
-			showWord(false)
-			Juice.stars(gui, 0.5, 0.5, 6 + rank * 3, { text = "✦", color = tier == "Secret" and nil or color:Lerp(WHITE, 0.3), speed = 1 + rank * 0.15, size = 18 + rank * 2 })
-			if rank >= 3 then
-				Juice.flash(gui, color, 0.35, 0.55)
-			end
-			if rank >= 5 then
-				-- Legendary and Secret: a shower of confetti in the tier's colors
-				Juice.confetti(gui, 0.5, 0.5, 30 + (rank - 5) * 25, { colors = tier == "Secret" and { rgb(255, 80, 80), rgb(255, 230, 80), rgb(80, 220, 255), rgb(220, 90, 255), WHITE } or { color, color:Lerp(WHITE, 0.5), WHITE } })
-			end
-			open.Completed:Connect(function()
-				if stampLabel and not skipped then
-					stampLabel.TextSize = 80
-					tween(stampLabel, 0.18, { TextTransparency = 0 }, Enum.EasingStyle.Back)
+			local squeeze = tw(holder, 0.16, { Size = UDim2.fromOffset(0, CARD_H) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			squeeze.Completed:Connect(function()
+				if skipped then
+					return
 				end
+				state = "shown"
+				faceUp(false)
+				holder.Size = UDim2.fromOffset(0, CARD_H)
+				local open = tw(holder, 0.28, { Size = UDim2.fromOffset(CARD_W, CARD_H) }, Enum.EasingStyle.Back)
+				rarityBurst(gui, stage, holder, tier, true)
+				Juice.shake(stage, 4 + rank * 2, 0.25)
+				open.Completed:Connect(function()
+					if stampLabel and not skipped then
+						tween(stampLabel, 0.18, { TextTransparency = 0 }, Enum.EasingStyle.Back)
+					end
+				end)
+				task.delay(opts.quick and 0.5 or 0.85, function()
+					if not skipped then
+						showStats(false)
+					end
+				end)
 			end)
 		end)
 	end
+	Reveal.flipHook = flip -- (for tests)
 
-	-- 1. the pack drops in, shakes and rips
-	local packGone = false
-	local function dropPack()
-		if packGone then
+	-- jump to the finished stat card
+	local function skipToEnd()
+		if skipped or state == "ready" or state == "closing" then
 			return
 		end
-		packGone = true
-		tw(pack, 0.5, { Position = UDim2.fromScale(0.5, 1.6), Rotation = 24 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		tw(glowStroke, 0.3, { Transparency = 1 })
-		task.delay(0.55, function()
-			pack:Destroy()
-			glow:Destroy()
-		end)
+		skipped = true
+		for _, t in ipairs(tweens) do
+			t:Cancel()
+		end
+		state = "shown"
+		holder.Rotation = 0
+		faceUp(true)
+		showStats(true)
 	end
-	local steps = {
-		{
-			0,
-			function()
-				Juice.sound("whoosh", 0.9, 0.5)
-				tw(pack, 0.32, { Position = UDim2.fromScale(0.5, 0.56), Rotation = 0 }, Enum.EasingStyle.Back)
-			end,
-		},
-		{
-			0.32,
-			function()
-				Juice.sound("thud", 0.9, 0.6)
-				Juice.shake(stage, 5, 0.18)
-				tw(glowStroke, 0.3, { Transparency = 0.35 })
-				Juice.shake(pack, 4 + rank, 0.32)
-			end,
-		},
-		{
-			0.66,
-			function()
-				-- RIP: the top tears off, light pours out of the opening
-				local top = pack:FindFirstChild("Top")
-				if top then
-					tw(top, 0.4, { Position = UDim2.new(0.45, 0, -0.75, 0), Rotation = 38, BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
-					task.delay(0.4, function()
-						top:Destroy()
-					end)
-				end
-				local beam = make("Frame", { Name = "RipLight", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, 34), Size = UDim2.fromOffset(200, 0), BackgroundColor3 = color:Lerp(WHITE, 0.4), BorderSizePixel = 0, ZIndex = 9 }, pack)
-				make("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.6, 0.45), NumberSequenceKeypoint.new(1, 0) }) }, beam)
-				tw(beam, 0.25, { Size = UDim2.fromOffset(230, 520) }, Enum.EasingStyle.Quad)
-				Juice.sound("rip", 1, 0.8)
-				if rank >= 4 then
-					Juice.sound("boom", 1.1 - rank * 0.04, 0.5)
-				end
-				Juice.flash(gui, color, 0.3, 0.35)
-				Juice.shake(stage, 6 + rank * 2, 0.3)
-				local main = PackTease.colorsOf(opts.pack)
-				Juice.confetti(gui, 0.5, 0.25, 26 + rank * 4, { colors = { main, main:Lerp(WHITE, 0.5), color, WHITE }, speed = 0.9 })
-				Juice.stars(gui, 0.5, 0.25, 6 + rank * 2, { text = "✦", color = color:Lerp(WHITE, 0.3), size = 20 })
-			end,
-		},
-		{
-			0.82,
-			function()
-				-- the card shoots up out of the pack, face down, and the pack falls away
-				holder.Visible = true
-				tw(holder, 0.3, { Position = UDim2.fromScale(0.5, 0.2) }, Enum.EasingStyle.Quad)
-				tw(scale, 0.3, { Scale = 0.8 }, Enum.EasingStyle.Quad)
-				Juice.sound("whoosh", 1.25, 0.45)
-			end,
-		},
-		{ 1.0, dropPack },
-		{
-			1.12,
-			function()
-				tw(holder, 0.32, { Position = UDim2.fromScale(0.5, 0.53) }, Enum.EasingStyle.Back)
-				tw(scale, 0.32, { Scale = 1 }, Enum.EasingStyle.Back)
-			end,
-		},
-		{ 1.44, function()
-			flip(false)
-		end },
-		{ 2.25, function()
-			showStats(false)
-		end },
-	}
-	local elapsed, nextStep = 0, 1
+	Reveal.skipHook = skipToEnd -- (for tests)
+
+	local t0 = 0
 	local floatT = 0
 	local conn = RunService.RenderStepped:Connect(function(dt)
 		animate(dt)
-		rays.Rotation = (rays.Rotation + dt * 8) % 360
-		if not skipped then
-			elapsed += dt
-			while steps[nextStep] and steps[nextStep][1] <= elapsed do
-				local fn = steps[nextStep][2]
-				nextStep += 1
-				fn()
+		t0 += dt
+		if state == "waiting" then
+			-- the card hovers, waiting for you
+			holder.Position = UDim2.new(0.5, 0, 0.5, math.sin(t0 * 2) * 7)
+			holder.Rotation = math.sin(t0 * 1.3) * 2
+			auraStroke.Transparency = 0.35 + 0.25 * math.sin(t0 * 3)
+			if t0 >= Reveal.AutoFlip then
+				flip()
 			end
-		end
-		if ready then
+		elseif state == "ready" then
 			-- the card hovers and tilts a little while you look at it
 			floatT += dt
 			holder.Position = UDim2.new(0.29, 0, 0.53, math.sin(floatT * 1.8) * 6)
@@ -589,161 +621,157 @@ function Reveal.single(opts)
 		end
 	end)
 
-	-- jump to the finished stat card
-	local function skipToEnd()
-		if skipped or statsShown and ready then
+	local function close()
+		if state ~= "ready" then
 			return
 		end
-		skipped = true
-		for _, t in ipairs(tweens) do
-			t:Cancel()
-		end
-		if pack.Parent then
-			pack:Destroy()
-		end
-		if glow.Parent then
-			glow:Destroy()
-		end
-		packGone = true
-		holder.Visible = true
-		flip(true)
-		back.Visible = false
-		front.Visible = true
-		holder.Size = UDim2.fromOffset(CARD_W, CARD_H)
-		holder.Rotation = 0
-		scale.Scale = 1
-		showWord(true)
-		if stampLabel then
-			stampLabel.TextSize = 80
-			stampLabel.TextTransparency = 0
-		end
-		if statsShown then
-			holder.Position = UDim2.fromScale(0.29, 0.53)
-			stats.Position = UDim2.fromScale(0.715, 0.53)
-			fillStats(true)
-			task.delay(0.25, function()
-				if gui.Parent and not done then
-					ready = true
-					tween(hint, 0.3, { TextTransparency = 0.2 })
-				end
-			end)
-		else
-			showStats(true)
-		end
-	end
-	Reveal.skipHook = skipToEnd -- (for tests)
-
-	local tap = make("TextButton", { Name = "Tap", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 40 }, gui)
-	tap.Activated:Connect(function()
-		if done then
-			return
-		end
-		if not ready then
-			skipToEnd()
-			return
-		end
-		done = true
+		state = "closing"
 		Juice.sound("whoosh", 1.2, 0.4)
 		if word then
 			tween(word, 0.25, { TextTransparency = 1 })
 		end
+		if watch then
+			watch.Visible = false
+		end
 		-- the card flies to the collection corner, the stat card slides away, back to the game
-		tween(holder, 0.45, { Position = UDim2.fromOffset(-120, -60), Rotation = -12 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		tween(holder, 0.45, { Position = UDim2.fromScale(-0.2, -0.1), Rotation = -12 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		tween(scale, 0.45, { Scale = 0.15 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		tween(stats, 0.4, { Position = UDim2.fromScale(1.5, 0.53) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		tween(hint, 0.3, { TextTransparency = 1 })
-		local fade = tween(bg, 0.5, { BackgroundTransparency = 1 })
-		fade.Completed:Connect(function()
+		task.delay(0.25, function()
+			fadeAll(scene.root, 0.35)
+			scene.setCalm(true)
+		end)
+		task.delay(0.65, function()
 			conn:Disconnect()
 			gui:Destroy()
 			if opts.onDone then
 				opts.onDone()
 			end
 		end)
+	end
+
+	local tap = make("TextButton", { Name = "Tap", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 40 }, gui)
+	local function pressed()
+		if state == "waiting" then
+			flip()
+		elseif state == "flipping" or state == "shown" then
+			skipToEnd()
+		elseif state == "ready" then
+			close()
+		end
+	end
+	tap.Activated:Connect(pressed)
+	local keyConn
+	keyConn = UserInputService.InputBegan:Connect(function(input)
+		if not gui.Parent then
+			keyConn:Disconnect()
+			return
+		end
+		local k = input.KeyCode
+		if k == Enum.KeyCode.Space or k == Enum.KeyCode.Return or k == Enum.KeyCode.ButtonA then
+			pressed()
+		end
 	end)
 	return gui
 end
 
--- The 10-pull fan: every card face-down except the best one; tap to flip, or Reveal all.
--- opts = { cards = { id, ... }, best = index, isNew = { bool, ... }, onDone }
+-- The 10-pack fan: the stack from the pack deals out into two rows, all face down. Tap a card to
+-- flip it (its rarity shows as it turns), or Reveal all. When every card is up, the best one gets
+-- a BEST PULL ribbon (and Watch the Brawl, when offered).
+-- opts = { cards = { id, ... }, best = index, isNew = { bool, ... }, pack, handoff, onDone, onWatch }
 function Reveal.fan(opts)
 	local RunService = game:GetService("RunService")
-	local gui = newGui("PackBrawlFan")
-	local bg = make("Frame", { Name = "Background", Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(16, 12, 30), BackgroundTransparency = 0.05, BorderSizePixel = 0 }, gui)
-	local area = make("Frame", { Name = "Cards", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(5 * 150, 2 * 215), BackgroundTransparency = 1 }, gui)
+	local h = takeOver(opts, #opts.cards)
+	local gui, scene, stage = h.gui, h.scene, h.stage
+	local area = make("Frame", { Name = "Cards", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(5 * 150, 2 * 215), BackgroundTransparency = 1, ZIndex = 18 }, stage)
 	local animators = {}
 	local slots = {}
 	local flipped = 0
-	local doneButton
-	local function flip(slot)
+	local doneButton, revealAll, watch
+	local closing = false
+
+	local function allUp()
+		local best = slots[opts.best]
+		if best then
+			local ribbon = label(best.holder, "BEST PULL", { Name = "BestRibbon", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, -14), Size = UDim2.fromOffset(120, 24), BackgroundTransparency = 0, BackgroundColor3 = rgb(255, 214, 102), TextScaled = false, TextSize = 15, Font = Enum.Font.GothamBlack, ZIndex = 30 })
+			corner(ribbon, 12)
+			make("UIStroke", { Thickness = 2, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ribbon)
+			Juice.popIn(ribbon, 0.1)
+			Juice.pop(best.holder, 1.18, 0.6)
+			local tier = CardData.get(best.id).rarity
+			scene.tint(Kit.TierColor[tier] or WHITE, 0.25, 0.6)
+		end
+		if doneButton then
+			doneButton.Text = "Done"
+			doneButton.BackgroundColor3 = rgb(255, 194, 26)
+			doneButton.TextColor3 = INK
+		end
+		if revealAll then
+			revealAll.Visible = false
+		end
+		if opts.onWatch and not watch then
+			watch = bottomButton(gui, "WatchBrawl", "▶  Watch the Brawl", -120, rgb(110, 90, 200), WHITE)
+			Juice.popIn(watch, 0.2)
+			watch.Activated:Connect(function()
+				if closing then
+					return
+				end
+				closing = true
+				fadeAll(gui, 0.35)
+				task.delay(0.38, function()
+					gui:Destroy()
+					opts.onWatch()
+				end)
+			end)
+			doneButton.Position = UDim2.new(0.5, 120, 1, -26)
+		end
+	end
+
+	local function flip(slot, quiet)
 		if slot.open then
 			return
 		end
 		slot.open = true
 		flipped += 1
-		local squeeze = tween(slot.holder, 0.14, { Size = UDim2.fromOffset(0, 200) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		local squeeze = tween(slot.holder, 0.14, { Size = UDim2.fromOffset(0, PackOpen.FanH) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		squeeze.Completed:Connect(function()
 			slot.back.Visible = false
 			slot.front.Visible = true
-			tween(slot.holder, 0.18, { Size = UDim2.fromOffset(140, 200) }, Enum.EasingStyle.Back)
+			tween(slot.holder, 0.18, { Size = UDim2.fromOffset(PackOpen.FanW, PackOpen.FanH) }, Enum.EasingStyle.Back)
 			local tier = CardData.get(slot.id).rarity
-			local burst = make("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(60, 60), BackgroundColor3 = Kit.TierColor[tier], BackgroundTransparency = 0.2, ZIndex = 0 }, slot.slot)
-			corner(burst, 100)
-			tween(burst, 0.35, { Size = UDim2.fromOffset(260, 260), BackgroundTransparency = 1 })
-			local rank = RANK[tier] or 1
-			Juice.sound("pop", 0.85 + rank * 0.08, 0.45)
-			if slot.aura then
-				slot.aura.Visible = false
+			if not quiet or (RANK[tier] or 1) >= 3 then
+				rarityBurst(gui, stage, slot.holder, tier, false)
 			end
-			if rank >= 3 then
-				local p = slot.slot.AbsolutePosition + slot.slot.AbsoluteSize / 2
-				local sz = gui.AbsoluteSize
-				if sz.X > 0 and sz.Y > 0 then
-					Juice.stars(gui, p.X / sz.X, p.Y / sz.Y, 4 + rank * 2, { text = "✦", color = Kit.TierColor[tier], size = 16, speed = 0.7 })
-				end
-				Juice.pop(slot.holder, 1.15, 0.5)
-			end
+			Juice.pop(slot.holder, 1.12, 0.45)
 			if slot.stamp then
 				tween(slot.stamp, 0.18, { TextTransparency = 0 })
 			end
 		end)
-		if flipped >= #slots and doneButton then
-			doneButton.Text = "Done"
+		if flipped >= #slots then
+			task.delay(0.45, allUp)
 		end
 	end
+
 	for i, id in ipairs(opts.cards) do
 		local col, row = (i - 1) % 5, math.floor((i - 1) / 5)
-		local slotFrame = make("Frame", { Name = "Slot" .. i, Size = UDim2.fromOffset(150, 215), Position = UDim2.fromOffset(col * 150, row * 215), BackgroundTransparency = 1 }, area)
-		local holder = make("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(140, 200), BackgroundTransparency = 1, Rotation = (col - 2) * 2 }, slotFrame)
-		local back = cardBack(holder)
+		local holder = h.cards[i] or PackOpen.cardHolder(stage, PackOpen.FanW, PackOpen.FanH)
+		local back = holder:FindFirstChild("Back")
 		local stamp = (opts.isNew and opts.isNew[i]) and "NEW" or "+1"
 		local front, animate, stampLabel = Reveal.cardFace(holder, id, stamp)
 		front.Visible = false
-		table.insert(animators, animate)
-		local button = make("TextButton", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 8 }, holder)
-		local slot = { id = id, holder = holder, back = back, front = front, slot = slotFrame, stamp = stampLabel }
-		-- face-down Epic and up glow in their tier color (a hint of what is under it)
-		local tierOf = CardData.get(id).rarity
-		if (RANK[tierOf] or 1) >= 3 and i ~= opts.best then
-			local aura = make("Frame", { Name = "Aura", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 10, 1, 10), BackgroundTransparency = 1, ZIndex = 0 }, holder)
-			corner(aura, 20)
-			local st = make("UIStroke", { Thickness = 6, Color = Kit.TierColor[tierOf], Transparency = 0.3 }, aura)
-			local ph = i * 0.7
-			Juice.onFrame(aura, function(t)
-				st.Transparency = 0.25 + 0.35 * (0.5 + 0.5 * math.sin(t * 4 + ph))
-				if tierOf == "Secret" then
-					st.Color = Kit.prism(t)
-				end
-			end)
-			slot.aura = aura
+		if stampLabel then
+			stampLabel.TextTransparency = 1
 		end
-		-- deal the card in from the bottom of the screen
-		local finalPos = slotFrame.Position
-		slotFrame.Position = UDim2.new(0, 2 * 150, 0, 900)
-		slotFrame.Rotation = (col - 2) * 12
+		table.insert(animators, animate)
+		local button = make("TextButton", { Name = "Flip", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ZIndex = 28 }, holder)
+		local slot = { id = id, holder = holder, back = back, front = front, stamp = stampLabel }
+		-- deal the card from the stack to its place (positions are offsets from the stage's centre)
+		local x, y = (col - 2) * 150, (row - 0.5) * 215 - 28
 		task.delay(0.05 + (i - 1) * 0.06, function()
-			if slotFrame.Parent then
-				tween(slotFrame, 0.4, { Position = finalPos, Rotation = 0 }, Enum.EasingStyle.Back)
+			if holder.Parent then
+				tween(holder, 0.4, { Position = UDim2.new(0.5, x, 0.5, y), Rotation = (col - 2) * 2 }, Enum.EasingStyle.Back)
+				tween(holder.CardScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
 				Juice.sound("whoosh", 1.3 + i * 0.03, 0.2)
 			end
 		end)
@@ -752,26 +780,20 @@ function Reveal.fan(opts)
 		end)
 		slots[i] = slot
 	end
-	-- the best card was already revealed by the cinematic
-	if slots[opts.best] then
-		local s = slots[opts.best]
-		s.open = true
-		flipped += 1
-		s.back.Visible = false
-		s.front.Visible = true
-		if s.stamp then
-			s.stamp.TextTransparency = 0
-		end
-	end
-	local revealAll = make("TextButton", { Name = "RevealAll", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, -110, 0.88, 0), Size = UDim2.fromOffset(200, 50), BackgroundColor3 = rgb(255, 194, 26), Text = "Reveal all", Font = TITLE, TextSize = 24, TextColor3 = INK }, gui)
-	corner(revealAll, 14)
-	doneButton = make("TextButton", { Name = "Done", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 110, 0.88, 0), Size = UDim2.fromOffset(200, 50), BackgroundColor3 = rgb(80, 70, 110), Text = "Skip", Font = TITLE, TextSize = 24, TextColor3 = WHITE }, gui)
-	corner(doneButton, 14)
+	area:Destroy() -- (the cards sit on the stage itself)
+
+	local hint = label(gui, "Tap the cards to flip them", { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -88), Size = UDim2.fromOffset(400, 24), TextColor3 = rgb(230, 225, 240), Font = BODY, ZIndex = 44 })
+	revealAll = bottomButton(gui, "RevealAll", "Reveal all", -120, rgb(255, 194, 26))
+	doneButton = bottomButton(gui, "Done", "Skip", 120, rgb(80, 70, 110), WHITE)
 	revealAll.Activated:Connect(function()
-		for k, s in ipairs(slots) do
-			task.delay((k - 1) * 0.08, function()
-				flip(s)
-			end)
+		local k = 0
+		for _, s in ipairs(slots) do
+			if not s.open then
+				task.delay(k * 0.12, function()
+					flip(s, true)
+				end)
+				k += 1
+			end
 		end
 	end)
 	local conn = RunService.RenderStepped:Connect(function(dt)
@@ -779,17 +801,25 @@ function Reveal.fan(opts)
 			a(dt)
 		end
 	end)
-	local closing = false
 	doneButton.Activated:Connect(function()
 		if closing then
 			return
 		end
 		closing = true
-		local fade = tween(bg, 0.4, { BackgroundTransparency = 1 })
-		tween(area, 0.4, { Position = UDim2.fromScale(0.5, 1.3) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		hint.Visible = false
+		for _, s in ipairs(slots) do
+			tween(s.holder, 0.4, { Position = s.holder.Position + UDim2.fromOffset(0, 700) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		end
 		revealAll.Visible = false
 		doneButton.Visible = false
-		fade.Completed:Connect(function()
+		if watch then
+			watch.Visible = false
+		end
+		task.delay(0.2, function()
+			fadeAll(scene.root, 0.35)
+			scene.setCalm(true)
+		end)
+		task.delay(0.6, function()
 			conn:Disconnect()
 			gui:Destroy()
 			if opts.onDone then

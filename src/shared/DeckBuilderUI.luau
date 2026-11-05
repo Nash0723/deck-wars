@@ -44,6 +44,7 @@ local state = {
 	saved = nil, -- text under the Save button ("Saved", problems...)
 	note = nil, -- a short line about the last click ("Took out 4 Snack cards")
 	gridKey = nil, -- rebuild the card grid only when the themes change
+	view = nil, -- "backgrounds" while the match backgrounds fill the left panel (BackdropPicker)
 }
 
 local function make(className, props, parent)
@@ -582,6 +583,7 @@ local function themeLine(deck)
 end
 
 local function openEditor(slot, deck)
+	state.view = nil
 	state.editing = { slot = slot, deck = copyDeck(deck) }
 	state.editing.deck.lanes = DeckRules.fixLanes(state.editing.deck.themes, state.editing.deck.lanes)
 	state.saved, state.note, state.gridKey = nil, nil, nil
@@ -602,6 +604,36 @@ local function showSlots()
 	if not snap then
 		text(scroll, "Loading your decks...", { Size = UDim2.new(1, -8, 0, 30), TextColor3 = DIM })
 		return
+	end
+	-- Match backgrounds: the world around the table in your matches (BackdropPicker fills the big
+	-- panel while they're open).
+	do
+		local ShopCatalog = require(here:WaitForChild("ShopCatalog"))
+		local Backdrops = require(here:WaitForChild("Backdrops"))
+		local Cosmetics = require(here:WaitForChild("Cosmetics"))
+		local worn = ShopCatalog.CosmeticById[Cosmetics.equipped().backdrop or ""] or ShopCatalog.CosmeticById[ShopCatalog.DefaultEquipped.backdrop]
+		local info = worn and Backdrops.ByKey[worn.backdrop]
+		local open = state.view == "backgrounds"
+		local bg = make("TextButton", { Name = "Backgrounds", Size = UDim2.new(1, -8, 0, 58), BackgroundColor3 = open and rgb(70, 58, 30) or TILE, AutoButtonColor = false, Text = "", LayoutOrder = -1 }, scroll)
+		make("UICorner", { CornerRadius = UDim.new(0, 10) }, bg)
+		make("UIStroke", { Thickness = open and 2 or 1, Color = open and GOLD or rgb(90, 80, 120), Transparency = open and 0 or 0.4 }, bg)
+		local sw = make("Frame", { Size = UDim2.fromOffset(42, 42), Position = UDim2.fromOffset(8, 8), BackgroundColor3 = WHITE }, bg)
+		make("UICorner", { CornerRadius = UDim.new(0, 8) }, sw)
+		if info then
+			make("UIGradient", { Rotation = 90, Color = ColorSequence.new(info.colors[1], info.colors[2]) }, sw)
+			text(sw, info.emoji, { Size = UDim2.fromScale(1, 1), TextScaled = true, TextXAlignment = Enum.TextXAlignment.Center })
+		end
+		text(bg, "🌄 Match background", { Size = UDim2.new(1, -70, 0, 22), Position = UDim2.fromOffset(60, 7), Font = Enum.Font.FredokaOne, TextSize = 17, TextColor3 = GOLD })
+		text(bg, (worn and worn.name or "Card Den") .. (open and "  ·  pick one on the left" or "  ·  tap to change"), { Size = UDim2.new(1, -70, 0, 18), Position = UDim2.fromOffset(60, 31), TextSize = 13, TextColor3 = DIM, TextTruncate = Enum.TextTruncate.AtEnd })
+		bg.Activated:Connect(function()
+			state.view = (state.view == "backgrounds") and nil or "backgrounds"
+			if state.view then
+				state.editing = nil
+			end
+			state.gridKey = nil
+			redraw()
+		end)
+		Juice.button(bg, { grow = 1.02 })
 	end
 	text(scroll, "My decks", { Size = UDim2.new(1, -8, 0, 26), Font = Enum.Font.FredokaOne, TextSize = 22, TextColor3 = GOLD, LayoutOrder = 0 })
 	local bySlot = {}
@@ -679,12 +711,22 @@ function redraw()
 	if not state.left or not state.left.Visible then
 		return
 	end
-	if state.editing then
+	if state.view == "backgrounds" then
+		clearLeft()
+		require(here:WaitForChild("BackdropPicker")).render(state.left)
+	elseif state.editing then
 		showEditor()
 	else
 		showCollection()
 	end
 	showSlots()
+end
+
+-- Opens the shelf straight on the match backgrounds (from the Shop's background tiles).
+function DeckBuilderUI.showBackgrounds()
+	state.view = "backgrounds"
+	state.editing = nil
+	redraw()
 end
 
 ---------------------------------------------------------------------------
@@ -700,6 +742,7 @@ function DeckBuilderUI.showShelf(body)
 end
 
 function DeckBuilderUI.hide()
+	state.view = nil
 	if state.left then
 		state.left.Visible = false
 	end
@@ -711,6 +754,12 @@ function DeckBuilderUI.init(k)
 	state.left = k.panel(k.menuUI, UDim2.new(0.62, 0, 0.74, 0), UDim2.new(0, 24, 0.5, -10), Vector2.new(0, 0.5))
 	state.left.Name = "DeckBuilder"
 	state.left.Visible = false
+	-- the "Match background" button over your decks follows what you wear
+	require(here:WaitForChild("Cosmetics")).onChanged(function()
+		if state.body and state.body.Parent then
+			showSlots()
+		end
+	end)
 	k.MenuAction.OnClientEvent:Connect(function(what, data)
 		if what == "Decks" and type(data) == "table" then
 			state.snap = data

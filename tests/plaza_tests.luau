@@ -127,6 +127,14 @@ do
 	check(legendary == nil or Plaza.announceLevel(legendary) == "server", "so does a Legendary")
 	check(secret == nil or Plaza.announceLevel(secret) == "cross", "a Secret is told to every server")
 	check(Plaza.announceLevel("no_such_card") == nil, "unknown cards get nothing")
+	check(Plaza.announceLevel(commons[1], true) == "cross", "a Shiny card is told to every server, whatever its rarity")
+	-- the chat: Secret and Shiny pulls only
+	check(not Plaza.chatWorthy({ rarity = "Legendary" }), "a Legendary isn't posted in the chat")
+	check(Plaza.chatWorthy({ rarity = "Secret" }), "a Secret is posted in the chat")
+	check(Plaza.chatWorthy({ rarity = "Common", shiny = true }), "a Shiny is posted in the chat")
+	local line = Plaza.chatLine({ name = "<b>Nash</b>", rarity = "Secret", far = true }, "Omega Microwave", "FF00AA")
+	check(string.find(line, "&lt;b&gt;Nash&lt;/b&gt;", 1, true) ~= nil and string.find(line, "<b>Nash</b>", 1, true) == nil, "names in the chat line can't inject rich text")
+	check(string.find(line, "Omega Microwave", 1, true) ~= nil and string.find(line, "FF00AA", 1, true) ~= nil and string.find(line, "Secret", 1, true) ~= nil, "the chat line names the card, its rarity and colour: " .. line)
 	local sorted = Plaza.sortRarest({ commons[1], mythic, rares[1], epic })
 	check(sorted[1] == mythic and sorted[4] == commons[1], "rarest-first sorting")
 end
