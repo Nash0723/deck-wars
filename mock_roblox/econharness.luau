@@ -58,7 +58,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
@@ -501,6 +501,36 @@ M.warnings = warn0 -- (that warning was expected)
 M.rec(player).props.UserId = 5550001
 
 ---------------------------------------------------------------------------
+-- The room answers the mouse (RoomLife): point at a binder, click a trophy through the real
+-- click handler; sitting down at the table later puts every prop back
+---------------------------------------------------------------------------
+local RoomLife = makeEnv(clientScript, clientCache).require(shared.RoomLife)
+do
+	RoomLife.idleFidgets = false -- (so the check at the table below isn't caught mid-fidget)
+	local binder = RoomLife.kinds.binder and RoomLife.kinds.binder[3]
+	check(binder ~= nil, "RoomLife found the Deck Shelf's binders")
+	if binder then
+		local home = binder.anchor.Position
+		M.raycastHook = function()
+			return { Instance = binder.anchor, Position = binder.anchor.Position }
+		end
+		M.advance(1)
+		check((binder.anchor.Position - home).Magnitude > 0.2, "pointing at a binder slides it out of the shelf")
+		check(UserInputService.MouseIcon ~= "", "the mouse turns into a pointing hand over it")
+		local trophy = RoomLife.kinds.trophy[1]
+		M.raycastHook = function()
+			return { Instance = trophy.anchor, Position = trophy.anchor.Position }
+		end
+		UserInputService.InputBegan:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector3.new(640, 360, 0) }, false)
+		M.advance(0.2)
+		check(trophy.pk ~= nil, "clicking a trophy makes it jump")
+		M.raycastHook = nil
+		M.advance(3)
+		check(UserInputService.MouseIcon == "", "the normal mouse comes back")
+	end
+end
+
+---------------------------------------------------------------------------
 -- A whole match against the bot through the merged client: the Duel Table panel, placing
 -- creatures on Front and Back spots, a Shift, BATTLE, the result and back to the room
 ---------------------------------------------------------------------------
@@ -517,6 +547,13 @@ do
 		waited += 0.5
 	end
 	check(S.view ~= nil, "the bot match starts")
+	local away = 0
+	for _, p in ipairs(RoomLife.props) do
+		for _, e in ipairs(p.parts) do
+			away = math.max(away, (e.part.Position - e.base.Position).Magnitude)
+		end
+	end
+	check(away < 1e-6, "every room prop is back in place at the table (" .. away .. ")")
 	local plays, backPlays, shifts, buildings, turnsMine = 0, 0, 0, 0, 0
 	local playedThisTurn, shiftedThisTurn, lastTurn = 0, false, -1
 	local guard = 0
