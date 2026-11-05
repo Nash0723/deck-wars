@@ -18,6 +18,7 @@ local Shared = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(Shared:WaitForChild("CardData"))
 local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
 local Progression = require(Shared:WaitForChild("Progression"))
+local UIKit = require(Shared:WaitForChild("UIKit"))
 
 local ABORT = "MatchScreenAbort" -- thrown to stop playback when the match ended meanwhile
 
@@ -84,47 +85,73 @@ function MatchScreen.init(ctx)
 		Visible = false,
 	}, ctx.gui)
 
+	-- Fonts and colours shared with the menus (UIKit), so the match reads like the rest of the game.
+	local TITLE_FONT, BOLD_FONT = UIKit.TITLE_FONT, UIKit.BOLD_FONT
+	local DIM = Color3.fromRGB(196, 190, 222)
+
+	-- A rounded bar with a dark outline, a shaded fill with a soft shine, and the number on top.
 	local function hpBar(parent, pos, size, fillColor, backColor)
-		local back = make("Frame", { Size = size, Position = pos, BackgroundColor3 = backColor }, parent)
-		corner(back, 8)
+		local back = make("Frame", { Name = "HpBar", Size = size, Position = pos, BackgroundColor3 = backColor }, parent)
+		corner(back, 100)
+		make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(12, 9, 20), Transparency = 0.15 }, back)
 		local trail = make("Frame", { Name = "Trail", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(255, 226, 165), ZIndex = 2 }, back)
-		corner(trail, 8)
+		corner(trail, 100)
 		local fill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = fillColor, ZIndex = 3 }, back)
-		corner(fill, 8)
-		local text = label(back, "25", { ZIndex = 4, TextScaled = false, TextSize = math.max(12, math.floor(size.Y.Offset * 0.58)), TextStrokeTransparency = 0.6 })
+		corner(fill, 100)
+		make("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(178, 178, 178)) }, fill)
+		local shine = make("Frame", { Name = "Shine", Size = UDim2.new(1, -10, 0.36, 0), Position = UDim2.fromOffset(5, 3), BackgroundColor3 = WHITE, BackgroundTransparency = 0.78, ZIndex = 4 }, fill)
+		corner(shine, 100)
+		local text = label(back, "25", { Name = "Value", ZIndex = 5, Font = BOLD_FONT, TextScaled = false, TextSize = math.max(14, math.floor(size.Y.Offset * 0.56)), TextStrokeColor3 = Color3.fromRGB(12, 9, 20), TextStrokeTransparency = 0.25 })
 		make("UIScale", { Scale = 1 }, back)
 		return { back = back, fill = fill, trail = trail, text = text, value = nil }
 	end
 
 	-- The other side, top middle: name, cards in hand and magic, and hit points.
-	ui.enemyBar = panel(ui.matchUI, UDim2.fromOffset(440, 54), UDim2.new(0.5, 0, 0, 10), Vector2.new(0.5, 0))
-	ui.enemyNames = label(ui.enemyBar, "Opponent", { Size = UDim2.new(0.54, -22, 0, 20), Position = UDim2.fromOffset(14, 8), TextScaled = false, TextSize = 17, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
-	ui.enemyInfo = label(ui.enemyBar, "", { Size = UDim2.new(0.54, -22, 0, 16), Position = UDim2.fromOffset(14, 30), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = Color3.fromRGB(190, 185, 215), TextXAlignment = Enum.TextXAlignment.Left })
-	ui.enemyHp = hpBar(ui.enemyBar, UDim2.new(0.54, 0, 0, 13), UDim2.new(0.46, -14, 0, 28), Color3.fromRGB(225, 80, 90), Color3.fromRGB(55, 22, 32))
+	ui.enemyBar = panel(ui.matchUI, UDim2.fromOffset(560, 72), UDim2.new(0.5, 0, 0, 12), Vector2.new(0.5, 0))
+	ui.enemyBar.Name = "EnemyBar"
+	UIKit.rim(ui.enemyBar)
+	ui.enemyNames = label(ui.enemyBar, "Opponent", { Name = "EnemyName", Size = UDim2.new(0.5, -26, 0, 28), Position = UDim2.fromOffset(20, 9), Font = TITLE_FONT, TextScaled = false, TextSize = 24, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.6 })
+	ui.enemyInfo = label(ui.enemyBar, "", { Name = "EnemyInfo", Size = UDim2.new(0.5, -26, 0, 20), Position = UDim2.fromOffset(20, 40), Font = BODY_FONT, TextScaled = false, TextSize = 16, TextColor3 = DIM, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
+	ui.enemyHp = hpBar(ui.enemyBar, UDim2.new(0.5, 0, 0, 19), UDim2.new(0.5, -20, 0, 34), Color3.fromRGB(232, 84, 96), Color3.fromRGB(58, 22, 34))
 
 	-- Your side, bottom left: hit points, magic and your hero's Big Move. (Your name is on your hero.)
-	ui.myBar = panel(ui.matchUI, UDim2.fromOffset(264, 122), UDim2.new(0, 14, 1, -14), Vector2.new(0, 1))
+	ui.myBar = panel(ui.matchUI, UDim2.fromOffset(320, 152), UDim2.new(0, 16, 1, -16), Vector2.new(0, 1))
+	ui.myBar.Name = "MyBar"
+	UIKit.rim(ui.myBar)
 	ui.myNames = label(ui.myBar, "You", { Size = UDim2.new(1, -24, 0, 1), Visible = false })
-	ui.myHp = hpBar(ui.myBar, UDim2.fromOffset(12, 12), UDim2.new(1, -24, 0, 30), Color3.fromRGB(80, 200, 110), Color3.fromRGB(20, 50, 30))
-	ui.magicText = label(ui.myBar, "✨ 0/0", { Size = UDim2.fromOffset(70, 22), Position = UDim2.fromOffset(12, 48), TextScaled = false, TextSize = 17, TextColor3 = Color3.fromRGB(150, 210, 255), TextXAlignment = Enum.TextXAlignment.Left })
-	ui.magicGems = make("Frame", { Size = UDim2.new(1, -150, 0, 13), Position = UDim2.fromOffset(86, 53), BackgroundTransparency = 1 }, ui.myBar)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5) }, ui.magicGems)
-	ui.deckText = label(ui.myBar, "", { Name = "DeckCount", Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -12, 0, 50), AnchorPoint = Vector2.new(1, 0), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = Color3.fromRGB(170, 165, 195), TextXAlignment = Enum.TextXAlignment.Right })
-	ui.bigMoveButton = button(ui.myBar, "Big Move", Color3.fromRGB(110, 80, 160), nil, { Name = "BigMoveButton", Size = UDim2.new(1, -24, 0, 36), Position = UDim2.fromOffset(12, 76), TextScaled = false, TextSize = 19 })
+	ui.myHp = hpBar(ui.myBar, UDim2.fromOffset(14, 14), UDim2.new(1, -28, 0, 38), Color3.fromRGB(84, 206, 116), Color3.fromRGB(20, 52, 32))
+	ui.magicText = label(ui.myBar, "✨ 0/0", { Name = "Magic", Size = UDim2.fromOffset(86, 26), Position = UDim2.fromOffset(14, 60), Font = TITLE_FONT, TextScaled = false, TextSize = 22, TextColor3 = Color3.fromRGB(160, 216, 255), TextStrokeTransparency = 0.6, TextXAlignment = Enum.TextXAlignment.Left })
+	ui.magicGems = make("Frame", { Name = "MagicGems", Size = UDim2.new(1, -184, 0, 16), Position = UDim2.fromOffset(106, 65), BackgroundTransparency = 1 }, ui.myBar)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6) }, ui.magicGems)
+	ui.deckText = label(ui.myBar, "", { Name = "DeckCount", Size = UDim2.fromOffset(64, 22), Position = UDim2.new(1, -14, 0, 62), AnchorPoint = Vector2.new(1, 0), Font = BOLD_FONT, TextScaled = false, TextSize = 16, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Right })
+	ui.bigMoveButton = button(ui.myBar, "Big Move", Color3.fromRGB(110, 80, 160), nil, { Name = "BigMoveButton", Size = UDim2.new(1, -28, 0, 44), Position = UDim2.fromOffset(14, 94), TextScaled = false, TextSize = 20 })
 
 	-- BATTLE ends your turn (bottom right), with whose turn it is just above it.
-	ui.battleButton = button(ui.matchUI, "⚔ BATTLE!", Color3.fromRGB(205, 80, 60), nil, { Name = "BattleButton", Size = UDim2.fromOffset(190, 66), Position = UDim2.new(1, -18, 1, -18), AnchorPoint = Vector2.new(1, 1), TextScaled = false, TextSize = 30 })
-	ui.turnText = label(ui.matchUI, "", { Size = UDim2.fromOffset(320, 26), Position = UDim2.new(1, -20, 1, -90), AnchorPoint = Vector2.new(1, 1), TextScaled = false, TextSize = 21, TextStrokeTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Right })
+	ui.battleButton = button(ui.matchUI, "⚔ BATTLE!", Color3.fromRGB(205, 80, 60), nil, { Name = "BattleButton", Size = UDim2.fromOffset(216, 76), Position = UDim2.new(1, -18, 1, -18), AnchorPoint = Vector2.new(1, 1), TextScaled = false, TextSize = 32 })
+	do
+		-- A thin gold line just inside the outline, so the main button reads as the main button.
+		-- (The button's UIPadding is 8 / 4, so this sits 4 px inside every edge.)
+		local gold = make("Frame", { Name = "GoldRim", Size = UDim2.new(1, 8, 1, 0), Position = UDim2.fromOffset(-4, 0), BackgroundTransparency = 1 }, ui.battleButton)
+		corner(gold, 7)
+		make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(255, 214, 120), Transparency = 0.35 }, gold)
+	end
+	-- Whose turn it is, in a pill above BATTLE.
+	ui.turnText = label(ui.matchUI, "", { Name = "TurnText", Size = UDim2.fromOffset(0, 38), AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.new(1, -18, 1, -104), AnchorPoint = Vector2.new(1, 1), Font = TITLE_FONT, TextScaled = false, TextSize = 23, TextStrokeTransparency = 0.55, BackgroundColor3 = Color3.fromRGB(22, 18, 34), BackgroundTransparency = 1 })
+	corner(ui.turnText, 100)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18) }, ui.turnText)
+	ui.turnText:GetPropertyChangedSignal("Text"):Connect(function()
+		ui.turnText.BackgroundTransparency = ui.turnText.Text == "" and 1 or 0.22
+	end)
 	-- The seconds left only show near the end of a turn.
-	ui.timerText = label(ui.matchUI, "", { Size = UDim2.fromOffset(200, 20), Position = UDim2.new(1, -20, 1, -118), AnchorPoint = Vector2.new(1, 1), Font = BODY_FONT, TextScaled = false, TextSize = 16, TextStrokeTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Right })
-	ui.matchLabel = label(ui.matchUI, "", { Size = UDim2.fromOffset(420, 18), Position = UDim2.new(0.5, 0, 0, 70), AnchorPoint = Vector2.new(0.5, 0), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(255, 220, 140), TextStrokeTransparency = 0.6 })
+	ui.timerText = label(ui.matchUI, "", { Name = "TimerText", Size = UDim2.fromOffset(220, 24), Position = UDim2.new(1, -24, 1, -148), AnchorPoint = Vector2.new(1, 1), Font = BOLD_FONT, TextScaled = false, TextSize = 18, TextStrokeTransparency = 0.45, TextXAlignment = Enum.TextXAlignment.Right })
+	ui.matchLabel = label(ui.matchUI, "", { Name = "MatchLabel", Size = UDim2.fromOffset(480, 22), Position = UDim2.new(0.5, 0, 0, 90), AnchorPoint = Vector2.new(0.5, 0), Font = BOLD_FONT, TextScaled = false, TextSize = 16, TextColor3 = Color3.fromRGB(255, 220, 140), TextStrokeTransparency = 0.5 })
 
 	-- Everything else waits behind the ⚙ button (top right): how to play, speed, sound, the match
 	-- log, and leaving.
 	ui.menuButton = button(ui.matchUI, "⚙", Color3.fromRGB(60, 56, 84), function()
 		F.toggleMenu()
 	end, { Name = "MenuButton", Size = UDim2.fromOffset(46, 42), Position = UDim2.new(1, -14, 0, 12), AnchorPoint = Vector2.new(1, 0) })
-	ui.menuPanel = panel(ui.matchUI, UDim2.fromOffset(240, 0), UDim2.new(1, -14, 0, 62), Vector2.new(1, 0))
+	ui.menuPanel = panel(ui.matchUI, UDim2.fromOffset(260, 0), UDim2.new(1, -14, 0, 62), Vector2.new(1, 0))
 	ui.menuPanel.Name = "MatchMenu"
 	ui.menuPanel.AutomaticSize = Enum.AutomaticSize.Y
 	ui.menuPanel.Visible = false
@@ -132,7 +159,7 @@ function MatchScreen.init(ctx)
 	make("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, ui.menuPanel)
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, ui.menuPanel)
 	local function menuItem(text, order, color, fn, name)
-		return button(ui.menuPanel, text, color or Color3.fromRGB(70, 66, 100), fn, { Name = name, Size = UDim2.new(1, 0, 0, 38), LayoutOrder = order })
+		return button(ui.menuPanel, text, color or Color3.fromRGB(70, 66, 100), fn, { Name = name, Size = UDim2.new(1, 0, 0, 42), LayoutOrder = order, TextScaled = false, TextSize = 19 })
 	end
 	ui.helpButton = menuItem("❓ How to play", 1, nil, function()
 		ui.menuPanel.Visible = false
@@ -154,15 +181,32 @@ function MatchScreen.init(ctx)
 
 	-- Your hand, bottom middle (between your bar and BATTLE).
 	-- The whole card shows (cost, picture, attack and health); hover one for its full text.
-	ui.handFrame = make("Frame", { Name = "Hand", Size = UDim2.new(1, -500, 0, 152), Position = UDim2.new(0.5, 38, 1, -8), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, ui.matchUI)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, -10), SortOrder = Enum.SortOrder.LayoutOrder }, ui.handFrame)
+	-- The cards sit side by side with a small gap; they only overlap when the hand gets too wide.
+	ui.handFrame = make("Frame", { Name = "Hand", Size = UDim2.new(1, -590, 0, 172), Position = UDim2.new(0.5, 51, 1, -10), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, ui.matchUI)
+	ui.handLayout = make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, ui.handFrame)
+	S.HAND_W, S.HAND_H = 122, 170
+	function F.fitHand()
+		local n = 0
+		for _, c in ipairs(ui.handFrame:GetChildren()) do
+			if c:IsA("GuiObject") then
+				n += 1
+			end
+		end
+		local room = ui.handFrame.AbsoluteSize.X
+		local gap = 8
+		if n > 1 and room > 0 and n * S.HAND_W + (n - 1) * gap > room then
+			gap = math.max(-S.HAND_W * 0.55, (room - n * S.HAND_W) / (n - 1))
+		end
+		ui.handLayout.Padding = UDim.new(0, math.floor(gap))
+	end
+	ui.handFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(F.fitHand)
 
 	-- One line that says what to do next, for a player's first few matches.
-	ui.coach = label(ui.matchUI, "", { Name = "CoachText", TextScaled = false, TextSize = 16, Size = UDim2.fromOffset(500, 30), Position = UDim2.new(0.5, 38, 1, -196), AnchorPoint = Vector2.new(0.5, 1), Font = BODY_FONT, TextColor3 = Color3.fromRGB(235, 232, 245), BackgroundColor3 = Color3.fromRGB(22, 18, 32), BackgroundTransparency = 0.35, Visible = false })
+	ui.coach = label(ui.matchUI, "", { Name = "CoachText", TextScaled = false, TextSize = 17, Size = UDim2.fromOffset(540, 34), Position = UDim2.new(0.5, 51, 1, -222), AnchorPoint = Vector2.new(0.5, 1), Font = BODY_FONT, TextColor3 = Color3.fromRGB(235, 232, 245), BackgroundColor3 = Color3.fromRGB(22, 18, 32), BackgroundTransparency = 0.35, Visible = false })
 	corner(ui.coach, 10)
 	make("UIPadding", { PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, ui.coach)
 	-- Short messages ("Not enough magic") show for a moment under the other side's bar.
-	ui.toast = label(ui.matchUI, "", { Name = "Toast", Size = UDim2.fromOffset(520, 32), Position = UDim2.new(0.5, 0, 0, 94), AnchorPoint = Vector2.new(0.5, 0), Font = BODY_FONT, TextScaled = false, TextSize = 16, TextWrapped = true, BackgroundColor3 = Color3.fromRGB(22, 18, 32), BackgroundTransparency = 0.25, Visible = false, ZIndex = 12 })
+	ui.toast = label(ui.matchUI, "", { Name = "Toast", Size = UDim2.fromOffset(560, 36), Position = UDim2.new(0.5, 0, 0, 116), AnchorPoint = Vector2.new(0.5, 0), Font = BOLD_FONT, TextScaled = false, TextSize = 17, TextWrapped = true, BackgroundColor3 = Color3.fromRGB(22, 18, 32), BackgroundTransparency = 0.25, Visible = false, ZIndex = 12 })
 	corner(ui.toast, 10)
 	make("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, ui.toast)
 
@@ -173,7 +217,7 @@ function MatchScreen.init(ctx)
 	make("UIListLayout", { VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder }, ui.logFrame)
 
 	-- Choices (Spark, Skip, Cancel), just above your hand.
-	ui.promptBar = panel(ui.matchUI, UDim2.fromOffset(560, 100), UDim2.new(0.5, 38, 1, -192), Vector2.new(0.5, 1))
+	ui.promptBar = panel(ui.matchUI, UDim2.fromOffset(580, 104), UDim2.new(0.5, 51, 1, -218), Vector2.new(0.5, 1))
 	ui.promptBar.Name = "PromptBar"
 	ui.promptBar.Visible = false
 	ui.promptText = label(ui.promptBar, "", { Size = UDim2.new(1, -24, 0, 30), Position = UDim2.fromOffset(12, 8) })
@@ -334,7 +378,7 @@ function MatchScreen.init(ctx)
 
 	function F.setBar(bar, value, max)
 		local fraction = math.clamp(value / math.max(1, max), 0, 1)
-		bar.text.Text = tostring(math.max(0, value)) .. " / " .. tostring(max)
+		bar.text.Text = "❤ " .. tostring(math.max(0, value)) .. " / " .. tostring(max)
 		local before = bar.fill.Size.X.Scale
 		TweenService:Create(bar.fill, TweenInfo.new(0.5 * PACE, Enum.EasingStyle.Quad), { Size = UDim2.fromScale(fraction, 1) }):Play()
 		if fraction < before - 0.001 then
@@ -1287,7 +1331,7 @@ function MatchScreen.init(ctx)
 				if holder then
 					holder:Destroy()
 				end
-				holder = make("TextButton", { Name = "HandCard_" .. h.id, Text = "", Size = UDim2.fromOffset(106, 148), BackgroundTransparency = 1, AutoButtonColor = false }, ui.handFrame)
+				holder = make("TextButton", { Name = "HandCard_" .. h.id, Text = "", Size = UDim2.fromOffset(S.HAND_W, S.HAND_H), BackgroundTransparency = 1, AutoButtonColor = false }, ui.handFrame)
 				holder:SetAttribute("Cost", h.cost)
 				holder:SetAttribute("HandUid", h.uid)
 				-- Calm cards in your hand: the picture stays still and nothing sweeps across them.
@@ -1338,6 +1382,7 @@ function MatchScreen.init(ctx)
 				S.handCards[uid] = nil
 			end
 		end
+		F.fitHand()
 	end
 
 	function F.clearHand()
@@ -2038,14 +2083,14 @@ function MatchScreen.init(ctx)
 		end
 		local me = v.seats[v.you]
 		ui.magicText.Text = "✨ " .. me.magic .. "/" .. me.maxMagic
-		ui.deckText.Text = "🃏" .. me.deckCount
+		ui.deckText.Text = "🃏 " .. me.deckCount
 		for _, c in ipairs(ui.magicGems:GetChildren()) do
 			if c:IsA("Frame") then
 				c:Destroy()
 			end
 		end
 		for i = 1, math.max(me.maxMagic, me.magic) do
-			local gem = make("Frame", { Size = UDim2.fromOffset(13, 13), Rotation = 45, BackgroundColor3 = i <= me.magic and Color3.fromRGB(120, 200, 255) or Color3.fromRGB(50, 60, 80) }, ui.magicGems)
+			local gem = make("Frame", { Size = UDim2.fromOffset(14, 14), Rotation = 45, BackgroundColor3 = i <= me.magic and Color3.fromRGB(120, 200, 255) or Color3.fromRGB(50, 60, 80) }, ui.magicGems)
 			corner(gem, 3)
 		end
 		-- Tournament rounds say which round it is (a bot match needs no label: the name is on the bar).
@@ -2664,13 +2709,13 @@ function MatchScreen.init(ctx)
 					F.campaignAgain("CampaignNext")
 				end, { Name = "CampaignNext", Size = UDim2.fromOffset(150, 46), LayoutOrder = 1 })
 			end
-			button(ui.resultButtons, won and "⟳ Again" or "⟳ Try again", won and Color3.fromRGB(70, 130, 220) or Color3.fromRGB(60, 170, 90), function()
+			button(ui.resultButtons, won and "🔄 Again" or "🔄 Try again", won and Color3.fromRGB(70, 130, 220) or Color3.fromRGB(60, 170, 90), function()
 				F.campaignAgain("CampaignRetry")
 			end, { Name = "CampaignRetry", Size = UDim2.fromOffset(won and 130 or 170, 46), LayoutOrder = 2 })
 			button(ui.resultButtons, "Map", Color3.fromRGB(90, 80, 140), leave, { Name = "BackToMap", Size = UDim2.fromOffset(110, 46), LayoutOrder = 3 })
 			S.resultBack = "Back to the map"
 		elseif mode == "Bot" then
-			button(ui.resultButtons, "⟳ Play again", Color3.fromRGB(60, 170, 90), F.playAgain, { Name = "PlayAgain", Size = UDim2.fromOffset(200, 46), LayoutOrder = 1 })
+			button(ui.resultButtons, "🔄 Play again", Color3.fromRGB(60, 170, 90), F.playAgain, { Name = "PlayAgain", Size = UDim2.fromOffset(200, 46), LayoutOrder = 1 })
 			button(ui.resultButtons, "Back", Color3.fromRGB(90, 80, 140), leave, { Name = "BackToRoom", Size = UDim2.fromOffset(140, 46), LayoutOrder = 2 })
 			S.resultBack = "Back at the Duel Table"
 		elseif mode == "Duel" or mode == "Team" then

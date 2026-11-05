@@ -60,7 +60,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
@@ -314,8 +314,9 @@ start = player:GetAttribute("Gems")
 local profileCard = named("Profile")
 check(profileCard ~= nil, "the profile card (level, Gems, Coins) shows in the room")
 M.advance(2)
-check(profileCard and profileCard.Gems.Text == "💎 " .. tostring(player:GetAttribute("Gems")), "the profile card shows the Gems (" .. tostring(profileCard and profileCard.Gems.Text) .. ")")
-check(profileCard and profileCard.Coins.Text == "🪙 " .. tostring(player:GetAttribute("Coins")), "the profile card shows the Coins")
+check(profileCard and profileCard.Wallet.Gems.Value.Text == ShopCatalog.format(player:GetAttribute("Gems")) and profileCard.Wallet.Gems:FindFirstChild("GemIcon") ~= nil, "the profile card shows the Gems (" .. tostring(profileCard and profileCard.Wallet.Gems.Value.Text) .. ")")
+check(profileCard and profileCard.Wallet.Coins.Value.Text == ShopCatalog.format(player:GetAttribute("Coins")) and profileCard.Wallet.Coins:FindFirstChild("CoinIcon") ~= nil, "the profile card shows the Coins with a drawn coin")
+check(profileCard and profileCard.Level.Value.Text == tostring(player:GetAttribute("Level") or 1), "the level badge shows the level")
 
 ---------------------------------------------------------------------------
 -- The Shop
@@ -330,13 +331,18 @@ check(labelStarting("Level 1") ~= nil, "the panel shows the level")
 -- Daily cards
 local function priceButtons()
 	return findAll(function(d)
-		return d.ClassName == "TextButton" and d.Parent and d.Parent.Name == "Tile" and (string.sub(d.Text, 1, 4) == "🪙" or string.sub(d.Text, 1, 4) == "💎")
+		return d.ClassName == "TextButton" and d.Parent and d.Parent.Name == "Tile" and (d:GetAttribute("Currency") == "Coins" or d:GetAttribute("Currency") == "Gems")
 	end, window)
 end
 local tiles = findAll(function(d)
 	return d.Name == "Tile"
 end, window)
 check(#tiles == 6, "6 daily card tiles (" .. #tiles .. ")")
+check(priceButtons()[1] and priceButtons()[1]:FindFirstChild("CoinIcon", true) ~= nil, "a Coins price shows the drawn coin")
+check(window:FindFirstChild("Close") and window.Close:FindFirstChild("Bar") ~= nil, "the Shop's close button has a drawn ✕")
+M.advance(0.6)
+check(profileCard and not profileCard.Visible, "Focus: the profile card steps aside while the Shop is open")
+check(game:GetService("Lighting"):FindFirstChild("FocusBlur") and game:GetService("Lighting").FocusBlur.Size > 0, "Focus: the room behind the Shop is blurred")
 check(#findAll(function(d)
 	return d.Name == "Card"
 end, window) == 6, "each daily tile shows the card")
@@ -412,7 +418,7 @@ end, window)) do
 end
 click(starBtn, "Void Spiral (first tap)")
 M.advance(0.3)
-check(player:GetAttribute("Gems") == gems0 and starBtn and string.sub(starBtn.Text, 1, 9) == "Tap again", "the first tap on a Gem price only asks to confirm")
+check(player:GetAttribute("Gems") == gems0 and starBtn and string.find(tostring(starBtn:GetAttribute("Caption")), "Tap again", 1, true) ~= nil, "the first tap on a Gem price only asks to confirm")
 click(starBtn, "Void Spiral (second tap)")
 M.advance(0.5)
 check(player:GetAttribute("Gems") == gems0 - 250, "the second tap buys it with Gems")
@@ -425,7 +431,9 @@ check(#findAll(function(d)
 	return d.ClassName == "TextButton" and d.Text == "Not on sale yet"
 end, window) == #ShopCatalog.GemBundles, "Gem bundles without a product id show Not on sale yet")
 local coinsBefore, gemsBefore = player:GetAttribute("Coins"), player:GetAttribute("Gems")
-click(buttonWithText("Trade 🪙", true, window), "Coins -> Gems")
+click(find(function(d)
+	return d.ClassName == "TextButton" and string.sub(tostring(d:GetAttribute("Caption")), 1, 11) == "Coins Trade"
+end, window), "Coins -> Gems")
 M.advance(0.5)
 check(player:GetAttribute("Coins") == coinsBefore - 500 and player:GetAttribute("Gems") == gemsBefore + 25, "the Coins -> Gems exchange works")
 check(labelStarting("🍀 Lucky pulls left") ~= nil or find(function(d)
@@ -459,6 +467,9 @@ check(em and em.id == "emote_hello", "a default emote is echoed back")
 
 click(named("Close", window), "close the Shop")
 check(not window.Visible, "the Shop window closes")
+M.advance(0.6)
+check(profileCard and profileCard.Visible, "Focus: the profile card comes back when the Shop closes")
+check(game:GetService("Lighting").FocusBlur.Size == 0, "Focus: the blur clears when the Shop closes")
 click(buttonWithText("Back"), "Back")
 M.advance(1.5)
 
@@ -985,7 +996,7 @@ do
 	M.advance(1)
 	local altar = named("AltarPacks")
 	check(altar ~= nil and altar:FindFirstChild("PackPartyControls", true) ~= nil, "the altar opens the pack panel")
-	click(altar and altar:FindFirstChild("TextButton") and buttonWithText("✕", false, altar), "close the altar panel")
+	click(altar and named("Close", altar), "close the altar panel")
 	M.advance(0.5)
 
 	-- the Duel kiosk: back inside at the Duel Table

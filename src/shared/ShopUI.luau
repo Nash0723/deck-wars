@@ -23,6 +23,7 @@ local ShopCatalog = require(here:WaitForChild("ShopCatalog"))
 local Cosmetics = require(here:WaitForChild("Cosmetics"))
 local CardData = require(here:WaitForChild("CardData"))
 local Juice = require(here:WaitForChild("Juice"))
+local UIKit = require(here:WaitForChild("UIKit")) -- the drawn coin (Roblox can't draw 🪙) and the close ✕
 
 local remotes = ReplicatedStorage:WaitForChild("EconomyRemotes")
 local ShopAction = remotes:WaitForChild("ShopAction")
@@ -122,14 +123,6 @@ local function curColor(cur)
 	return cur == "Gems" and GEM or COIN
 end
 
-local function priceText(price)
-	local cur, n = ShopCatalog.priceOf(price)
-	if not cur then
-		return "Free"
-	end
-	return ShopCatalog.Icon[cur] .. " " .. ShopCatalog.format(n)
-end
-
 local function balanceOf(cur)
 	local s = state.snap
 	if not s then
@@ -174,14 +167,19 @@ function ShopUI.toast(message, kind, opts)
 	}, state.toastHolder)
 	corner(t, 14)
 	stroke(t, TOAST_COLORS[kind or "info"] or GOLD, 3)
-	text(t, opts.icon or (kind == "bad" and "✋" or kind == "good" and "✓" or "★"), {
-		Size = UDim2.new(0, big and 62 or 40, 1, 0),
-		Position = UDim2.fromOffset(8, 0),
-		TextScaled = true,
-		Font = BOLD_FONT,
-		TextColor3 = TOAST_COLORS[kind or "info"] or GOLD,
-		TextXAlignment = Enum.TextXAlignment.Center,
-	})
+	if opts.icon == "Coins" or opts.icon == "Gems" then
+		local px = big and 40 or 26
+		UIKit.icon(t, opts.icon, px, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 8 + (big and 31 or 20), 0.5, 0) })
+	else
+		text(t, opts.icon or (kind == "bad" and "✋" or kind == "good" and "✓" or "★"), {
+			Size = UDim2.new(0, big and 62 or 40, 1, 0),
+			Position = UDim2.fromOffset(8, 0),
+			TextScaled = true,
+			Font = BOLD_FONT,
+			TextColor3 = TOAST_COLORS[kind or "info"] or GOLD,
+			TextXAlignment = Enum.TextXAlignment.Center,
+		})
+	end
 	text(t, message, {
 		Name = "Message",
 		Size = UDim2.new(1, big and -84 or -60, 1, -10),
@@ -215,11 +213,15 @@ local function countTo(label, target, icon)
 	if not c then
 		c = { shown = target, target = target, icon = icon }
 		counting[label] = c
-		label.Text = icon .. " " .. ShopCatalog.format(target)
+		label.Text = (icon and (icon .. " ") or "") .. ShopCatalog.format(target)
 	end
 	if c.target ~= target then
 		if target > c.target then
-			Juice.pop(label.Parent, 1.12, 0.4)
+			local p = label.Parent
+			if p and p.Name == "Amount" and p.Parent then
+				p = p.Parent
+			end
+			Juice.pop(p, 1.12, 0.4)
 		end
 		c.target = target
 	end
@@ -236,17 +238,25 @@ local function countTo(label, target, icon)
 						s.shown = math.max(s.target, s.shown - step)
 					end
 					s.shown = math.floor(s.shown + 0.5)
-					l.Text = s.icon .. " " .. ShopCatalog.format(s.shown)
+					l.Text = (s.icon and (s.icon .. " ") or "") .. ShopCatalog.format(s.shown)
 				end
 			end
 		end)
 	end
 end
 
-local function pill(parent, color, order)
-	local p = make("Frame", { Size = UDim2.fromOffset(150, 40), BackgroundColor3 = PANEL, BackgroundTransparency = 0.08, LayoutOrder = order }, parent)
+-- A rounded counter. With cur ("Gems" / "Coins") its icon is drawn next to the number.
+local function pill(parent, color, order, cur)
+	local p = make("Frame", { Size = UDim2.fromOffset(150, 40), BackgroundColor3 = rgb(20, 16, 32), BackgroundTransparency = 0.05, LayoutOrder = order }, parent)
 	corner(p, 20)
 	stroke(p, color, 2)
+	if cur then
+		local row, l = UIKit.currency(p, cur, "", { size = 20, color = color, align = Enum.HorizontalAlignment.Center })
+		row.AnchorPoint = Vector2.new(0.5, 0.5)
+		row.Position = UDim2.fromScale(0.5, 0.5)
+		row.Name = "Amount"
+		return p, l
+	end
 	local l = text(p, "", { Name = "Value", Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0), Font = TITLE_FONT, TextSize = 20, TextColor3 = color, TextXAlignment = Enum.TextXAlignment.Center })
 	return p, l
 end
@@ -263,23 +273,23 @@ function ShopUI.hud(parent, position)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Right, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, bar)
 	local lvl, lvlLabel = pill(bar, GOLD, 1)
 	lvl.Size = UDim2.fromOffset(120, 40)
-	local gems, gemLabel = pill(bar, GEM, 2)
-	local coins, coinLabel = pill(bar, COIN, 3)
+	local gems, gemLabel = pill(bar, GEM, 2, "Gems")
+	local coins, coinLabel = pill(bar, COIN, 3, "Coins")
 	gems.Name, coins.Name, lvl.Name = "Gems", "Coins", "Level"
 	local h = {}
 	function h.set(s)
 		if not bar.Parent then
 			return
 		end
-		countTo(gemLabel, s.gems, ShopCatalog.Icon.Gems)
-		countTo(coinLabel, s.coins, ShopCatalog.Icon.Coins)
+		countTo(gemLabel, s.gems, nil)
+		countTo(coinLabel, s.coins, nil)
 		lvlLabel.Text = "Lv " .. s.level .. (s.luckCharges > 0 and ("  🍀" .. s.luckCharges) or "")
 	end
 	table.insert(state.huds, h)
 	if state.snap then
 		h.set(state.snap)
 	else
-		gemLabel.Text, coinLabel.Text, lvlLabel.Text = ShopCatalog.Icon.Gems .. " ...", ShopCatalog.Icon.Coins .. " ...", "Lv ..."
+		gemLabel.Text, coinLabel.Text, lvlLabel.Text = "...", "...", "Lv ..."
 	end
 	return bar
 end
@@ -294,13 +304,25 @@ end
 -- A price button. Gem prices need a second tap within 3 seconds (no accidental Gem spending).
 local function priceButton(parent, price, onBuy, props)
 	local cur, amount = ShopCatalog.priceOf(price)
-	local b = button(parent, priceText(price), curColor(cur), nil, props)
+	local b = button(parent, "", curColor(cur), nil, props)
+	b:SetAttribute("Currency", cur or "Free")
+	local function show(prefix)
+		-- the price as [icon] number (the coin is drawn: Roblox has no 🪙)
+		if cur then
+			UIKit.caption(b, cur, (prefix or "") .. ShopCatalog.format(amount))
+		else
+			UIKit.caption(b, nil, "Free")
+		end
+	end
+	show()
+	b:SetAttribute("Price", amount or 0)
 	local function afford()
 		return cur ~= nil and balanceOf(cur) >= amount
 	end
 	if not afford() then
 		b.BackgroundColor3 = curColor(cur):Lerp(rgb(70, 66, 86), 0.65)
 		b.TextColor3 = DIM
+		show()
 	end
 	b.Activated:Connect(function()
 		if not afford() then
@@ -312,10 +334,10 @@ local function priceButton(parent, price, onBuy, props)
 			local c = state.confirm
 			if not (c and c.button == b and time() < c.untilT) then
 				state.confirm = { button = b, untilT = time() + 3 }
-				b.Text = "Tap again: " .. priceText(price)
+				show("Tap again: ")
 				task.delay(3, function()
 					if b.Parent and state.confirm and state.confirm.button == b and time() >= state.confirm.untilT then
-						b.Text = priceText(price)
+						show()
 						state.confirm = nil
 					end
 				end)
@@ -323,7 +345,7 @@ local function priceButton(parent, price, onBuy, props)
 			end
 			state.confirm = nil
 		end
-		b.Text = "..."
+		UIKit.caption(b, nil, "...")
 		onBuy()
 	end)
 	return b
@@ -501,7 +523,14 @@ function builders.exchange(content, s)
 		local t = tile(grid2, k)
 		local gc, gn = ShopCatalog.priceOf(e.give)
 		local rc, rn = ShopCatalog.priceOf(e.get)
-		text(t, ShopCatalog.Icon[gc] .. " " .. ShopCatalog.format(gn) .. "  →  " .. ShopCatalog.Icon[rc] .. " " .. ShopCatalog.format(rn), { Position = UDim2.fromOffset(12, 10), Size = UDim2.new(1, -24, 0, 30), Font = TITLE_FONT, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center })
+		do
+			-- [icon] give  →  [icon] get, centered
+			local trade = make("Frame", { Name = "Trade", Position = UDim2.fromOffset(12, 10), Size = UDim2.new(1, -24, 0, 30), BackgroundTransparency = 1 }, t)
+			make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, trade)
+			UIKit.currency(trade, gc, ShopCatalog.format(gn), { size = 22, color = TEXT }).LayoutOrder = 1
+			text(trade, "→", { Size = UDim2.fromOffset(24, 30), Font = TITLE_FONT, TextSize = 22, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2 })
+			UIKit.currency(trade, rc, ShopCatalog.format(rn), { size = 22, color = TEXT }).LayoutOrder = 3
+		end
 		local used = s.exchanges[e.id] or 0
 		local left = e.perDay and (e.perDay - used) or nil
 		text(t, e.blurb .. (left and ("  (" .. left .. " left today)") or ""), { Position = UDim2.fromOffset(12, 44), Size = UDim2.new(1, -24, 0, 40), TextSize = 13, TextColor3 = DIM, TextYAlignment = Enum.TextYAlignment.Top })
@@ -512,7 +541,7 @@ function builders.exchange(content, s)
 			local b = priceButton(t, e.give, function()
 				send("Buy", "exchange", e.id)
 			end, props)
-			b.Text = "Trade " .. b.Text
+			UIKit.caption(b, gc, "Trade " .. ShopCatalog.format(gn))
 		end
 	end
 
@@ -589,9 +618,10 @@ local function buildWindow()
 	text(w, "SHOP", { Position = UDim2.fromOffset(20, 10), Size = UDim2.fromOffset(160, 40), Font = TITLE_FONT, TextSize = 34, TextColor3 = GOLD, TextWrapped = false })
 	text(w, "Pickles' counter", { Position = UDim2.fromOffset(122, 22), Size = UDim2.fromOffset(200, 22), TextSize = 14, TextColor3 = DIM, TextWrapped = false })
 	ShopUI.hud(w, UDim2.new(1, -62, 0, 12)).Name = "WindowHud"
-	local close = button(w, "✕", rgb(110, 60, 70), function()
+	-- (a drawn ✕: Roblox's fonts have none, so the old one showed as an empty box)
+	local close = UIKit.closeButton(w, function()
 		ShopUI.close()
-	end, { Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12), Size = UDim2.fromOffset(40, 40), TextColor3 = TEXT })
+	end, { Name = "Close", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12), Size = UDim2.fromOffset(40, 40) })
 	close.ZIndex = 3
 	local tabs = make("Frame", { Name = "Tabs", Position = UDim2.fromOffset(16, 62), Size = UDim2.new(1, -32, 0, 44), BackgroundTransparency = 1 }, w)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, tabs)
@@ -627,17 +657,22 @@ function ShopUI.open(tab)
 	if tab and builders[tab] then
 		state.tab = tab
 	end
+	UIKit.keepOpen(state.window)
 	local was = state.window.Visible
-	state.window.Visible = true
+	state.window.Visible = true -- (UIKit.Focus springs it in and clears the screen around it)
 	if not was then
-		Juice.popIn(state.window, 0, { twist = 0, sound = false, time = 0.35 })
+		Juice.sound("whoosh", 1.15, 0.25)
 	end
 	rebuild(false)
 end
 
-function ShopUI.close()
+function ShopUI.close(instant)
 	if state.window then
-		state.window.Visible = false
+		if instant then
+			state.window.Visible = false
+		else
+			UIKit.close(state.window)
+		end
 	end
 end
 
@@ -657,9 +692,12 @@ function ShopUI.stationPanel(body)
 		table.insert(lines, l)
 		return l
 	end
-	local money = line(1, 30)
-	money.Font = TITLE_FONT
-	money.TextSize = 22
+	-- your wallet: [gem] 1,720   [coin] 300
+	local money = make("Frame", { Name = "Wallet", LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1 }, list)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 22), SortOrder = Enum.SortOrder.LayoutOrder }, money)
+	local _, gemsValue = UIKit.currency(money, "Gems", "", { size = 22 })
+	local coinsRow, coinsValue = UIKit.currency(money, "Coins", "", { size = 22 })
+	coinsRow.LayoutOrder = 2
 	local level = line(2)
 	local bar = make("Frame", { LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 12), BackgroundColor3 = TILE }, list)
 	corner(bar, 6)
@@ -679,7 +717,8 @@ function ShopUI.stationPanel(body)
 		if not list.Parent then
 			return
 		end
-		money.Text = ShopCatalog.Icon.Gems .. " " .. ShopCatalog.format(s.gems) .. "     " .. ShopCatalog.Icon.Coins .. " " .. ShopCatalog.format(s.coins)
+		gemsValue.Text = ShopCatalog.format(s.gems)
+		coinsValue.Text = ShopCatalog.format(s.coins)
 		level.Text = "Level " .. s.level .. "  ·  " .. s.xp .. " / " .. s.xpNeed .. " XP"
 		tween(fill, 0.4, { Size = UDim2.fromScale(math.clamp(s.xp / math.max(1, s.xpNeed), 0, 1), 1) })
 		local xpLeft = since(s.xpBoostLeft)
@@ -704,7 +743,8 @@ local BOT_EMOTES = { "emote_hello", "emote_nice", "emote_haha", "emote_hmm", "em
 
 -- myHero / theirHero: functions that return the part to show the bubble over.
 function ShopUI.mountEmotes(matchUI, myHero, theirHero)
-	local holder = make("Frame", { Name = "Emotes", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 326, 1, -24), Size = UDim2.fromOffset(56, 56), BackgroundTransparency = 1 }, matchUI)
+	-- It sits just above your bar (bottom left), clear of your hand.
+	local holder = make("Frame", { Name = "Emotes", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -180), Size = UDim2.fromOffset(52, 52), BackgroundTransparency = 1 }, matchUI)
 	local menu = make("Frame", { Name = "EmoteMenu", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 0, -8), Size = UDim2.fromOffset(200, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = PANEL, Visible = false }, holder)
 	corner(menu, 12)
 	stroke(menu, GOLD, 2)
@@ -727,7 +767,7 @@ function ShopUI.mountEmotes(matchUI, myHero, theirHero)
 					end
 					last = time()
 					send("Emote", c.id)
-				end, { Name = c.id, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = i, TextColor3 = TEXT, TextXAlignment = Enum.TextXAlignment.Left, TextSize = 16 })
+				end, { Name = c.id, Size = UDim2.new(1, 0, 0, 38), LayoutOrder = i, TextColor3 = TEXT, TextXAlignment = Enum.TextXAlignment.Left, TextSize = 17 })
 			end
 		end
 	end
@@ -736,7 +776,7 @@ function ShopUI.mountEmotes(matchUI, myHero, theirHero)
 		if menu.Visible then
 			fill()
 		end
-	end, { Name = "EmoteButton", Size = UDim2.fromScale(1, 1), TextSize = 26 })
+	end, { Name = "EmoteButton", Size = UDim2.fromScale(1, 1), TextScaled = false, TextSize = 24 })
 	table.insert(state.emoteFns, function(payload)
 		if not holder.Parent or not matchUI.Visible then
 			return
@@ -815,7 +855,7 @@ local function onEvent(kind, payload)
 			if payload.gems > 0 then
 				table.insert(parts, "+" .. payload.gems .. " Gems (first win today!)")
 			end
-			ShopUI.toast(table.concat(parts, "   "), "coin", { big = true, icon = "🪙" })
+			ShopUI.toast(table.concat(parts, "   "), "coin", { big = true, icon = "Coins" })
 			if payload.levels and payload.levels > 0 then
 				task.delay(1.2, function()
 					ShopUI.toast(string.format("Level up! You're level %d: +%d Gems, +%d Coins", state.snap and state.snap.level or 0, payload.levelGems or 0, payload.levelCoins or 0), "gem", { big = true, icon = "⬆" })

@@ -172,7 +172,7 @@ local function buildAltar(root)
 		local f = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(110, 60, 200), BorderSizePixel = 0 }, sg)
 		make("UIGradient", { Color = ColorSequence.new(rgb(255, 120, 200), rgb(90, 70, 230)), Rotation = 70 }, f)
 		make("TextLabel", { Size = UDim2.new(1, 0, 0.3, 0), Position = UDim2.fromScale(0, 0.35), BackgroundTransparency = 1, Text = "PACKS", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 255, 255) }, f)
-		make("TextLabel", { Size = UDim2.new(1, 0, 0.12, 0), Position = UDim2.fromScale(0, 0.66), BackgroundTransparency = 1, Text = "✦ open at the altar ✦", TextScaled = true, Font = Enum.Font.GothamMedium, TextColor3 = rgb(255, 236, 200) }, f)
+		make("TextLabel", { Size = UDim2.new(1, 0, 0.12, 0), Position = UDim2.fromScale(0, 0.66), BackgroundTransparency = 1, Text = "★ open at the altar ★", TextScaled = true, Font = Enum.Font.GothamMedium, TextColor3 = rgb(255, 236, 200) }, f)
 	end
 	light(pack, rgb(220, 150, 255), 26, 2)
 	make("Sparkles", { SparkleColor = rgb(255, 220, 150) }, pack)
