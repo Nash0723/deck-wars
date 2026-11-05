@@ -43,7 +43,7 @@ jobs:
         run: cargo build --release --locked --manifest-path tools/luaurun/Cargo.toml
 
       - name: Check that every script compiles
-        run: tools/luaurun/target/release/luaurun --check src/shared/*.luau src/server/*.luau src/client/*.luau src/packbrawl/*.luau src/pullserver/*.luau src/pullclient/*.luau src/econ/*.luau src/devcontrols/*.luau tests/*.luau mock_roblox/*.luau
+        run: tools/luaurun/target/release/luaurun --check src/shared/*.luau src/server/*.luau src/client/*.luau src/packbrawl/*.luau src/pullserver/*.luau src/pullclient/*.luau src/econ/*.luau src/devcontrols/*.luau src/plaza/*.luau tests/*.luau bal/*.luau mock_roblox/*.luau
 
       - name: Rules tests (two rows per lane, Shift, overkill, Ranged, plus 1v1 and 2v2 bot games)
         run: tools/luaurun/target/release/luaurun tests/lane_tests.luau src/shared
@@ -57,7 +57,13 @@ jobs:
       - name: Economy tests (session-locked saves, Gems/Coins, Shop, boosts, Robux receipts)
         run: tools/luaurun/target/release/luaurun tests/economy_tests.luau src/econ src/shared src/packbrawl
 
-      - name: The game in the simulated Studio (join, daily reward, Shop, dev panel, a full bot match, rewards, autosave)
+      - name: Campaign tests (every stage, opponents' decks, rules, stars, unlocks, rewards, drops, chests, the Challenge)
+        run: tools/luaurun/target/release/luaurun tests/campaign_tests.luau src/shared src/server
+
+      - name: Plaza tests (booth cards, likes once a day, best pulls and titles, banners, the booth ring)
+        run: tools/luaurun/target/release/luaurun tests/plaza_tests.luau src/shared mock_roblox
+
+      - name: The game in the simulated Studio (join, daily reward, Shop, dev panel, a full bot match, a Campaign stage, the Plaza, rewards, autosave)
         run: |
           tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox | tee econharness.log
           grep -q "MOCK RESULT: 0 errors, 0 warnings" econharness.log

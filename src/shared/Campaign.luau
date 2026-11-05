@@ -56,9 +56,9 @@ Campaign.Worlds = {
 		title = "Den Graduate",
 		opponents = { "Practice Pip", "Shuffle Sprout", "Dice Goblin", "Table Tidy", "Lamp Lurker" },
 		decks = { "Snack", "Critter", "Weather", "Junk", "Robo", "Spooky" }, -- one per act
-		difficulty = { "Easy", "Easy", "Easy", "Medium", "Medium", "Medium" },
+		difficulty = { "Easy", "Easy", "Easy", "Easy", "Medium", "Medium" },
 		boss = { name = "Bot Bonkers", card = nil, rules = {} },
-		turnLimit = 12,
+		tiers = { "basic", "basic", "basic", "basic", "normal", "normal" }, -- (the starter deck must keep up)
 	},
 	{
 		key = "Candy",
@@ -70,7 +70,6 @@ Campaign.Worlds = {
 		title = "Gumdrop Champion",
 		opponents = { "Gumdrop Guard", "Licorice Lasso", "Toffee Tumbler", "Sherbet Sergeant", "Caramel Colonel" },
 		boss = { name = "Queen Parfait", card = "queen_parfait", rules = { "tough" } },
-		turnLimit = 12,
 	},
 	{
 		key = "Meadow",
@@ -82,7 +81,6 @@ Campaign.Worlds = {
 		title = "Grassland Ranger",
 		opponents = { "Burrow Scout", "Meadow Mole", "Firefly Flock", "Thicket Badger", "Antler Elder" },
 		boss = { name = "Big Momma Moose", card = "big_momma_moose", rules = { "headStart" } },
-		turnLimit = 12,
 	},
 	{
 		key = "Ice",
@@ -93,8 +91,7 @@ Campaign.Worlds = {
 		blurb = "A frozen lake under the northern lights. Weather Soaks you, then Zaps you.",
 		title = "Frostglass Warden",
 		opponents = { "Drizzle Kid", "Sleet Skater", "Frost Hound", "Hail Warden", "Aurora Seer" },
-		boss = { name = "Stormlord Nimbus", card = "stormlord_nimbus", rules = { "homeTurf" } },
-		turnLimit = 12,
+		boss = { name = "Stormlord Nimbus", card = "stormlord_nimbus", rules = { "thickSkin" } },
 	},
 	{
 		key = "Fire",
@@ -105,8 +102,8 @@ Campaign.Worlds = {
 		blurb = "Lava rivers and smoking volcanoes. Junk falls apart and comes back bigger.",
 		title = "Caldera Breaker",
 		opponents = { "Scrap Rat", "Cinder Tinker", "Slag Golem", "Furnace Foreman", "Magma Mechanic" },
-		boss = { name = "The Junk King", card = "the_junk_king", rules = { "surge" } },
-		turnLimit = 13,
+		boss = { name = "The Junk King", card = "the_junk_king", rules = { "thickSkin" } },
+		turnBonus = 1, -- (these decks play longer games)
 	},
 	{
 		key = "Space",
@@ -118,7 +115,7 @@ Campaign.Worlds = {
 		title = "Void Walker",
 		opponents = { "Toaster Cadet", "Orbit Drone", "Comet Courier", "Satellite Sentinel", "Nebula Captain" },
 		boss = { name = "Mega Blender Prime", card = "mega_blender_prime", rules = { "surge", "tough" } },
-		turnLimit = 13,
+		turnBonus = 1, -- (these decks play longer games)
 	},
 	{
 		key = "Mall",
@@ -130,7 +127,7 @@ Campaign.Worlds = {
 		title = "Mall Legend",
 		opponents = { "Lost Shopper", "Cart Phantom", "Food Court Ghoul", "Night Janitor", "Window Wraith" },
 		boss = { name = "The Mannequin Duke", card = "the_mannequin_duke", rules = { "headStart", "tough", "homeTurf" } },
-		turnLimit = 13,
+		turnBonus = 1, -- (these decks play longer games)
 	},
 }
 Campaign.WorldByKey = {}
@@ -158,6 +155,10 @@ Campaign.HardBossRule = "bigStart"
 -- Star 1: win. Star 2: win with your hero at HealthyShare of its hit points or more.
 -- Star 3: win within the stage's turn limit (your own turns).
 Campaign.HealthyShare = 0.5
+-- The third star: win within this many of your own turns (per act; +world.turnBonus, +1 on Hard).
+-- Set from the balance run (bal/campaign_balance.luau): about half the wins make it.
+Campaign.TurnLimit = { 6, 6, 7, 7, 8, 9 }
+Campaign.HardTurnBonus = 1
 Campaign.StarText = { "Win", "Win with half your hit points left", "Win within %d of your turns" }
 
 -- First clear, in Gems, by act (Hard pays HardGems times as much, rounded).
@@ -185,7 +186,7 @@ Campaign.Challenge = {
 	tier = "full",
 	gems = 60,
 	cardOdds = { { "Rare", 70 }, { "Epic", 25 }, { "Mythic", 5 } },
-	turnLimit = 13,
+	turnLimit = 9,
 }
 
 ---------------------------------------------------------------------------
@@ -390,7 +391,7 @@ function Campaign.stage(id, now)
 			addRule(rules, Campaign.HardBossRule)
 		end
 	end
-	local tier = Campaign.DeckTier[act]
+	local tier = (world.tiers and world.tiers[act]) or Campaign.DeckTier[act]
 	local bossCard = boss and world.boss.card or nil
 	if tier == "boss" and not bossCard then
 		tier = "full"
@@ -436,7 +437,7 @@ function Campaign.stage(id, now)
 		bossCard = bossCard,
 		rules = rules,
 		enemyHp = enemyHp,
-		turnLimit = world.turnLimit + (boss and 1 or 0),
+		turnLimit = Campaign.TurnLimit[act] + (world.turnBonus or 0) + (hard and Campaign.HardTurnBonus or 0),
 		backdrop = world.backdrop,
 		firstGems = firstGems,
 		firstCard = firstCard,
@@ -556,6 +557,40 @@ end
 
 function Campaign.hardUnlocked(save, worldKey)
 	return Campaign.cleared(save, Campaign.stageId(worldKey, Campaign.Acts, false))
+end
+
+-- Puts a stage's rules on a match that has just started (MatchEngine), for the opponent in seat
+-- `enemySeat`: its hit points, extra cards, extra magic and a charged Big Move. Returns the shortest
+-- turn time (seconds) a rule asks for, or nil. Home Turf is in the lanes, set before the match.
+function Campaign.applyRules(m, stage, enemySeat)
+	local es = m.seats[enemySeat]
+	if not es then
+		return nil
+	end
+	m.teams[es.team].hp = stage.enemyHp
+	m.teams[es.team].maxHp = stage.enemyHp
+	local seconds = nil
+	for _, ruleId in ipairs(stage.rules or {}) do
+		local rule = Campaign.Rules[ruleId]
+		if rule then
+			for _ = 1, rule.extraCards or 0 do
+				m:draw(enemySeat)
+			end
+			if rule.magicBonus then
+				es.magicBonus = (es.magicBonus or 0) + rule.magicBonus
+				if m.current == enemySeat then
+					es.magic += rule.magicBonus -- its first turn already started
+				end
+			end
+			if rule.bigStart then
+				es.dealt = math.max(es.dealt or 0, CardData.BigMoveCharge or 10)
+			end
+			if rule.turnSeconds then
+				seconds = math.min(seconds or math.huge, rule.turnSeconds)
+			end
+		end
+	end
+	return seconds
 end
 
 -- Can this stage be played? Returns true, or false and why.

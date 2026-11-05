@@ -634,6 +634,7 @@ local EVENTS = {
 	InputBegan = true, InputEnded = true, RenderStepped = true, Heartbeat = true, Changed = true, ChildAdded = true,
 	Touched = true, Died = true, FocusLost = true, Focused = true,
 	AttributeChanged = true, InputChanged = true, ChildRemoved = true, DescendantAdded = true, MouseButton2Click = true,
+	Triggered = true, PromptTriggered = true, Event = true,
 }
 
 local function defaultFor(t)
@@ -887,9 +888,12 @@ function methods.FindFirstChild(self, name, recursive)
 	end
 	return nil
 end
-function methods.WaitForChild(self, name)
+function methods.WaitForChild(self, name, timeout)
 	local c = methods.FindFirstChild(self, name)
 	if not c then
+		if timeout ~= nil then
+			return nil -- (with a timeout Roblox gives up and returns nil; nothing appears later here)
+		end
 		error("Infinite yield possible on WaitForChild(\"" .. tostring(name) .. "\") in " .. rec(self).name, 2)
 	end
 	return c
@@ -1077,6 +1081,24 @@ function methods.PivotTo(self, cf)
 		r.props.WorldPivot = cf
 	end
 end
+-- The box round a model's parts (axis-aligned in the model's pivot; good enough for sizes).
+function methods.GetBoundingBox(self)
+	assert(isA(rec(self).className, "Model"), "GetBoundingBox is a Model method")
+	local lo, hi = nil, nil
+	for _, p in ipairs(parts(self)) do
+		local pr = rec(p)
+		local c = (pr.props.CFrame or CFrame.new()).Position
+		local half = (pr.props.Size or Vector3.new(4, 1, 2)) / 2
+		local a, b = c - half, c + half
+		lo = lo and Vector3.new(math.min(lo.X, a.X), math.min(lo.Y, a.Y), math.min(lo.Z, a.Z)) or a
+		hi = hi and Vector3.new(math.max(hi.X, b.X), math.max(hi.Y, b.Y), math.max(hi.Z, b.Z)) or b
+	end
+	if not lo then
+		return methods.GetPivot(self), Vector3.new()
+	end
+	local scale = rec(self).scale or 1
+	return CFrame.new((lo + hi) / 2), (hi - lo) * scale
+end
 function methods.ScaleTo(self, s)
 	assert(type(s) == "number" and s > 0, "ScaleTo needs a positive number")
 	assert(isA(rec(self).className, "Model"), "ScaleTo is a Model method")
@@ -1153,6 +1175,19 @@ function methods.FireServer(self, ...)
 	task.defer(function()
 		sig:Fire(M.localPlayer, table.unpack(args, 1, args.n))
 	end)
+end
+function methods.FireAllClients(self, ...)
+	assert(rec(self).className == "RemoteEvent", "FireAllClients on " .. rec(self).className)
+	local args = M.remoteCopy(table.pack(...))
+	local sig = self.OnClientEvent
+	task.defer(function()
+		sig:Fire(table.unpack(args, 1, args.n))
+	end)
+end
+-- BindableEvent:Fire (server to server, no copying across the network)
+function methods.Fire(self, ...)
+	assert(rec(self).className == "BindableEvent", "Fire on " .. rec(self).className)
+	self.Event:Fire(...)
 end
 function methods.FireClient(self, player, ...)
 	assert(rec(self).className == "RemoteEvent", "FireClient on " .. rec(self).className)

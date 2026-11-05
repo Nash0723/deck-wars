@@ -240,40 +240,12 @@ end
 -- The rules of a campaign stage (Campaign.Rules), on the engine that was just made. The bot seats
 -- are the stage's opponent; the humans play their own decks.
 function Match:applyCampaignRules(stage)
-	local m = self.engine
-	local enemyTeam = nil
+	-- (the rules themselves are in Campaign.applyRules, so the tests and the balance run use the same code)
 	for i, seat in ipairs(self.seats) do
 		if seat.kind == "bot" then
-			enemyTeam = m.seats[i].team
-		end
-	end
-	if not enemyTeam then
-		return
-	end
-	m.teams[enemyTeam].hp = stage.enemyHp
-	m.teams[enemyTeam].maxHp = stage.enemyHp
-	for _, ruleId in ipairs(stage.rules or {}) do
-		local rule = Campaign.Rules[ruleId]
-		if rule then
-			for i, seat in ipairs(self.seats) do
-				local es = m.seats[i]
-				if seat.kind == "bot" and es.team == enemyTeam then
-					for _ = 1, rule.extraCards or 0 do
-						m:draw(i)
-					end
-					if rule.magicBonus then
-						es.magicBonus = (es.magicBonus or 0) + rule.magicBonus
-						if m.current == i then
-							es.magic += rule.magicBonus -- its first turn already started
-						end
-					end
-					if rule.bigStart then
-						es.dealt = math.max(es.dealt or 0, CardData.BigMoveCharge or 10)
-					end
-				end
-			end
-			if rule.turnSeconds then
-				self.turnSeconds = math.min(self.turnSeconds, rule.turnSeconds)
+			local seconds = Campaign.applyRules(self.engine, stage, i)
+			if seconds then
+				self.turnSeconds = math.min(self.turnSeconds, seconds)
 			end
 		end
 	end

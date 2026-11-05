@@ -93,14 +93,17 @@ function LobbyScreen.init(ctx)
 	corner(ui.toast, 10)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }, ui.toast)
 	local toastToken = nil
+	-- (kept in a local: MatchScreen puts its own in-match toast in ui.toast later, so the room's
+	-- toasts used to land on the hidden match screen)
+	local roomToast = ui.toast
 	function LobbyScreen.toast(text)
 		local token = {}
 		toastToken = token
-		ui.toast.Text = text
-		ui.toast.Visible = true
+		roomToast.Text = text
+		roomToast.Visible = true
 		task.delay(3.5, function()
 			if toastToken == token then
-				ui.toast.Visible = false
+				roomToast.Visible = false
 			end
 		end)
 	end

@@ -65,7 +65,8 @@ local function familyColor(family)
 end
 
 -- Shared state, declared up here so every function below can use it.
-local mode = "title" -- "title", "menu", "match" or "pack" (a pack opening, which moves the camera itself)
+local mode = "title" -- "title", "menu", "match", "pack" (a pack opening, which moves the camera itself)
+-- or "plaza" (walking around the Plaza as your avatar: Roblox's own camera and controls, see PlazaClient)
 local clock = 0 -- seconds since the script started (advanced every frame)
 local currentStation = nil -- the station whose panel is open
 
@@ -86,6 +87,10 @@ local CAMS = {
 	ShopCounter = { Vector3.new(9, 8.5, 9), Vector3.new(16, 5.2, 17.5) },
 	TrophyWall = { Vector3.new(11, 9, 0), Vector3.new(23.5, 8, 0) },
 	Radio = { Vector3.new(-13, 6.2, -13), Vector3.new(-17.2, 3.6, -18.2) },
+	-- the painting over the fireplace is the Campaign map; the front door leads out to the Plaza
+	-- (both a little to the side, so the station panel on the right doesn't cover them)
+	Campaign = { Vector3.new(2.2, 10.6, -13.8), Vector3.new(2.2, 10.9, -23) },
+	PlazaDoor = { Vector3.new(-10.5, 7.2, 12.5), Vector3.new(-12, 6.2, 23.7) },
 	-- the title screen: a slow push across the room behind the logo
 	TitleFrom = { Vector3.new(-15, 12.5, 19), Vector3.new(0, 4.5, 0), 60 },
 	TitleTo = { Vector3.new(-5, 8.5, 13), Vector3.new(0, 4.6, -1), 55 },
@@ -300,8 +305,9 @@ end
 local depthOfField = game:GetService("Lighting"):FindFirstChildOfClass("DepthOfFieldEffect")
 
 local function updateCamera(dt)
-	-- During a pack opening the opening owns the camera (see PackParty), so leave it alone.
-	if mode == "pack" then
+	-- During a pack opening the opening owns the camera (see PackParty), and in the Plaza Roblox's
+	-- own camera follows your avatar, so leave it alone.
+	if mode == "pack" or mode == "plaza" then
 		return
 	end
 	if cam.duration > 0 then
@@ -343,10 +349,16 @@ local function updateCamera(dt)
 	end
 end
 
--- Keep the camera ours even after the character respawns, and stop walking around.
+-- Keep the camera ours even after the character respawns, and stop walking around
+-- (except in the Plaza, where you walk around with Roblox's own camera and controls).
 local function lockPlayer()
+	if mode == "plaza" then
+		return
+	end
 	task.defer(function()
-		camera.CameraType = Enum.CameraType.Scriptable
+		if mode ~= "plaza" then
+			camera.CameraType = Enum.CameraType.Scriptable
+		end
 	end)
 	pcall(function()
 		local PlayerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
@@ -358,7 +370,7 @@ if player.Character then
 	lockPlayer()
 end
 camera:GetPropertyChangedSignal("CameraType"):Connect(function()
-	if camera.CameraType ~= Enum.CameraType.Scriptable then
+	if camera.CameraType ~= Enum.CameraType.Scriptable and mode ~= "plaza" then
 		camera.CameraType = Enum.CameraType.Scriptable
 	end
 end)
@@ -880,7 +892,7 @@ do
 	refreshProfile()
 end
 
-ui.navBar = make("Frame", { Size = UDim2.new(1, 0, 0, 64), Position = UDim2.new(0, 0, 1, -72), BackgroundTransparency = 1 }, ui.menuUI)
+ui.navBar = make("Frame", { Size = UDim2.new(1, 0, 0, 64), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -72), BackgroundTransparency = 1 }, ui.menuUI)
 make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 8) }, ui.navBar)
 
 ui.STATION_SIZE = UDim2.fromOffset(400, 520)
@@ -1282,12 +1294,29 @@ do
 		ui.buildSettings(ui.stationBody)
 	end
 
+	-- The Campaign map over the fireplace (see CampaignUI).
+	local function showCampaignPanel()
+		clearBody()
+		ui.stationTitle.Text = "Campaign"
+		require(Shared:WaitForChild("DeckBuilderUI")).request()
+		require(Shared:WaitForChild("CampaignUI")).show(ui.stationBody)
+	end
+
+	-- The front door: out to the Plaza, where everyone in the server walks around (see PlazaClient).
+	local function showPlazaPanel()
+		clearBody()
+		ui.stationTitle.Text = "The Plaza"
+		require(Shared:WaitForChild("PlazaClient")).doorPanel(ui.stationBody)
+	end
+
 	local STATIONS = {
 		{ key = "DuelTable", name = "Duel Table", show = showDuelTablePanel },
+		{ key = "Campaign", name = "Campaign", show = showCampaignPanel },
 		{ key = "DeckShelf", name = "Deck Shelf", show = showDeckShelfPanel },
 		{ key = "PackParty", name = "Pack Party", show = showPackPartyPanel },
 		{ key = "ShopCounter", name = "Shop", show = showShopPanel },
 		{ key = "TrophyWall", name = "Trophies", show = showTrophyPanel },
+		{ key = "PlazaDoor", name = "Plaza", show = showPlazaPanel },
 		{ key = "Radio", name = "Settings", show = showSettingsPanel },
 	}
 	local stationByKey = {}
@@ -1299,7 +1328,7 @@ do
 	local navButtons = {}
 	local NAV_IDLE = Color3.fromRGB(34, 30, 52)
 	local NAV_HERE = Color3.fromRGB(86, 64, 28)
-	local NAV_ICONS = { DuelTable = "⚔", DeckShelf = "📚", PackParty = "🎁", ShopCounter = "🛒", TrophyWall = "🏆", Radio = "⚙" }
+	local NAV_ICONS = { DuelTable = "⚔", Campaign = "🗺", DeckShelf = "📚", PackParty = "🎁", ShopCounter = "🛒", TrophyWall = "🏆", PlazaDoor = "🏙", Radio = "⚙" }
 	local function markNav()
 		for key, b in pairs(navButtons) do
 			local here = key == currentStation
@@ -1347,7 +1376,7 @@ do
 	for i, s in ipairs(STATIONS) do
 		local b = button(ui.navBar, s.name, NAV_IDLE, function()
 			selectStation(s.key)
-		end, { Name = "Nav" .. s.key, LayoutOrder = i, Size = UDim2.fromOffset(150, 52), TextScaled = false, TextSize = 20 })
+		end, { Name = "Nav" .. s.key, LayoutOrder = i, Size = UDim2.fromOffset(128, 52), TextScaled = false, TextSize = 18 })
 		navButtons[s.key] = b
 		b.TextColor3 = Color3.fromRGB(245, 236, 215)
 		b:FindFirstChildOfClass("UIPadding").PaddingLeft = UDim.new(0, 34)
@@ -1378,7 +1407,18 @@ do
 		end)
 		refreshBadge()
 	end
-	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), goBack, { Name = "NavBack", LayoutOrder = 99, Size = UDim2.fromOffset(110, 52), TextScaled = false, TextSize = 20 })
+	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), goBack, { Name = "NavBack", LayoutOrder = 99, Size = UDim2.fromOffset(96, 52), TextScaled = false, TextSize = 18 })
+	-- Eight stations: on a narrow screen the whole bar shrinks to fit instead of running off the edges.
+	do
+		local scale = make("UIScale", { Name = "Fit" }, ui.navBar)
+		local function fit()
+			local want = #STATIONS * (128 + 8) + 96 + 24
+			local have = ui.navBar.AbsoluteSize.X / math.max(scale.Scale, 0.01)
+			scale.Scale = math.clamp(have / want, 0.55, 1)
+		end
+		ui.navBar:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		task.defer(fit)
+	end
 
 	-- Keyboard / gamepad: A or Left goes to the station before, D or Right to the next one
 	-- (in the order of the buttons, wrapping around); S, Down or Backspace go back to the overview.
@@ -1610,7 +1650,11 @@ end
 -- The signs over the stations in the room: small, soft labels in title case (they used to be big
 -- outlined capitals that ran off the edges of the screen). The Trophy Wall holds the quests and achievements.
 do
-	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Trophy Wall" }
+	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Trophy Wall", ["PLAZA"] = "Plaza", ["CAMPAIGN"] = "Campaign" }
+	-- (the server's HubRoom script makes the Campaign and Plaza stations out of the painting and
+	-- the front door; wait a moment for them so their signs get the same look)
+	stations:WaitForChild("Campaign", 5)
+	stations:WaitForChild("PlazaDoor", 5)
 	for _, d in ipairs(stations:GetDescendants()) do
 		if d:IsA("BillboardGui") and d.Name == "Sign" then
 			local text = d:FindFirstChildWhichIsA("TextLabel")
@@ -1846,9 +1890,17 @@ MatchScreen.init({
 	sfxScale = function()
 		return Settings.get("sfx") / 8
 	end,
-	onEnterMatch = function()
-		-- The world around the table (picked on the Duel Table panel; "Card Den" keeps the room).
-		local ok, used = pcall(Backdrops.apply, Backdrops.choice, room, duelTable)
+	onEnterMatch = function(payload)
+		-- Pulled into a match from the Plaza (a party or a Cup): back inside first.
+		local PlazaClient = require(Shared:WaitForChild("PlazaClient"))
+		if PlazaClient.isInside() then
+			PlazaClient.leave(true)
+		end
+		require(Shared:WaitForChild("CampaignUI")).hide()
+		-- The world around the table: a Campaign stage brings its own; otherwise the one picked on
+		-- the Duel Table panel ("Card Den" keeps the room).
+		local worldKey = (type(payload) == "table" and type(payload.backdrop) == "string" and Backdrops.ByKey[payload.backdrop]) and payload.backdrop or Backdrops.choice
+		local ok, used = pcall(Backdrops.apply, worldKey, room, duelTable)
 		if not ok then
 			warn("Background failed, keeping the room: " .. tostring(used))
 			Backdrops.clear()
@@ -1887,7 +1939,12 @@ MatchScreen.init({
 			moveCamera("Seat", false, 2.2)
 		end
 	end,
-	onExitMatch = function()
+	onCampaignResult = function(c)
+		if type(c) == "table" and c.snapshot then
+			require(Shared:WaitForChild("CampaignUI")).setSnapshot(c.snapshot)
+		end
+	end,
+	onExitMatch = function(lastMode)
 		Backdrops.clear()
 		setStationSigns(true)
 		ui.menuUI.Visible = true
@@ -1895,13 +1952,58 @@ MatchScreen.init({
 		ui.matchSettings.Visible = false
 		hideCharacter(false)
 		actionCam.reset()
-		-- Back at the Duel Table panel, ready for the next game (the same table, after a friends' match).
+		-- Back at the Duel Table panel, ready for the next game (the same table, after a friends' match),
+		-- or at the Campaign map after a Campaign stage.
 		currentStation = nil
-		selectStation("DuelTable")
+		selectStation(lastMode == "Campaign" and "Campaign" or "DuelTable")
 		LobbyScreen.onMenu()
 	end,
 })
 
+
+-- The Campaign map (the painting over the fireplace) and the Plaza (out the front door).
+require(Shared:WaitForChild("CampaignUI")).init({
+	myDecks = ui.myDecks,
+	prefs = prefs,
+	toast = LobbyScreen.toast,
+	panel = ui.stationPanel,
+})
+require(Shared:WaitForChild("PlazaClient")).init({
+	getMode = function()
+		return mode
+	end,
+	setMode = function(m)
+		mode = m
+	end,
+	gui = gui,
+	topGui = ui.topGui,
+	toast = LobbyScreen.toast,
+	makeCard = makeCard,
+	buildModel = buildModel,
+	setScale = setScale,
+	hideCharacter = hideCharacter,
+	glideCamera = glideCamera,
+	moveCamera = moveCamera,
+	selectStation = function(key)
+		selectStation(key)
+	end,
+	goBack = function()
+		ui.goBack()
+	end,
+	-- the station panel closes without moving the camera (the door walk-out moves it)
+	closeStation = function()
+		currentStation = nil
+		ui.stationPanel.Visible = false
+		for _, b in pairs(ui.navButtons or {}) do
+			b.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+		end
+		require(Shared:WaitForChild("CampaignUI")).hide()
+		highlight.Enabled = false
+	end,
+	menuVisible = function(on)
+		ui.menuUI.Visible = on
+	end,
+})
 
 -- Saved settings arrive from the server a moment after you join (or are already there).
 local function applyPrefs()

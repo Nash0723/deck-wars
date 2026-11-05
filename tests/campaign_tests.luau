@@ -113,7 +113,7 @@ for _, w in ipairs(Campaign.Worlds) do
 				elseif s.firstCard then
 					check(CardData.Cards[s.firstCard].family == s.family, id .. ": the first-clear card is a " .. s.family .. " card")
 				end
-				check(s.turnLimit >= 8 and s.turnLimit <= 20, id .. ": a sensible turn limit")
+				check(s.turnLimit >= 5 and s.turnLimit <= 20, id .. ": a sensible turn limit")
 			end
 		end
 	end

@@ -244,6 +244,14 @@ PullRequest.OnServerEvent:Connect(function(player, count, forcedTier, packId, fr
 			return
 		end
 		PullResult:FireClient(player, payload)
+		-- The Plaza (PlazaServer): your rarest pull on your booth, and a banner for Mythic and up.
+		-- Free and forced developer rolls don't count.
+		if paid then
+			local pullFeed = game:GetService("ServerScriptService"):FindFirstChild("PullFeed")
+			if pullFeed and pullFeed:IsA("BindableEvent") then
+				pullFeed:Fire(player, payload.cards)
+			end
+		end
 		-- Achievements (Lucky Pull, Full Set) on the Trophy Wall. Dev forced-tier rolls don't count.
 		local pd = game:GetService("ServerScriptService"):FindFirstChild("PlayerData")
 		if pd then

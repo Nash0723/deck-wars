@@ -47,6 +47,15 @@
         "DevAction": {
           "$className": "RemoteEvent"
         }
+      },
+      "PlazaRemotes": {
+        "$className": "Folder",
+        "PlazaAction": {
+          "$className": "RemoteEvent"
+        },
+        "PlazaEvent": {
+          "$className": "RemoteEvent"
+        }
       }
     },
     "ServerScriptService": {
@@ -67,6 +76,18 @@
       },
       "PlayerData": {
         "$path": "src/server/PlayerData.luau"
+      },
+      "CampaignData": {
+        "$path": "src/server/CampaignData.luau"
+      },
+      "PlazaServer": {
+        "$path": "src/server/PlazaServer.server.luau"
+      },
+      "PlazaBuilder": {
+        "$path": "src/plaza/PlazaBuilder.luau"
+      },
+      "HubRoom": {
+        "$path": "src/server/HubRoom.server.luau"
       }
     },
     "ServerStorage": {

@@ -2544,6 +2544,9 @@ function MatchScreen.init(ctx)
 	-- The campaign part of the result: the three stars (new ones pop in), first-clear and drop
 	-- cards, chests, titles and what opened.
 	function F.campaignResult(c)
+		if ctx.onCampaignResult then
+			pcall(ctx.onCampaignResult, c) -- (the Campaign map takes the new save straight away)
+		end
 		local camp = S.campaign or {}
 		local texts = camp.stars or { "Win", "Win with half your hit points left", "Win in time" }
 		local row = make("Frame", { Name = "CampaignStars", Size = UDim2.new(1, 0, 0, 74), BackgroundTransparency = 1, LayoutOrder = 1, ZIndex = 31 }, ui.resultRewards)

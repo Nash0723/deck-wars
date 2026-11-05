@@ -2,6 +2,7 @@
 -- attributes), the currency counters, the Shop's three tabs (buying a daily card, a board theme
 -- that repaints the table, a Gem item that needs two taps, an exchange), the developer panel
 -- (only for whitelisted UserIds; free rolls; server refuses non-developers), match rewards,
+-- a Campaign stage from the world map, the Plaza (booths, likes, big-pull banners, the altar),
 -- autosave and the release on shutdown.
 -- Usage (from the repo root): luaurun mock_roblox/econharness.luau mock_roblox
 
@@ -37,6 +38,7 @@ end
 M.service("ContentProvider").Parent = game -- (TableSounds preloads its sounds)
 M.service("SocialService").Parent = game -- (PartyScreen invites friends)
 M.service("GuiService").Parent = game
+M.service("ProximityPromptService").Parent = game -- (the Plaza's prompts)
 local camera = Instance.new("Camera")
 camera.Name = "Camera"
 camera.Parent = Workspace
@@ -58,7 +60,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
@@ -77,6 +79,7 @@ end
 local pullRemotes = remoteFolder("PullRemotes", { "PullRequest", "PullResult" })
 local remotes = remoteFolder("Remotes", { "MatchEvent", "MatchAction", "MenuAction", "LobbyEvent" })
 local econRemotes = remoteFolder("EconomyRemotes", { "ShopAction", "EconomyEvent", "DevAction" })
+local plazaRemotes = remoteFolder("PlazaRemotes", { "PlazaAction", "PlazaEvent" })
 -- ServerStorage: the server modules and the dev panel template (like default.project.json)
 local serverModules = folder("DeckWarsServer", ServerStorage)
 for _, n in ipairs({ "EconomyManager", "DevAccess", "ProfileStore" }) do
@@ -184,10 +187,14 @@ end
 
 moduleFrom(SRC .. "server/PlayerDecks.luau", "PlayerDecks", ServerScriptService)
 moduleFrom(SRC .. "server/PlayerData.luau", "PlayerData", ServerScriptService)
+moduleFrom(SRC .. "server/CampaignData.luau", "CampaignData", ServerScriptService)
+moduleFrom(SRC .. "plaza/PlazaBuilder.luau", "PlazaBuilder", ServerScriptService)
+runScript(SRC .. "server/HubRoom.server.luau", scriptIn(ServerScriptService, "Script", "HubRoom"), serverCache)
 runScript(SRC .. "server/MatchServer.server.luau", scriptIn(ServerScriptService, "Script", "MatchServer"), serverCache)
 runScript(SRC .. "server/MenuServer.server.luau", scriptIn(ServerScriptService, "Script", "MenuServer"), serverCache)
 runScript(SRC .. "pullserver/PullServer.server.luau", scriptIn(ServerScriptService, "Script", "PullServer"), serverCache)
 runScript(SRC .. "server/EconomyServer.server.luau", scriptIn(ServerScriptService, "Script", "EconomyServer"), serverCache)
+runScript(SRC .. "server/PlazaServer.server.luau", scriptIn(ServerScriptService, "Script", "PlazaServer"), serverCache)
 local clientScript = scriptIn(playerScripts, "LocalScript", "DeckWarsClient")
 runScript(SRC .. "client/DeckWarsClient.client.luau", clientScript, clientCache)
 M.advance(2)
@@ -660,6 +667,341 @@ do
 	M.advance(16)
 	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "back at the Duel Table panel after the match")
 	check(player:GetAttribute("Gems") >= gemsBefore, "Gems never drop from playing a match")
+end
+
+---------------------------------------------------------------------------
+-- The Campaign: the painting over the fireplace is a station, its world map, act 1 of the Card
+-- Den with your own deck (tries again from the result screen if the bot wins), the stars and
+-- first-clear rewards, back at the map with act 2 open
+---------------------------------------------------------------------------
+local Campaign = makeEnv(clientScript, clientCache).require(shared.Campaign)
+local Plaza = makeEnv(clientScript, clientCache).require(shared.Plaza)
+local function saveData()
+	return Economy.waitForData(player, 0)
+end
+
+-- Plays a match out through the client (cards from the hand, then BATTLE) until it ends.
+local function playOut(S, F)
+	local guard, plays = 0, 0
+	local playedThisTurn, lastTurn = 0, -1
+	while S.view and not S.view.over and guard < 1600 do
+		guard += 1
+		if F.myTurn() then
+			if S.view.turn ~= lastTurn then
+				lastTurn = S.view.turn
+				playedThisTurn = 0
+			end
+			local acted = false
+			if playedThisTurn < 3 then
+				for _, a in ipairs(S.view.legal or {}) do
+					if a.kind == "play" then
+						local c = CardData.Cards[a.id]
+						local spot = nil
+						if c.type == "Creature" then
+							for _, t in ipairs(a.tiles or {}) do
+								if not t.replace and spot == nil then
+									spot = t
+								end
+							end
+						elseif c.type == "Building" then
+							spot = a.lanes and a.lanes[1] and { lane = a.lanes[1], slot = "building" }
+						end
+						if c.type == "Spell" or spot then
+							F.onCardClicked(a.handUid)
+							if S.pick and S.pick.step == "lane" and spot then
+								F.onBoardClick({ team = S.myTeam, lane = spot.lane, row = spot.row, slot = spot.slot or (spot.row == 2 and "back" or "creature") })
+							end
+							if S.pick and S.pick.step == "target" then
+								local t = (S.pick.action.targets or {})[1]
+								if t then
+									F.onBoardClick({ team = t.team, lane = t.lane, row = t.row or 1, slot = (t.row == 2) and "back" or "creature" })
+								end
+							end
+							if S.pick then
+								F.clearPick()
+							else
+								acted = true
+								plays += 1
+								playedThisTurn += 1
+							end
+							break
+						end
+					end
+				end
+			end
+			if not acted then
+				F.pressBattle()
+				F.pressBattle()
+			end
+		end
+		M.advance(0.5)
+	end
+	return plays
+end
+
+do
+	local MatchScreen = makeEnv(clientScript, clientCache).require(shared.MatchScreen)
+	local F, S = MatchScreen.F, MatchScreen.S
+	local stations = Workspace.MenuRoom.Stations
+	check(stations:FindFirstChild("Campaign") and stations.Campaign:FindFirstChild("PaintingFrame") ~= nil, "the painting over the fireplace became the Campaign station")
+	check(stations:FindFirstChild("PlazaDoor") and stations.PlazaDoor:FindFirstChild("Door") ~= nil, "the front door became the Plaza station")
+	local campaignSign = stations.Campaign:FindFirstChild("Sign", true)
+	check(campaignSign and campaignSign:FindFirstChildWhichIsA("TextLabel").Text == "Campaign", "the Campaign station has a sign in the room's style")
+	check(named("NavCampaign") ~= nil and named("NavPlazaDoor") ~= nil, "the nav bar has Campaign and Plaza buttons")
+
+	local gems0 = player:GetAttribute("Gems")
+	click(named("NavCampaign"), "Campaign station")
+	M.advance(2)
+	check(named("StationTitle") and named("StationTitle").Text == "Campaign", "the Campaign panel opens")
+	check(named("CampaignScroll") ~= nil, "the world map shows")
+	local den = named("WorldDen")
+	check(den ~= nil and den.Text == "🏠", "the Card Den is open")
+	local candy = named("WorldCandy")
+	check(candy ~= nil and candy.Text == "🔒", "Gumdrop Plaza is locked until the Den's boss falls")
+	local act1, act2 = named("Act1"), named("Act2")
+	check(act1 ~= nil and act2 ~= nil and named("Act6") ~= nil, "the six acts show")
+	local function actOpen(row)
+		for _, d in ipairs(row:GetChildren()) do
+			if d.ClassName == "TextLabel" and (d.Text == "🔒") then
+				return false
+			end
+		end
+		return true
+	end
+	check(act1 and actOpen(act1), "act 1 is open")
+	check(act2 and not actOpen(act2), "act 2 is locked")
+	check(labelStarting("First clear: 💎 " .. Campaign.FirstClearGems[1]) ~= nil, "act 1 shows its first-clear reward")
+	local startB = named("StartButton")
+	check(startB ~= nil and startB.Text == "⚔  START", "the Start button is ready with your own deck")
+
+	local won, tries, firstCard = false, 0, nil
+	local rewardsSeen = false
+	click(startB, "START act 1")
+	while tries < 3 and not won do
+		tries += 1
+		local waited = 0
+		while not (S.view and not S.view.over) and waited < 20 do
+			M.advance(0.5)
+			waited += 0.5
+		end
+		check(S.view ~= nil and S.view.mode == "Campaign", "the Campaign match starts (try " .. tries .. ")")
+		check(S.campaign and S.campaign.id == "Den:1:N", "the client knows which stage it is")
+		check(S.campaign and S.campaign.name == "Practice Pip", "act 1's opponent is Practice Pip")
+		local plays = playOut(S, F)
+		check(S.view and S.view.over, "the stage ends (" .. plays .. " cards played)")
+		won = S.view and S.view.winner == S.myTeam
+		print("note campaign try " .. tries .. ": " .. (won and "won" or "lost"))
+		local shown = false
+		for _ = 1, 16 do
+			M.advance(0.5)
+			local rp = named("ResultPanel")
+			if rp and visible(rp) then
+				shown = true
+				break
+			end
+		end
+		check(shown, "the result panel shows")
+		check(named("CampaignStars") ~= nil, "the result shows the three stars")
+		check(named("BackToMap") ~= nil, "the result has a Map button")
+		if won then
+			rewardsSeen = true
+			check(named("CampaignNext") ~= nil, "a win offers Next")
+		else
+			check(named("CampaignRetry") ~= nil and named("CampaignRetry").Text == "⟳ Try again", "a loss offers Try again")
+			click(named("CampaignRetry"), "Try again")
+			M.advance(1)
+		end
+	end
+	check(won, "act 1 was beaten within 3 tries")
+	if won then
+		local d = saveData()
+		local clear = d and d.campaign and d.campaign.clears["Den:1:N"]
+		check(clear and clear.wins == 1, "the clear is on the save")
+		check(clear and clear.stars and clear.stars % 2 == 1, "the first star (win) is on the save")
+		check(player:GetAttribute("Gems") >= gems0 + Campaign.FirstClearGems[1], "the first clear paid its Gems (" .. tostring(player:GetAttribute("Gems") - gems0) .. ")")
+		firstCard = Campaign.stage("Den:1:N").firstCard
+		check(firstCard == nil or (d.collection[firstCard] or 0) > 0, "the first-clear card is in the collection")
+		check((player:GetAttribute("CampaignStars") or 0) >= 1, "the CampaignStars attribute counts the new stars")
+		click(named("BackToMap"), "Map")
+		M.advance(16)
+		check(named("StationTitle") and named("StationTitle").Text == "Campaign", "back at the Campaign map after the stage")
+		M.advance(1)
+		local a2 = named("Act2")
+		check(a2 ~= nil and actOpen(a2), "act 2 is open now")
+		local a1 = named("Act1")
+		local starsText = nil
+		for _, d0 in ipairs(a1 and a1:GetChildren() or {}) do
+			if d0.ClassName == "TextLabel" and string.find(d0.Text, "★") then
+				starsText = d0.Text
+			end
+		end
+		check(starsText ~= nil, "act 1 shows its stars on the map (" .. tostring(starsText) .. ")")
+	end
+	check(rewardsSeen or not won, "rewards were checked")
+	-- the hourly Challenge is locked until the Den's boss is beaten
+	click(buttonWithText("⏳ Challenge"), "Challenge tab")
+	M.advance(0.5)
+	check(labelStarting("⏳ The hourly Challenge") ~= nil, "the Challenge tab shows this hour's Challenge")
+	local cs = named("StartButton")
+	check(cs ~= nil and cs.Text == "⚔  START" and cs.BackgroundColor3 ~= Color3.fromRGB(70, 190, 110), "the Challenge waits for the Den's boss")
+	-- the server refuses a stage you haven't opened, whatever the screen says
+	remotes.MenuAction:FireServer("StartCampaign", { stage = "Mall:6:H", deck = "s1" })
+	M.advance(1)
+	check(S.view == nil or S.view.over, "the server refuses a locked stage")
+end
+
+---------------------------------------------------------------------------
+-- The Plaza: out the front door, your avatar walks around, your booth shows your best cards,
+-- a friend likes it (once a day), a big pull gets a banner and the Hall of Pulls, the altar opens
+-- packs, and the Duel kiosk takes you back in to the Duel Table
+---------------------------------------------------------------------------
+do
+	local PlazaClient = makeEnv(clientScript, clientCache).require(shared.PlazaClient)
+	local P = PlazaClient.S
+	local plaza = Workspace:FindFirstChild("Plaza")
+	check(plaza ~= nil and plaza:FindFirstChild("Booths") and #plaza.Booths:GetChildren() == Plaza.Booths, "the server built the Plaza with " .. Plaza.Booths .. " booths")
+	local slot = player:GetAttribute("BoothSlot")
+	check(slot == 1, "you got a booth (" .. tostring(slot) .. ")")
+	local booth = plaza and plaza.Booths:FindFirstChild("Booth" .. tostring(slot))
+	check(booth and booth:GetAttribute("OwnerName") == "Nash", "the booth carries your name")
+	local cards = booth and booth:GetAttribute("Cards") or ""
+	local n = 0
+	for _ in string.gmatch(cards, "[^,]+") do
+		n += 1
+	end
+	check(n == 3, "the booth shows 3 cards from your collection (" .. cards .. ")")
+
+	Lighting.ClockTime = 21 -- (the room's night, as default.project.json sets it)
+	local roomClock = Lighting.ClockTime
+	click(named("NavPlazaDoor"), "Plaza door station")
+	M.advance(1)
+	check(named("StationTitle") and named("StationTitle").Text == "The Plaza", "the door's panel opens")
+	click(named("WalkOut"), "Walk out")
+	M.advance(4)
+	check(P.inside == true, "you're in the Plaza")
+	local rootPart = player.Character.HumanoidRootPart
+	check((rootPart.Position - Plaza.Origin).Magnitude < 150, "the server walked your character over (" .. tostring(rootPart.Position) .. ")")
+	check(player:GetAttribute("InPlaza") == true, "InPlaza is set for everyone to see")
+	check(camera.CameraType == Enum.CameraType.Custom, "Roblox's own camera follows your avatar")
+	check(Lighting.ClockTime == 16.8, "golden hour out here")
+	check(named("Hud") ~= nil, "the Plaza buttons show (Home, My booth)")
+	check(named("StationTitle") == nil and named("NavCampaign") == nil, "the room's panels and nav bar are hidden")
+	M.advance(1)
+	local stand = booth and booth:FindFirstChild("Stand1")
+	check(stand and stand:FindFirstChild("CardGui") ~= nil, "your booth's cards are drawn on the stands")
+	local hasCreature = false
+	for id in string.gmatch(cards, "[^,]+") do
+		if CardData.Cards[id].type == "Creature" then
+			hasCreature = true
+		end
+	end
+	check(not hasCreature or plaza:FindFirstChild("Companion_" .. player.UserId) ~= nil, "your companion walks with you")
+	local head = player.Character:FindFirstChild("Head")
+	check(head == nil or head:FindFirstChild("PlazaPlate") ~= nil, "a nameplate over your head")
+
+	-- the booth editor: pick two cards
+	click(buttonWithText("🖼 My booth"), "My booth")
+	M.advance(1)
+	local editor = named("BoothEditor")
+	check(editor ~= nil, "the booth editor opens")
+	local d = saveData()
+	local owned = {}
+	for id, c in pairs(d.collection) do
+		if c > 0 then
+			table.insert(owned, id)
+		end
+	end
+	Plaza.sortRarest(owned)
+	local pick = { owned[#owned], owned[#owned - 1] } -- two of your commonest, so it differs from the default
+	for _, id in ipairs(pick) do
+		local cell = editor and editor:FindFirstChild(id, true)
+		click(cell, "card " .. tostring(id))
+	end
+	click(buttonWithText("✓ Save booth"), "Save booth")
+	M.advance(1.5)
+	local now = booth:GetAttribute("Cards") or ""
+	check(string.sub(now, 1, #pick[1] + #pick[2] + 1) == pick[1] .. "," .. pick[2], "the booth shows the picked cards first (" .. now .. ")")
+	check(d.showcase and #d.showcase.cards == 2, "the picks are on the save")
+
+	-- likes: not your own; a friend's once a day
+	local heart = booth:FindFirstChild("Heart")
+	heart.Like.Triggered:Fire(player)
+	M.advance(0.5)
+	check(labelStarting("That's your own booth") ~= nil, "you can't like your own booth")
+	local friend = M.new("Player", true)
+	friend.Name = "donatjalt"
+	M.rec(friend).props.DisplayName = "jaault"
+	M.rec(friend).props.UserId = 5550002
+	friend.Parent = Players
+	Players.PlayerAdded:Fire(friend)
+	M.advance(3)
+	check(Economy.isLoaded(friend), "a friend joins and their save loads")
+	check(friend:GetAttribute("BoothSlot") == 2, "the friend gets the next booth")
+	heart.Like.Triggered:Fire(friend)
+	M.advance(0.5)
+	check(player:GetAttribute("BoothLikes") == 1, "the friend's like lands on your booth")
+	check(labelStarting("❤ jaault liked your booth") ~= nil, "you're told who liked it")
+	heart.Like.Triggered:Fire(friend)
+	M.advance(0.5)
+	check(player:GetAttribute("BoothLikes") == 1, "only one like per booth per day")
+
+	-- a big pull: banner, light pillar, Hall of Pulls, best pull and title
+	local mythic = nil
+	for _, id in ipairs(CardData.List) do
+		if CardData.Cards[id].rarity == "Mythic" and not CardData.Cards[id].token then
+			mythic = mythic or id
+		end
+	end
+	ServerScriptService.PullFeed:Fire(friend, { mythic, "jelly_bean_scout" })
+	M.advance(2)
+	check(named("Banner") == nil, "the banner waits so it doesn't spoil the reveal")
+	M.advance(Plaza.FeedDelay)
+	local banner = named("Banner")
+	check(banner ~= nil, "a banner tells the server about the Mythic pull")
+	local hallGui = plaza.HallOfPulls.Board:FindFirstChild("HallGui")
+	local inHall = false
+	for _, t in ipairs(hallGui and hallGui:GetDescendants() or {}) do
+		if t.ClassName == "TextLabel" and string.find(t.Text, CardData.Cards[mythic].name, 1, true) then
+			inHall = true
+		end
+	end
+	check(inHall, "the pull is on the Hall of Pulls")
+	check(friend:GetAttribute("BestRarity") == "Mythic", "the friend's best pull is remembered")
+	check(friend:GetAttribute("HubTitle") == Plaza.PullTitles.Mythic, "and earns a title (" .. tostring(friend:GetAttribute("HubTitle")) .. ")")
+
+	-- leaderboards (no OrderedDataStore here: this server's players)
+	M.advance(Plaza.BoardSeconds)
+	local starsBoard = plaza.Boards.Stars.Board:FindFirstChild("BoardGui")
+	local listed = false
+	for _, t in ipairs(starsBoard and starsBoard:GetDescendants() or {}) do
+		if t.ClassName == "TextLabel" and string.find(t.Text, "Nash", 1, true) then
+			listed = true
+		end
+	end
+	check(listed, "the Campaign Stars board lists you")
+
+	-- the Pull Altar opens the packs right here
+	game:GetService("ProximityPromptService").PromptTriggered:Fire(plaza.Altar.Dais.OpenPacks, player)
+	M.advance(1)
+	local altar = named("AltarPacks")
+	check(altar ~= nil and altar:FindFirstChild("PackPartyControls", true) ~= nil, "the altar opens the pack panel")
+	click(altar and altar:FindFirstChild("TextButton") and buttonWithText("✕", false, altar), "close the altar panel")
+	M.advance(0.5)
+
+	-- the Duel kiosk: back inside at the Duel Table
+	game:GetService("ProximityPromptService").PromptTriggered:Fire(plaza.DuelKiosk.Table.Duel, player)
+	M.advance(3)
+	check(P.inside == false, "back inside")
+	check(player:GetAttribute("InPlaza") == false, "InPlaza is cleared")
+	check((rootPart.Position - Plaza.Origin).Magnitude > 500, "your character is back in the room")
+	check(Lighting.ClockTime == roomClock and Lighting:FindFirstChild("PlazaAtmosphere") == nil, "the room's own light is back (" .. tostring(Lighting.ClockTime) .. ")")
+	check(camera.CameraType == Enum.CameraType.Scriptable, "the room's camera is back")
+	check(named("StationTitle") and named("StationTitle").Text == "Duel Table", "the kiosk opened the Duel Table")
+	check(plaza:FindFirstChild("Companion_" .. player.UserId) == nil, "your companion stays outside")
+	friend.Parent = nil
+	Players.PlayerRemoving:Fire(friend)
+	M.advance(1)
+	check(plaza.Booths.Booth2:GetAttribute("OwnerName") == nil, "the friend's booth is free again after they leave")
 end
 
 ---------------------------------------------------------------------------
