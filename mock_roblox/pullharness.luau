@@ -37,6 +37,42 @@ Workspace.CurrentCamera = camera
 camera.CameraType = Enum.CameraType.Custom
 camera.FieldOfView = 70
 
+-- a small Duel Table in the room, which biome pulls copy as their ring
+do
+	local room = Instance.new("Model")
+	room.Name = "MenuRoom"
+	local stations = Instance.new("Folder")
+	stations.Name = "Stations"
+	stations.Parent = room
+	local duel = Instance.new("Model")
+	duel.Name = "DuelTable"
+	duel.Parent = stations
+	local function p(name, size, pos)
+		local x = Instance.new("Part")
+		x.Name = name
+		x.Anchored = true
+		x.Size = size
+		x.CFrame = CFrame.new(pos)
+		x.Parent = duel
+		return x
+	end
+	p("TableTop", Vector3.new(25, 1.2, 22), Vector3.new(0, 3.4, 0))
+	p("Felt", Vector3.new(23.4, 0.1, 20.4), Vector3.new(0, 4.05, 0))
+	p("Rim", Vector3.new(25, 0.4, 0.6), Vector3.new(0, 4.1, 11))
+	for c = 1, 4 do
+		for r = 1, 6 do
+			p("Tile_" .. c .. "_" .. r, Vector3.new(2.5, 0.2, 2.3), Vector3.new(-3.9 + (c - 1) * 2.6, 4.32, -6 + (r - 1) * 2.4))
+		end
+	end
+	p("Leg", Vector3.new(1, 2.8, 1), Vector3.new(11, 1.4, 9))
+	p("ChairBase", Vector3.new(4, 1, 4), Vector3.new(0, 1, 14))
+	local seat = Instance.new("Seat")
+	seat.Name = "Seat_Near"
+	seat.Anchored = true
+	seat.Parent = duel
+	room.Parent = Workspace
+end
+
 local function moduleFrom(path, name, parent)
 	local m = Instance.new("ModuleScript")
 	m.Name = name
@@ -47,13 +83,13 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "ShopCatalog" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "ShopCatalog", "Backdrops" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = Instance.new("Folder")
 pb.Name = "PackBrawl"
 pb.Parent = ReplicatedStorage
-for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty" }) do
+for _, n in ipairs({ "Kit", "PullRates", "Casting", "Scripts", "Rig", "Moves", "Arena", "Fighters", "CamRig", "Fx", "Sfx", "Poses", "Director", "Reveal", "PackTease", "Packs", "PackShelf", "PackParty", "BiomeFx", "BiomeStage" }) do
 	moduleFrom(SRC .. "packbrawl/" .. n .. ".luau", n, pb)
 end
 local remotes = Instance.new("Folder")
@@ -566,12 +602,13 @@ end
 -- 7) every pullable card plays its full cinematic (all poses, ultimates, buildings and spells)
 -- Plays one card's brawl straight through the Director. Also checks that once the
 -- winner's victory pose starts, every knocked-out creature is gone from the ring.
-local function playDirect(env, id, seed)
+local function playDirect(env, id, seed, world)
 	local Director = env.require(pb:WaitForChild("Director"))
 	local CScripts = env.require(pb:WaitForChild("Scripts"))
 	local CCasting = env.require(pb:WaitForChild("Casting"))
 	local errors0 = M.errors
 	local brawl = CScripts.build(CCasting.build(id, seed))
+	brawl.world = world
 	local poseT
 	for _, c in ipairs(brawl.cues) do
 		if c.k == "pose" then
@@ -634,6 +671,49 @@ if rawget(_G, "ALLCARDS") == 1 then
 	check(#crowded == 0, string.format("every pullable card's victory pose has the ring to itself (%d cards; crowded: %s)", count, table.concat(crowded, ", ")))
 end
 
+
+-- 7b) biome pulls: every world with every tier, on the Duel Table copy inside that world; the
+-- world escalates, the table rises, and afterwards the sky, fog and light are back as they were
+do
+	local env = makeEnv(clientScript, clientCache)
+	local PullRates = env.require(pb:WaitForChild("PullRates"))
+	local BiomeFx = env.require(pb:WaitForChild("BiomeFx"))
+	local BiomeStage = env.require(pb:WaitForChild("BiomeStage"))
+	check(BiomeStage.available(), "the biome stage finds the match worlds")
+	local sky0 = Lighting:FindFirstChildOfClass("Sky")
+	local ambient0, bright0 = Lighting.Ambient, Lighting.Brightness
+	for wi, world in ipairs(BiomeFx.Worlds) do
+		for _, tier in ipairs(TIERS) do
+			local id = PullRates.Pool[tier][1 + (wi % #PullRates.Pool[tier])]
+			local seen = { level = 0, sank = false, stage = false }
+			local conn = RunService.Heartbeat:Connect(function()
+				local sc = scene()
+				local st = sc and sc:FindFirstChild("BiomeStage")
+				if st then
+					seen.stage = true
+					if st:FindFirstChild("SkyEye") then
+						seen.level = math.max(seen.level, 4)
+					elseif st:FindFirstChild("LandmarkPillar") then
+						seen.level = math.max(seen.level, 3)
+					end
+					local col = st:FindFirstChild("PodiumColumn")
+					if col and col.Transparency == 0 then
+						seen.sank = true
+					end
+				end
+			end)
+			local clean, clear = playDirect(env, id, 500 + wi, world)
+			conn:Disconnect()
+			local wantLevel = math.min(PullRates.Rank[tier] - 1, 4)
+			local skyBack = Lighting:FindFirstChild("BiomeStageSky") == nil and Lighting:FindFirstChild("BiomeStageAtmosphere") == nil and Lighting:FindFirstChildOfClass("Sky") == sky0
+			local lightBack = Lighting.Ambient == ambient0 and Lighting.Brightness == bright0
+			check(clean and seen.stage, string.format("%s %s (%s): plays on the table inside the world and cleans up", world, tier, id))
+			check(clear == true and seen.sank, string.format("%s %s: only the winner is left, and the table rises", world, tier))
+			check(wantLevel < 3 or seen.level >= wantLevel, string.format("%s %s: the world reaches level %d (saw %d)", world, tier, wantLevel, seen.level))
+			check(skyBack and lightBack, string.format("%s %s: sky, fog and light are put back", world, tier))
+		end
+	end
+end
 
 -- 8) with the real EconomyManager (the economy update) in ServerStorage: the pull server pays
 -- with it, saves the cards in it and uses its Luck charges

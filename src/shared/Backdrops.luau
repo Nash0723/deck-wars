@@ -25,6 +25,7 @@ Backdrops.List = {
 	{ key = "Ice", name = "Frostglass Lake", emoji = "❄️", colors = { rgb(140, 220, 255), rgb(70, 60, 190) }, blurb = "A frozen lake, glowing ice crystals, snowmen, an ice castle and the northern lights." },
 	{ key = "Fire", name = "Ember Caldera", emoji = "🌋", colors = { rgb(255, 160, 40), rgb(170, 20, 30) }, blurb = "An obsidian plaza in a ring of torches, lava rivers and smoking volcanoes." },
 	{ key = "Space", name = "Cosmic Void", emoji = "🌌", colors = { rgb(200, 90, 255), rgb(40, 50, 160) }, blurb = "A floating asteroid among ringed planets, nebulas and a sky full of stars." },
+	{ key = "Mall", name = "Midnight Mall", emoji = "🌙", colors = { rgb(255, 80, 200), rgb(60, 40, 115) }, blurb = "A haunted parking lot under a low moon: flickering lamps, runaway carts and a mall that never closes." },
 	{ key = "Random", name = "Surprise me", emoji = "🎲", colors = { rgb(255, 210, 80), rgb(120, 90, 220) }, blurb = "A different world every match." },
 }
 Backdrops.ByKey = {}
@@ -814,6 +815,168 @@ function THEMES.Space.build(rng)
 	end
 	-- twinkling stars close by
 	B.particles(CFrame.new(0, 0, -40), Vector3.new(220, 120, 160), { speed = { 0, 0 }, life = { 1.5, 3 }, rate = 40, size = { 0.5, 0 }, colors = { rgb(255, 255, 255), rgb(170, 220, 255) }, glow = 1, spread = 0 })
+end
+
+THEMES.Mall = {
+	-- The wide opening shot when a match starts, before the camera settles at your seat.
+	intro = { pos = Vector3.new(-24, 24, 40), look = Vector3.new(30, 16, -70), fov = 62, drift = Vector3.new(7, -4, -8) },
+	lighting = {
+		ClockTime = 0.5,
+		Brightness = 0.9,
+		Ambient = rgb(90, 75, 125),
+		OutdoorAmbient = rgb(95, 85, 150),
+		ColorShift_Top = rgb(175, 255, 200),
+		ColorShift_Bottom = rgb(55, 30, 85),
+		EnvironmentDiffuseScale = 0.4,
+		EnvironmentSpecularScale = 0.8,
+		ExposureCompensation = 0.3,
+	},
+	atmosphere = { Density = 0.33, Offset = 0.05, Color = rgb(125, 95, 175), Decay = rgb(60, 40, 115), Glare = 0, Haze = 1.4 },
+	sky = { StarCount = 1500, CelestialBodiesShown = false },
+	bloom = { Intensity = 0.55, Size = 28, Threshold = 1.45 },
+	color = { Brightness = 0.02, Contrast = 0.16, Saturation = 0.24, TintColor = rgb(240, 235, 255) },
+	depth = { FarIntensity = 0.06, FocusDistance = 30, InFocusRadius = 45 },
+	preview = { sky = rgb(30, 20, 60), fog = rgb(90, 70, 140), fogDensity = 0.004 },
+}
+function THEMES.Mall.build(rng)
+	B.ground(rgb(46, 44, 56), Enum.Material.Asphalt)
+	-- the round parking-lot plaza: faded paint, cracks and a manhole
+	B.disc(0, 0, 0.05, 58, 0.05, rgb(64, 62, 76), Enum.Material.Asphalt)
+	B.disc(0, 0, 0.08, 56, 0.03, rgb(90, 86, 104), Enum.Material.Concrete)
+	for k = 0, 11 do
+		local a = k / 12 * math.pi * 2
+		B.block(CFrame.new(math.cos(a) * 21, 0.1, math.sin(a) * 21) * CFrame.Angles(0, -a, 0), Vector3.new(9, 0.03, 0.4), rgb(225, 220, 190), Enum.Material.SmoothPlastic, { Transparency = 0.35 })
+	end
+	for _ = 1, 26 do
+		local p = spot(rng, 13, 30, 180)
+		B.block(CFrame.new(p.X, 0.11, p.Z) * CFrame.Angles(0, rng:NextNumber(0, 6.28), 0), Vector3.new(rng:NextNumber(2, 6), 0.03, 0.18), rgb(30, 28, 38))
+	end
+	B.disc(-20, -15, 0.13, 4.6, 0.05, rgb(55, 55, 62), Enum.Material.DiamondPlate)
+	B.disc(-20, -15, 0.15, 3.6, 0.04, rgb(70, 70, 78), Enum.Material.DiamondPlate)
+	-- flickering lamp posts in a ring, their heads a cold green-white
+	for k = 0, 9 do
+		local a = math.rad(-150 + k * (300 / 9))
+		local p = Vector3.new(math.sin(a) * 33, 0, -math.cos(a) * 33)
+		B.cyl(CFrame.new(p), 15, 0.7, rgb(60, 62, 70), Enum.Material.Metal)
+		local dir = (Vector3.new(0, 0, 0) - p) * Vector3.new(1, 0, 1)
+		dir = dir.Unit
+		B.beam(p + Vector3.new(0, 15, 0), p + Vector3.new(0, 15, 0) + dir * 3, 0.35, 0.35, rgb(60, 62, 70), Enum.Material.Metal)
+		local head = B.block(CFrame.lookAt(p + Vector3.new(0, 14.6, 0) + dir * 3, p + dir * 10), Vector3.new(1.6, 0.5, 2.4), rgb(215, 255, 225), Enum.Material.Neon)
+		B.light(head, rgb(190, 255, 210), 26, 1.4)
+	end
+	-- runaway shopping carts
+	for _ = 1, 7 do
+		local p = spot(rng, 19, 46, 170)
+		local cf = CFrame.new(p) * CFrame.Angles(0, rng:NextNumber(0, 6.28), rng:NextNumber() < 0.3 and math.rad(80) or 0)
+		local metal = rgb(185, 190, 200)
+		B.block(cf * CFrame.new(0, 1.3, 0), Vector3.new(2.2, 0.12, 3.2), metal, Enum.Material.Metal)
+		B.block(cf * CFrame.new(1.1, 2.1, 0), Vector3.new(0.1, 1.6, 3.2), metal, Enum.Material.Metal, { Transparency = 0.3 })
+		B.block(cf * CFrame.new(-1.1, 2.1, 0), Vector3.new(0.1, 1.6, 3.2), metal, Enum.Material.Metal, { Transparency = 0.3 })
+		B.block(cf * CFrame.new(0, 2.1, 1.6), Vector3.new(2.2, 1.6, 0.1), metal, Enum.Material.Metal, { Transparency = 0.3 })
+		B.block(cf * CFrame.new(0, 2.1, -1.6), Vector3.new(2.2, 1.6, 0.1), metal, Enum.Material.Metal, { Transparency = 0.3 })
+		B.block(cf * CFrame.new(0, 3.2, 2.1), Vector3.new(2.4, 0.2, 0.2), rgb(220, 50, 60))
+		for _, w in ipairs({ { 0.9, 1.3 }, { -0.9, 1.3 }, { 0.9, -1.3 }, { -0.9, -1.3 } }) do
+			B.ball(cf * CFrame.new(w[1], 0.3, w[2]), 0.6, rgb(30, 30, 34))
+		end
+	end
+	-- the toppled fountain with glowing coins
+	local f = CFrame.new(27, 0, -27)
+	B.cyl(f, 1.4, 12, rgb(150, 145, 160), Enum.Material.Concrete)
+	B.cyl(f * CFrame.new(0, 0.2, 0), 1.3, 10.4, rgb(60, 120, 140), Enum.Material.Glass, { Transparency = 0.3 })
+	B.cyl(f * CFrame.new(3, 1.4, 1) * CFrame.Angles(0, 0, math.rad(70)), 6, 1.6, rgb(160, 155, 170), Enum.Material.Concrete)
+	for _ = 1, 9 do
+		B.disc(27 + rng:NextNumber(-4, 4), -27 + rng:NextNumber(-4, 4), 1.5, 0.6, 0.08, rgb(255, 220, 90), Enum.Material.Neon)
+	end
+	-- the mall: a long dark facade with shop windows, mannequins and lit glass doors
+	local mz = -95
+	B.block(CFrame.new(0, 17, mz - 12), Vector3.new(230, 34, 24), rgb(70, 62, 92), Enum.Material.Concrete)
+	B.block(CFrame.new(0, 34.5, mz - 12), Vector3.new(234, 2, 26), rgb(48, 42, 66), Enum.Material.Concrete)
+	B.block(CFrame.new(0, 8, mz + 0.2), Vector3.new(230, 0.6, 0.6), rgb(160, 120, 255), Enum.Material.Neon, { Transparency = 0.2 })
+	for i = -5, 5 do
+		local x = i * 19
+		if i ~= 0 then
+			local lit = rng:NextNumber() < 0.4
+			B.block(CFrame.new(x, 6.5, mz + 0.1), Vector3.new(14, 9, 0.4), lit and rgb(120, 90, 190) or rgb(25, 22, 40), Enum.Material.Glass, { Transparency = lit and 0.15 or 0.05, Reflectance = 0.2 })
+			if lit or rng:NextNumber() < 0.5 then
+				-- a mannequin in the window, turned a little toward the table
+				local m = CFrame.lookAt(Vector3.new(x + rng:NextNumber(-3, 3), 0, mz - 2), Vector3.new(0, 0, 0))
+				B.cyl(m * CFrame.new(0, 2, 0), 4.2, 1.4, rgb(235, 230, 225))
+				B.ball(m * CFrame.new(0, 7, 0), 1.5, rgb(240, 235, 230))
+				B.block(m * CFrame.new(0.3, 7.1, -0.7), Vector3.new(0.18, 0.18, 0.1), rgb(160, 255, 140), Enum.Material.Neon, { Name = "MannequinEye" })
+				B.block(m * CFrame.new(-0.3, 7.1, -0.7), Vector3.new(0.18, 0.18, 0.1), rgb(160, 255, 140), Enum.Material.Neon, { Name = "MannequinEye", Transparency = 0 })
+			end
+		end
+	end
+	-- glass doors and the escalator behind them
+	B.block(CFrame.new(0, 6, mz + 0.1), Vector3.new(16, 12, 0.4), rgb(255, 235, 180), Enum.Material.Glass, { Transparency = 0.35 })
+	local door = B.block(CFrame.new(0, 6, mz - 1), Vector3.new(15, 11, 0.2), rgb(255, 225, 160), Enum.Material.Neon, { Transparency = 0.55 })
+	B.light(door, rgb(255, 220, 160), 40, 1.5)
+	B.block(CFrame.new(0, 6, mz - 8) * CFrame.Angles(math.rad(35), 0, 0), Vector3.new(5, 0.6, 16), rgb(90, 90, 100), Enum.Material.Metal)
+	-- the broken MALL sign (the landmark): one L is dark
+	local sy, sz = 44, mz - 1
+	local function bar(x, y, w, h, on)
+		B.block(CFrame.new(x, sy + y, sz), Vector3.new(w, h, 0.8), on and rgb(255, 80, 200) or rgb(70, 40, 70), on and Enum.Material.Neon or Enum.Material.SmoothPlastic, { Name = "Landmark" })
+	end
+	-- M
+	bar(-27, 0, 1.4, 9, true)
+	bar(-19, 0, 1.4, 9, true)
+	B.block(CFrame.new(-25, sy + 1.5, sz) * CFrame.Angles(0, 0, math.rad(-35)), Vector3.new(1.4, 6, 0.8), rgb(255, 80, 200), Enum.Material.Neon, { Name = "Landmark" })
+	B.block(CFrame.new(-21, sy + 1.5, sz) * CFrame.Angles(0, 0, math.rad(35)), Vector3.new(1.4, 6, 0.8), rgb(255, 80, 200), Enum.Material.Neon, { Name = "Landmark" })
+	-- A
+	B.block(CFrame.new(-10.5, sy, sz) * CFrame.Angles(0, 0, math.rad(-18)), Vector3.new(1.4, 9.4, 0.8), rgb(255, 80, 200), Enum.Material.Neon, { Name = "Landmark" })
+	B.block(CFrame.new(-5.5, sy, sz) * CFrame.Angles(0, 0, math.rad(18)), Vector3.new(1.4, 9.4, 0.8), rgb(255, 80, 200), Enum.Material.Neon, { Name = "Landmark" })
+	bar(-8, -1, 4.4, 1.2, true)
+	-- L L (the second one is out)
+	bar(3, 0, 1.4, 9, true)
+	bar(5.6, -3.9, 4, 1.2, true)
+	bar(13, 0, 1.4, 9, false)
+	bar(15.6, -3.9, 4, 1.2, false)
+	local signLight = B.block(CFrame.new(-6, sy, sz + 2), Vector3.new(1, 1, 1), rgb(255, 80, 200), Enum.Material.SmoothPlastic, { Transparency = 1, Name = "Landmark" })
+	B.light(signLight, rgb(255, 90, 210), 50, 2)
+	-- the low moon with its green halo
+	local moonAt = Vector3.new(70, 120, -380)
+	B.ball(moonAt, 64, rgb(235, 245, 215), Enum.Material.Neon)
+	B.facing(moonAt + Vector3.new(0, 0, -8), Vector3.new(0, 6, 14), 120, 0.5, rgb(150, 255, 170), Enum.Material.Neon, { Transparency = 0.85 })
+	-- a dark town all around: blocky buildings with a few lit windows
+	for _ = 1, 34 do
+		local p = spot(rng, 150, 330, 180)
+		local h = rng:NextNumber(20, 70)
+		local w = rng:NextNumber(18, 40)
+		local b = B.block(CFrame.new(p.X, h / 2, p.Z) * CFrame.Angles(0, rng:NextNumber(0, 6.28), 0), Vector3.new(w, h, w * rng:NextNumber(0.6, 1)), pick(rng, { rgb(40, 36, 58), rgb(52, 46, 72), rgb(34, 32, 48) }), Enum.Material.Concrete)
+		if rng:NextNumber() < 0.6 then
+			B.block(b.CFrame * CFrame.new(0, h * rng:NextNumber(-0.2, 0.3), -b.Size.Z / 2 - 0.1), Vector3.new(3, 2.5, 0.2), rgb(255, 210, 120), Enum.Material.Neon)
+		end
+	end
+	-- purple ground fog, drifting flyers and little green wisps
+	B.particles(CFrame.new(0, 0.6, -10), Vector3.new(130, 1, 110), { texture = "rbxasset://textures/particles/smoke_main.dds", speed = { 0.2, 0.6 }, life = { 5, 8 }, rate = 10, size = { 6, 12 }, colors = { rgb(140, 100, 200), rgb(90, 60, 150) }, glow = 0.1, alpha = 0.7, spread = 180 })
+	B.particles(CFrame.new(0, 3, -10), Vector3.new(90, 4, 80), { speed = { 0.6, 1.4 }, life = { 4, 6 }, rate = 3, size = { 0.7, 0.7 }, colors = { rgb(240, 235, 220) }, glow = 0, alpha = 0.1, spread = 180, spin = 60 })
+	B.particles(CFrame.new(0, 4, -8), Vector3.new(80, 6, 70), { speed = { 0.1, 0.4 }, life = { 2.5, 4 }, rate = 12, size = { 0.3, 0.05 }, colors = { rgb(170, 255, 150), rgb(120, 255, 200) }, glow = 1, spread = 180 })
+end
+
+-- Build a world into `folder` (which should not be in the workspace yet), moved by `offset`.
+-- Used by the pack pull's biome stage: the same world as the match backdrop, built somewhere
+-- else, without hiding the room or touching the lighting. Returns the theme and the part count.
+function Backdrops.buildInto(key, folder, offset)
+	local theme = THEMES[key]
+	if not theme or not folder then
+		return nil, 0
+	end
+	local prevFolder, prevCount = S.folder, S.count
+	S.folder, S.count = folder, 0
+	local ok, err = pcall(theme.build, Random.new(20260 + #key * 17))
+	local n = S.count
+	S.folder, S.count = prevFolder, prevCount
+	if not ok then
+		warn("[Backdrops] building " .. key .. " failed: " .. tostring(err))
+	end
+	if offset and offset.Magnitude > 0 then
+		for _, p in ipairs(folder:GetChildren()) do
+			if p:IsA("BasePart") then
+				p.CFrame = p.CFrame + offset
+			end
+		end
+	end
+	return theme, n
 end
 
 ---------------------------------------------------------------------------
