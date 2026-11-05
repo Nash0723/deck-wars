@@ -1243,7 +1243,20 @@ function MatchScreen.init(ctx)
 			return
 		end
 		local seatFar = duelTable:FindFirstChild("Seat_Far")
-		local model = CreatureBuilder.build("bot_bonkers")
+		local model = nil
+		if type(n.boss) == "string" and CardData.Cards[n.boss] then
+			-- a campaign boss sits in the chair itself, as tall as Bot Bonkers
+			local ok, built = pcall(CreatureBuilder.build, n.boss)
+			if ok and built then
+				model = built
+				local info = CreatureBuilder.info(n.boss) or { height = 2.5 }
+				local ref = CreatureBuilder.info("bot_bonkers") or { height = 6 }
+				if ctx.setScale and info.height and info.height > 0 then
+					ctx.setScale(model, math.clamp((ref.height or 6) / info.height, 0.5, 4))
+				end
+			end
+		end
+		model = model or CreatureBuilder.build("bot_bonkers")
 		if not (model and seatFar) then
 			return
 		end
@@ -2510,6 +2523,68 @@ function MatchScreen.init(ctx)
 		end)
 	end
 
+	-- "Next" / "Try again" on a campaign result (the server starts the stage).
+	function F.campaignAgain(what)
+		if S.rematchSent then
+			return
+		end
+		S.rematchSent = true
+		for _, b in ipairs(ui.resultButtons:GetChildren()) do
+			if b:IsA("TextButton") then
+				b.AutoButtonColor = false
+			end
+		end
+		local b = ui.resultButtons:FindFirstChild(what)
+		if b then
+			b.Text = "Shuffling…"
+		end
+		MenuAction:FireServer(what)
+	end
+
+	-- The campaign part of the result: the three stars (new ones pop in), first-clear and drop
+	-- cards, chests, titles and what opened.
+	function F.campaignResult(c)
+		local camp = S.campaign or {}
+		local texts = camp.stars or { "Win", "Win with half your hit points left", "Win in time" }
+		local row = make("Frame", { Name = "CampaignStars", Size = UDim2.new(1, 0, 0, 74), BackgroundTransparency = 1, LayoutOrder = 1, ZIndex = 31 }, ui.resultRewards)
+		local before = tonumber(c.starsBefore) or 0
+		for i = 1, 3 do
+			local got = c.stars and c.stars[i] == true
+			local had = bit32.band(before, bit32.lshift(1, i - 1)) ~= 0
+			local cell = make("Frame", { Name = "Star" .. i, Size = UDim2.new(1 / 3, -6, 1, 0), Position = UDim2.new((i - 1) / 3, 3, 0, 0), BackgroundTransparency = 1, ZIndex = 31 }, row)
+			local star = label(cell, (got or had) and "★" or "☆", { Name = "Glyph", Size = UDim2.new(1, 0, 0, 40), TextScaled = false, TextSize = 38, TextColor3 = (got or had) and Color3.fromRGB(255, 214, 80) or Color3.fromRGB(110, 104, 140), ZIndex = 32 })
+			label(cell, texts[i] or "", { Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 42), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextWrapped = true, TextColor3 = got and WHITE or Color3.fromRGB(170, 165, 195), ZIndex = 32 })
+			if got and not had then
+				star.TextTransparency = 1
+				task.delay((0.3 + 0.35 * i) * PACE, function()
+					if star.Parent then
+						star.TextTransparency = 0
+						local sc = make("UIScale", { Scale = 2.2 }, star)
+						TweenService:Create(sc, TweenInfo.new(0.35, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+						F.sound("ding", { volume = 0.5, pitch = 1 + 0.15 * i })
+					end
+				end)
+			end
+		end
+		local order = 2
+		for _, card in ipairs(c.cards or {}) do
+			local def = CardData.Cards[card.id]
+			if def then
+				order += 1
+				local col = CardData.RarityColors[def.rarity] or { 255, 255, 255 }
+				F.rewardRow("🃏 " .. tostring(card.why) .. ": " .. def.name .. " (" .. def.rarity .. ")" .. (card.isNew and "  NEW!" or ""), Color3.fromRGB(col[1], col[2], col[3]), order)
+			end
+		end
+		for _, t in ipairs(c.titles or {}) do
+			order += 1
+			F.rewardRow("🏅 New title: " .. t, Color3.fromRGB(255, 220, 120), order)
+		end
+		for _, u in ipairs(c.unlocked or {}) do
+			order += 1
+			F.rewardRow("🔓 " .. u, Color3.fromRGB(150, 255, 170), order)
+		end
+	end
+
 	function F.showResult(payload)
 		local r = payload.result
 		local title = r == "win" and "VICTORY!" or (r == "draw" and "DRAW" or "DEFEAT")
@@ -2533,7 +2608,7 @@ function MatchScreen.init(ctx)
 		end
 		local rw = payload.rewards
 		if type(rw) == "table" then
-			local order = 0
+			local order = 10
 			for i, g in ipairs(rw.gems or {}) do
 				order += 1
 				local row = F.rewardRow("+" .. g.amount .. " 💎  " .. g.label, Color3.fromRGB(130, 220, 255), order)
@@ -2549,8 +2624,10 @@ function MatchScreen.init(ctx)
 				order += 1
 				F.rewardRow("+" .. up.gems .. " 💎  Level " .. up.level .. "!", Color3.fromRGB(255, 220, 120), order)
 			end
-			order += 1
-			F.xpBar(rw, order)
+			if rw.levelBefore then
+				order += 1
+				F.xpBar(rw, order)
+			end
 			for _, q in ipairs(rw.quests or {}) do
 				local def = Progression.QuestById[q.id]
 				if def then
@@ -2562,6 +2639,9 @@ function MatchScreen.init(ctx)
 		elseif payload.gemsEarned then
 			F.rewardRow("+" .. payload.gemsEarned .. " 💎 Gems", Color3.fromRGB(130, 220, 255), 1)
 		end
+		if type(rw) == "table" and type(rw.campaign) == "table" then
+			F.campaignResult(rw.campaign)
+		end
 		-- What next.
 		for _, c in ipairs(ui.resultButtons:GetChildren()) do
 			if not c:IsA("UIListLayout") then
@@ -2572,7 +2652,21 @@ function MatchScreen.init(ctx)
 		local function leave()
 			MenuAction:FireServer("LeaveMatch")
 		end
-		if mode == "Bot" then
+		if mode == "Campaign" then
+			local won = r == "win"
+			local camp = S.campaign
+			local isChallenge = camp and type(camp.id) == "string" and string.sub(camp.id, 1, 10) == "Challenge:"
+			if won and not isChallenge then
+				button(ui.resultButtons, "Next ▶", Color3.fromRGB(60, 170, 90), function()
+					F.campaignAgain("CampaignNext")
+				end, { Name = "CampaignNext", Size = UDim2.fromOffset(150, 46), LayoutOrder = 1 })
+			end
+			button(ui.resultButtons, won and "⟳ Again" or "⟳ Try again", won and Color3.fromRGB(70, 130, 220) or Color3.fromRGB(60, 170, 90), function()
+				F.campaignAgain("CampaignRetry")
+			end, { Name = "CampaignRetry", Size = UDim2.fromOffset(won and 130 or 170, 46), LayoutOrder = 2 })
+			button(ui.resultButtons, "Map", Color3.fromRGB(90, 80, 140), leave, { Name = "BackToMap", Size = UDim2.fromOffset(110, 46), LayoutOrder = 3 })
+			S.resultBack = "Back to the map"
+		elseif mode == "Bot" then
 			button(ui.resultButtons, "⟳ Play again", Color3.fromRGB(60, 170, 90), F.playAgain, { Name = "PlayAgain", Size = UDim2.fromOffset(200, 46), LayoutOrder = 1 })
 			button(ui.resultButtons, "Back", Color3.fromRGB(90, 80, 140), leave, { Name = "BackToRoom", Size = UDim2.fromOffset(140, 46), LayoutOrder = 2 })
 			S.resultBack = "Back at the Duel Table"
@@ -2610,6 +2704,18 @@ function MatchScreen.init(ctx)
 			local opening = (payload.firstSeat == S.view.you) and "You go first" or (firstName .. " goes first")
 			if payload.cupRound then
 				opening = payload.cupRound .. ": " .. opening
+			end
+			local camp = payload.campaign or S.campaign
+			if camp and payload.started then
+				-- the stage's name and rules first
+				F.banner(camp.title, 1.6, Color3.fromRGB(255, 214, 120))
+				F.step(1.3)
+				for _, rule in ipairs(camp.rules or {}) do
+					F.log((rule.emoji or "•") .. " " .. rule.name .. ": " .. rule.text, Color3.fromRGB(255, 200, 150))
+				end
+				if camp.boss then
+					F.log("👑 Boss: " .. tostring(camp.name) .. " (" .. tostring(camp.enemyHp) .. " hit points)", Color3.fromRGB(255, 180, 120))
+				end
 			end
 			F.banner(opening, 1.4, Color3.fromRGB(255, 225, 140))
 			F.step(1.2)
@@ -2671,10 +2777,12 @@ function MatchScreen.init(ctx)
 	-- Entering and leaving
 	---------------------------------------------------------------------------
 
-	function F.enter()
+	function F.enter(payload)
 		S.matchId += 1
+		S.lastMode = payload and payload.view and payload.view.mode or nil
+		S.campaign = payload and payload.campaign or nil
 		ctx.setMode("match")
-		ctx.onEnterMatch()
+		ctx.onEnterMatch(payload)
 		ui.matchUI.Visible = true
 		F.resetMatchState()
 		S.turnState = "other"
@@ -2721,7 +2829,7 @@ function MatchScreen.init(ctx)
 		S.busy = false
 		S.queue = {}
 		ctx.setMode("menu")
-		ctx.onExitMatch()
+		ctx.onExitMatch(S.lastMode)
 	end
 
 	function F.onMatchEvent(payload)
@@ -2753,8 +2861,10 @@ function MatchScreen.init(ctx)
 			if payload.started then
 				-- A new match (tournaments start one after another without leaving the screen).
 				if ctx.getMode() ~= "match" then
-					F.enter()
+					F.enter(payload)
 				else
+					S.lastMode = payload.view and payload.view.mode or S.lastMode
+					S.campaign = payload.campaign
 					S.matchId += 1
 					S.queue = {}
 					S.view = nil
