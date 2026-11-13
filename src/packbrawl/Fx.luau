@@ -107,7 +107,9 @@ function Fx:layered(name, pos, color, size, seconds)
 end
 
 function Fx:sparks(pos, color, n)
-	self:layered((n or 16) >= 30 and "bigHit" or "hit", pos, color, (n or 16) >= 30 and 9 or 6)
+	if (n or 16) >= 10 then -- (small ticks stay plain sparks)
+		self:layered((n or 16) >= 30 and "bigHit" or "hit", pos, color, (n or 16) >= 30 and 9 or 6)
+	end
 	emitterAt(self, pos, {
 		Texture = Kit.TEX_SPARK,
 		Color = ColorSequence.new(color),
