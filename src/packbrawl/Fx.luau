@@ -6,6 +6,16 @@
 local Kit = require(script.Parent:WaitForChild("Kit"))
 local rgb, make, part = Kit.rgb, Kit.make, Kit.part
 
+-- The painted, layered effects (only in the main game: the stand-alone test place has no DeckWars folder).
+local LayerFx = nil
+do
+	local dw = game:GetService("ReplicatedStorage"):FindFirstChild("DeckWars")
+	local mod = dw and dw:FindFirstChild("LayerFx")
+	if mod then
+		LayerFx = require(mod)
+	end
+end
+
 local Fx = {}
 Fx.__index = Fx
 
@@ -81,7 +91,23 @@ local function emitterAt(self, pos, props, n, life)
 	return e
 end
 
+-- A layered effect on the Director's clock (so it freezes, slows and skips with the scene).
+function Fx:layered(name, pos, color, size, seconds)
+	if self.quiet or not LayerFx then
+		return
+	end
+	local h = LayerFx.play(name, pos, { palette = LayerFx.paletteFrom(color), size = size, manual = true, parent = self.folder })
+	if h then
+		self:anim(seconds or LayerFx.Recipes[name].len, function(a)
+			h:set(a)
+		end, function()
+			h:stop()
+		end)
+	end
+end
+
 function Fx:sparks(pos, color, n)
+	self:layered((n or 16) >= 30 and "bigHit" or "hit", pos, color, (n or 16) >= 30 and 9 or 6)
 	emitterAt(self, pos, {
 		Texture = Kit.TEX_SPARK,
 		Color = ColorSequence.new(color),
@@ -137,6 +163,7 @@ function Fx:shock(pos, color, size)
 	end
 	local ring = part({ Name = "Shock", Shape = Enum.PartType.Cylinder, Material = Enum.Material.Neon, Color = color, Size = Vector3.new(0.15, 1, 1), CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90)), Transparency = 0.1 }, self.folder)
 	local base = ring.CFrame
+	self:layered("slam", pos + Vector3.new(0, 0.15, 0), color, size * 0.8, 0.5)
 	self:anim(0.38, function(a)
 		local d = 1 + (size - 1) * Kit.outCubic(a)
 		ring.Size = Vector3.new(0.15, d, d)
@@ -237,6 +264,7 @@ function Fx:detonate(pos, color)
 	end, function()
 		ball:Destroy()
 	end)
+	self:layered("nova", pos, color, 20, 0.7)
 	self:shock(pos - Vector3.new(0, pos.Y - Kit.ORIGIN.Y - 0.1, 0), color, 40)
 	self:sparks(pos, color, 50)
 end
