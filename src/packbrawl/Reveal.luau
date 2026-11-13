@@ -16,6 +16,7 @@ local DeckWars = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(DeckWars:WaitForChild("CardData"))
 local CreatureBuilder = require(DeckWars:WaitForChild("CreatureBuilder"))
 local Juice = require(DeckWars:WaitForChild("Juice"))
+local LayerFx = require(DeckWars:WaitForChild("LayerFx"))
 
 -- How big each tier's moment is (1 Common .. 6 Secret).
 local RANK = { Common = 1, Rare = 2, Epic = 3, Mythic = 4, Legendary = 5, Secret = 6 }
@@ -375,6 +376,15 @@ local function rarityBurst(gui, stage, holder, tier, big)
 	tween(st, big and 0.6 or 0.45, { Transparency = 1, Thickness = 2 }, Enum.EasingStyle.Quad).Completed:Connect(function()
 		ring:Destroy()
 	end)
+	-- the painted burst behind the card, in the rarity's colours (bigger and richer the rarer it is)
+	do
+		local paint = LayerFx.RarityPalette[tier] or "gold"
+		local px = (big and 420 or 230) + rank * (big and 40 or 16)
+		LayerFx.screen(rank >= 3 and "nova" or "hit", stage, holder.Position, px, { palette = paint, zIndex = 14 })
+		if rank >= 5 then
+			LayerFx.screen("bigHit", stage, holder.Position, px * 1.25, { palette = paint, delay = 0.12, zIndex = 14 })
+		end
+	end
 	local p = holder.AbsolutePosition + holder.AbsoluteSize / 2
 	local sz = gui.AbsoluteSize
 	local sx, sy = 0.5, 0.5

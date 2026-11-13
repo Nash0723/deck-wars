@@ -71,6 +71,9 @@ jobs:
       - name: The room's props answering the mouse in the simulated Studio (hover, click, back in place)
         run: tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox
 
+      - name: The layered effects in the simulated Studio (every recipe, in the world and on the screen)
+        run: tools/luaurun/target/release/luaurun mock_roblox/fxharness.luau mock_roblox
+
       - name: Pack Brawl in the simulated Studio (every tier, skip, fast-forward, 10-pull)
         run: |
           tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl | tee pullharness.log

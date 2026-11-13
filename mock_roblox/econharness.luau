@@ -70,7 +70,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient", "IdleTable", "BackdropPicker", "TrophyRoadUI" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "VfxAssets", "LayerFx", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Plaza", "PlazaClient", "IdleTable", "BackdropPicker", "TrophyRoadUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
