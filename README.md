@@ -59,6 +59,7 @@ tools/luaurun/target/release/luaurun -D GAMES=40 bal/campaign_balance.luau src/s
 tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the whole game in a simulated Studio: title, daily reward, Shop, dev panel, a full bot match, a Campaign stage, the Plaza
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox                           # the room's props answering the mouse (hover, click, back in place)
+tools/luaurun/target/release/luaurun mock_roblox/fxharness.luau mock_roblox                             # the layered effects (every recipe, in the world and on the screen)
 ```
 
 `-D NAME=VALUE` sets a setting before the script runs, for example `-D SOAK_GAMES=200` for more bot games in the rules tests (put it before the script path).
@@ -136,6 +137,16 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 
 ## Use your own models
 Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
+
+## Painted effects: four layers per picture
+Hits, slashes, spells, summons, knock-outs, heals, wards, the pack slash, card reveals and Pack Brawl's blows are now painted effects. Each one is a picture drawn as four layers (a soft **glow**, the dark **rim**, the bright **middle** and the white-hot **core**) that the game stacks and moves a little apart in time: the core snaps out first, the rim arrives last and lingers. The pictures are white, so each card family fights in its own colours (Snack orange, Weather blue, Spooky purple, Critter green, Junk rust, Robo steel) and pack reveals use the rarity's colour.
+
+![The effects in Roblox Studio](vfx/studio_check.jpg)
+
+- The 13 pictures are drawn by `vfx/draw_layers.py` and are already uploaded to Roblox (ids in `src/shared/VfxAssets.luau`). How to change or add one: [vfx/README.md](vfx/README.md).
+- The effects themselves (which layers, timing, size) are the `Recipes` in `src/shared/LayerFx.luau`.
+- With Graphics set to Low in Settings the loose flying bits are left out.
+- **Tested:** `luaurun mock_roblox/fxharness.luau mock_roblox` plays every effect in the simulated Studio, in the world and on the screen. The layers were also looked at in real Roblox Studio (the picture above), but a whole match with them has not been played in real Studio yet.
 
 ## Cleaner menus: one window at a time
 - **Focus mode:** when a window opens (the Shop, your collection, the Party, the daily reward, the tournament bracket, the in-match settings and help), whatever would crowd it slides out of the way (the title, the profile card, the station panel, the floating station signs, the DEV tab), the room behind dims with a soft vignette and blur, and the window springs in. Closing it brings everything back. This lives in `src/shared/UIKit.luau` (`UIKit.Focus.watch(window, { hide = {...}, dim = 0.4, blur = 8 })`), and the list of windows is near the end of `DeckWarsClient.client.luau` ("Focus"). Blur is skipped on Low graphics.
