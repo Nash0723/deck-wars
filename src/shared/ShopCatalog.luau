@@ -6,7 +6,8 @@
 --   Gems  = premium / gacha currency. Spent on card packs (and a few premium cosmetics/boosts).
 --           Bought with Robux (Gem bundles), earned slowly (daily login, first win, level ups,
 --           a daily-limited Coin exchange).
---   Coins = earned by playing. Spent in the Shop: daily cards, deck slots, cosmetics, boosters.
+--   Coins = earned by playing. Spent in the Shop: deck slots, cosmetics, XP boosters.
+--   Robux = Gem bundles and Luck Potions (Roblox Developer Products).
 --
 -- Change prices here. Every price is a whole number. If you add an item, give it a unique id.
 
@@ -57,29 +58,30 @@ ShopCatalog.Match = {
 	lossCoins = { Easy = 20, Medium = 30, Hard = 45 },
 	winXp = { Easy = 40, Medium = 60, Hard = 90 },
 	lossXp = { Easy = 15, Medium = 25, Hard = 35 },
-	firstWinGems = 30, -- first win of the UTC day, any difficulty
+	firstWinGems = 60, -- first win of the UTC day, any difficulty
 	minSeconds = 60,
 	minTurns = 3,
 	maxPaidPerDay = 30, -- matches that pay per UTC day (stops farming bots all night)
 	-- Gems for a win (the friend's rates), on top of the Coins above. A win against people pays
 	-- pvpWinGems; with a bot on the other side it pays like that bot (so Easy bots don't farm).
-	winGems = { Easy = 20, Medium = 35, Hard = 50 },
-	pvpWinGems = 40,
+	winGems = { Easy = 40, Medium = 70, Hard = 100 },
+	pvpWinGems = 50,
 	-- Cup (tournament) prizes when at least two real players entered.
-	cupWinGems = 150,
-	cupRunnerUpGems = 50,
+	cupWinGems = 300,
+	cupRunnerUpGems = 100,
 }
 
 -- XP needed to go from `level` to level + 1.
 function ShopCatalog.xpForLevel(level: number): number
 	return 100 + 25 * (math.max(1, level) - 1)
 end
-ShopCatalog.LevelUpGems = 40
+ShopCatalog.LevelUpGems = 80
 ShopCatalog.LevelUpCoins = 100
 ShopCatalog.MaxLevel = 200
 
 ---------------------------------------------------------------------------
--- Tab 1: Daily Card Rotation (single cards for Coins)
+-- Daily card rotation (no longer sold in the Shop: cards only come from packs now. Kept so old
+-- saves and the snapshot's dailyOwned still work.)
 ---------------------------------------------------------------------------
 
 -- Every UTC day the shop shows these slots (same cards for everyone that day). Each slot can be
@@ -239,14 +241,26 @@ ShopCatalog.LuckMultiplier = 1.5
 ShopCatalog.MaxLuckCharges = 50
 ShopCatalog.MaxXpBoostMinutes = 24 * 60
 ShopCatalog.Boosts = {
-	{ id = "luck_small", kind = "luck", name = "Lucky Charm", charges = 3, price = { Coins = 2000 }, blurb = "Your next 3 pack pulls are lucky." },
-	{ id = "luck_big", kind = "luck", name = "Lucky Horseshoe", charges = 10, price = { Gems = 150 }, blurb = "Your next 10 pack pulls are lucky." },
 	{ id = "xp_small", kind = "xp", name = "XP Snack", minutes = 30, price = { Coins = 800 }, blurb = "Double match XP for 30 minutes." },
 	{ id = "xp_big", kind = "xp", name = "XP Feast", minutes = 120, price = { Gems = 80 }, blurb = "Double match XP for 2 hours." },
 }
 ShopCatalog.BoostById = {}
 for _, b in ipairs(ShopCatalog.Boosts) do
 	ShopCatalog.BoostById[b.id] = b
+end
+
+-- Luck Potions: the first Shop tab. Each adds `charges` lucky pulls (see LuckMultiplier above).
+-- They're Roblox Developer Products, paid with Robux: create them in the Creator Dashboard
+-- (your experience > Monetization > Developer Products) and paste each product's id here. A
+-- potion with productId 0 shows as "Not on sale yet" and can't be bought.
+ShopCatalog.LuckPotions = {
+	{ id = "potion_small", name = "Small Luck Potion", charges = 3, robux = 49, productId = 0, color = { 120, 220, 140 }, blurb = "Your next 3 pack openings are lucky." },
+	{ id = "potion_medium", name = "Luck Potion", charges = 10, robux = 129, productId = 0, color = { 90, 200, 255 }, blurb = "Your next 10 pack openings are lucky." },
+	{ id = "potion_big", name = "Big Luck Potion", charges = 25, robux = 279, productId = 0, color = { 200, 120, 255 }, blurb = "Your next 25 pack openings are lucky. Best value!" },
+}
+ShopCatalog.PotionById = {}
+for _, p in ipairs(ShopCatalog.LuckPotions) do
+	ShopCatalog.PotionById[p.id] = p
 end
 
 -- A price table's single currency and amount ({ Coins = 600 } -> "Coins", 600).

@@ -22,6 +22,7 @@ Settings.Defaults = {
 	packFights = "Full", -- Pack Brawl fights: Full, or Quick (always fast-forwarded)
 	graphics = "High", -- High (shadows, glow, lamp shadows) or Low (for slower phones and laptops)
 	blur = true, -- soft background blur behind the table
+	matchLog = false, -- the match log (every play and hit in words) in the corner during matches
 }
 
 Settings.Choices = {

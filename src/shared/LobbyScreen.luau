@@ -1,5 +1,5 @@
--- The Duel Table panel (play the bot, or open a table for friends: 1v1, 2v2 or an 8-player
--- tournament), the tournament bracket, and short messages from the server ("That table is full").
+-- The Duel Table panel (open a table for friends: 1v1, 2v2 or an 8-player tournament; bot
+-- matches live in the Campaign now), the tournament bracket, and short messages from the server ("That table is full").
 -- Your party (PartyScreen) sits down with you when you lead it and open a table.
 -- Client only. DeckWarsClient calls LobbyScreen.init(ctx) once, then LobbyScreen.show(body) when
 -- the Duel Table panel opens.
@@ -14,13 +14,11 @@ local CardData = require(Shared:WaitForChild("CardData"))
 local StarterDecks = require(Shared:WaitForChild("StarterDecks"))
 
 local TABS = {
-	{ key = "Bot", text = "🤖 Bot" },
 	{ key = "Duel", text = "⚔ 1v1" },
 	{ key = "Team", text = "👥 2v2" },
 	{ key = "Cup", text = "🏆 Cup" },
 }
 local MODE_TEXT = {
-	Bot = "Play Bot Bonkers. Good for learning the lanes.",
 	Duel = "1v1 against a friend. Open a table, your friend joins it.",
 	Team = "2v2: you and a teammate share 40 hit points and 8 lanes. Empty seats get bots.",
 	Cup = "Tournament: 8 players, quarter-finals, semi-finals, final. Empty seats get bots.",
@@ -38,7 +36,7 @@ function LobbyScreen.init(ctx)
 
 	local L = {
 		lobbies = {}, -- the latest list from the server
-		tab = "Bot",
+		tab = "Duel",
 		deck = "Snack",
 		difficulty = "Medium",
 		body = nil, -- the station panel body while the Duel Table panel is open
@@ -401,32 +399,6 @@ function LobbyScreen.init(ctx)
 		return r
 	end
 
-	function L.renderBot(body)
-		heading(body, "Bot difficulty", 20)
-		local win = ctx.WinGems
-		local items = {}
-		for _, d in ipairs(DIFFS) do
-			local reward = win and win[d] and ("\n<font size=\"12\" face=\"GothamMedium\">win +" .. win[d] .. " 💎</font>") or ""
-			table.insert(items, { key = d, text = d .. reward })
-		end
-		segmented(body, items, L.difficulty, function(d)
-			if d == L.difficulty then
-				return
-			end
-			L.difficulty = d
-			if ctx.prefs then
-				ctx.prefs.set("Difficulty", d)
-			end
-			L.render()
-		end, { name = "Difficulty", prefix = "Diff_", height = win and 54 or 42, textSize = 17, order = 21 })
-		bigButton(body, "⚔  Sit down and play!", "PlayBot", 22, function()
-			send("StartBotMatch", { deck = L.deck, difficulty = L.difficulty })
-		end)
-		if player:GetAttribute("FirstWinReady") == true and ctx.FirstWinBonus then
-			txt(body, "⭐ Your first win today pays +" .. ctx.FirstWinBonus .. " 💎 more", 13, Color3.fromRGB(255, 210, 140), { Name = "FirstWin", TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 23 })
-		end
-	end
-
 	-- Your party (see PartyScreen): who leads it and what happens when they open a table.
 	local function partyLine()
 		local PS = ctx.partyScreen
@@ -447,7 +419,7 @@ function LobbyScreen.init(ctx)
 	function L.renderList(body)
 		local line = partyLine()
 		if line then
-			txt(body, line, 13, Color3.fromRGB(205, 175, 255), { Name = "PartyHint", LayoutOrder = 19 })
+			txt(body, line, 13, Color3.fromRGB(255, 205, 150), { Name = "PartyHint", LayoutOrder = 19 })
 		end
 		heading(body, "Open tables", 21)
 		local scroll = make("Frame", { Name = "LobbyList", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 22 }, body)
@@ -676,8 +648,6 @@ function LobbyScreen.init(ctx)
 		end
 		if lobby then
 			L.renderLobby(body, lobby)
-		elseif L.tab == "Bot" then
-			L.renderBot(body)
 		else
 			L.renderList(body)
 		end

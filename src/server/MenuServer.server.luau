@@ -1,7 +1,9 @@
 -- Deck Wars menu server: the player's settings (Settings window) and saved decks (the Deck
 -- Shelf's deck builder), plus the starter collection for new players.
 -- Matches, lobbies, parties and rewards live in MatchServer; this script only answers these
--- MenuAction requests: LoadSettings, SaveSettings, GetDecks, SaveDeck, DeleteDeck, ClaimAchievement.
+-- MenuAction requests: LoadSettings, SaveSettings, GetDecks, SaveDeck, DeleteDeck, ClaimAchievement,
+-- and the Deck Shelf's cards: FuseCard { id, level }, FuseAll { id }, FuseEverything, SellCard { id, level }
+-- (each answered with "CardResult" and a fresh "Decks" snapshot; see CardLevels for the rules).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,6 +13,7 @@ local Shared = ReplicatedStorage:WaitForChild("DeckWars")
 local Settings = require(Shared:WaitForChild("Settings"))
 local PlayerDecks = require(ServerScriptService:WaitForChild("PlayerDecks"))
 local PlayerData = require(ServerScriptService:WaitForChild("PlayerData"))
+local EconomyManager = require(game:GetService("ServerStorage"):WaitForChild("DeckWarsServer"):WaitForChild("EconomyManager"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MenuAction = Remotes:WaitForChild("MenuAction")
@@ -80,13 +83,24 @@ end)
 
 pcall(function()
 	game:BindToClose(function()
+		-- all at once (one after another could run past the shutdown's 30 seconds on a full server)
+		local left = 0
 		for player, entry in pairs(playerSettings) do
-			saveSettings(player, entry)
+			left += 1
+			task.spawn(function()
+				saveSettings(player, entry)
+				left -= 1
+			end)
+		end
+		local t0 = os.clock()
+		while left > 0 and os.clock() - t0 < 25 do
+			task.wait(0.1)
 		end
 	end)
 end)
 
--- Deck requests cost a profile read (and a save mark): a client may send at most 12 every 5 seconds.
+-- Deck and reward requests cost a profile read (and a save mark): a client may send at most 12
+-- every 5 seconds.
 local deckCalls = setmetatable({}, { __mode = "k" }) -- [player] = { t = window start, n = calls }
 local function deckCallAllowed(player)
 	local now = time()
@@ -99,8 +113,62 @@ local function deckCallAllowed(player)
 	return c.n <= 12
 end
 
+local CARD_ACTIONS = { FuseCard = true, FuseAll = true, FuseEverything = true, SellCard = true }
+-- (everything else that reads or writes the profile counts against the same limit)
+local LIMITED = { GetDecks = true, SaveDeck = true, DeleteDeck = true, ClaimAchievement = true, ClaimRoad = true }
+
+-- Fusing and selling: does it, tells the screen how it went, and sends the new collection.
+local function cardAction(player, what, options)
+	options = type(options) == "table" and options or {}
+	local id = type(options.id) == "string" and options.id or nil
+	local level = tonumber(options.level)
+	local result = { what = what, id = id, level = level }
+	if what == "FuseCard" then
+		local ok, r = EconomyManager.fuseCard(player, id, level)
+		result.ok = ok
+		if ok then
+			result.made = { r }
+		else
+			result.why = r
+		end
+	elseif what == "FuseAll" then
+		local ok, n, made = EconomyManager.fuseAllCopies(player, id)
+		result.ok = ok
+		if ok then
+			result.count, result.made = n, made
+		else
+			result.why = n
+		end
+	elseif what == "FuseEverything" then
+		local ok, n, best = EconomyManager.fuseEverything(player)
+		result.ok = ok
+		if ok then
+			result.count, result.best = n, best
+		else
+			result.why = n
+		end
+	elseif what == "SellCard" then
+		local ok, r = EconomyManager.sellCard(player, id, level)
+		result.ok = ok
+		if ok then
+			result.coins = r
+		else
+			result.why = r
+		end
+	end
+	MenuAction:FireClient(player, "CardResult", result)
+	local snap = PlayerDecks.snapshot(player)
+	if snap then
+		MenuAction:FireClient(player, "Decks", snap)
+	end
+end
+
 MenuAction.OnServerEvent:Connect(function(player, what, options)
-	if (what == "GetDecks" or what == "SaveDeck" or what == "DeleteDeck") and not deckCallAllowed(player) then
+	if (LIMITED[what] or CARD_ACTIONS[what]) and not deckCallAllowed(player) then
+		return
+	end
+	if CARD_ACTIONS[what] then
+		cardAction(player, what, options)
 		return
 	end
 	if what == "LoadSettings" then

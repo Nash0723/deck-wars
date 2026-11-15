@@ -1,6 +1,7 @@
 -- RoomLife: the menu room reacts to your mouse. Client only.
 --
--- Point at things in the room and they answer: binders slide half out of the Deck Shelf, balloons
+-- Point at things in the room and they answer: the Duel Table's chairs (tucked in while nobody's
+-- there) slide out to invite you, binders slide half out of the Deck Shelf, balloons
 -- bob on their strings, Pickles waves (and his eyes follow your cursor), trophies lift and turn,
 -- the radio bops to its own beat, the fire flares, the clock's hands swing round to your real
 -- time, curtains and pennants sway, the dance floor lights up under the cursor. Click (or tap on a
@@ -12,7 +13,7 @@
 -- room loaded, and everything snaps back when you sit down at the table (RoomLife.rest). The
 -- room's parts aren't renamed or regrouped either; props are found by part name and grouped by
 -- distance, so a room that was moved around a bit in Studio still works. (The door and the
--- painting over the fireplace are left alone: they become the Plaza door and the Campaign map.)
+-- painting over the fireplace are left alone: they become the Park door and the Campaign map.)
 --
 --   RoomLife.attach(room)                 -> number of props found (call once)
 --   RoomLife.update(dt, mouse, active)    -> the prop under the mouse (or nil). mouse = viewport
@@ -21,6 +22,10 @@
 --   RoomLife.rest()                       -- everything back where it was, right now
 --   RoomLife.fireBoost(), RoomLife.discoBoost() -- multipliers for the room's fire and disco ball
 --   RoomLife.tileGlow(tile), RoomLife.tilesBusy() -- how white a dance floor tile should glow
+--   RoomLife.setFocus(stationName or nil)  -- the station under the mouse (or open): the chairs
+--                                            slide out while it's the Duel Table
+--   RoomLife.baseCFrame(part)              -> where a prop's part really stands (its CFrame from
+--                                            when the room loaded), or nil for other parts
 --   RoomLife.props, RoomLife.kinds, RoomLife.idleFidgets -- (for tests)
 
 local RoomLife = {}
@@ -54,6 +59,9 @@ local ripples = {} -- dance floor ripples { pos, t, strength }
 local nextIdle = 18
 local lastHoverSound = -1
 local resting = true
+local focus = nil -- the station under the mouse, or the one whose panel is open
+local onlyScope = nil -- when set: { [scope] = true }, only those props answer the mouse (RoomLife.setOnly)
+local chairsOut = false
 
 RoomLife.props = props
 RoomLife.kinds = kinds
@@ -148,7 +156,10 @@ local function sfx(s)
 	if vol <= 0 then
 		return
 	end
-	pcall(TableSounds.play, s[1], { volume = (s[2] or 1) * vol, pitch = s[3] or 1 })
+	-- s[1] can be a list of takes (one is picked at random), s[4] a random pitch spread
+	local name = type(s[1]) == "table" and s[1][math.random(#s[1])] or s[1]
+	local pitch = (s[3] or 1) * (1 + (s[4] or 0) * (2 * math.random() - 1))
+	pcall(TableSounds.play, name, { volume = (s[2] or 1) * vol, pitch = pitch })
 end
 
 ---------------------------------------------------------------------------
@@ -211,6 +222,37 @@ def("shelflamp", {
 		if p.light then
 			p.light.Brightness = p.lightBase
 		end
+	end,
+})
+
+-- Duel Table chairs -----------------------------------------------------------
+-- While you're in the room the two chairs are tucked in under the table. Point at the table (or
+-- open it) and they glide out, turning a little as if someone pulled them out for you, with a
+-- small tip back while they slide and a soft bounce when they land. They're back in their real
+-- spots (where the players sit) as soon as a match starts (RoomLife.rest).
+local CHAIR_IN = 0.9 -- studs under the table at rest (the armrests just touch the table's edge)
+local CHAIR_OUT = 1.7 -- studs out from their real spot when pulled out
+def("chair", {
+	scope = "DuelTable", anchor = "ChairBase", radius = 7, pivot = "bottom", always = true,
+	with = { "ChairLeg", "ChairPost", "ChairFinial", "Armrest", "ArmPost", "ChairTopRail", "ChairSlat", "BackCushion", "Seat_Near", "Seat_Far" },
+	springK = 70, -- slower and softer than the other props: a chair is heavy
+	clickSound = { "thudSmall", 0.3, 1.1 },
+	move = function(p, c)
+		local tuck = ease(p.tuck or 0) -- 0 just after a match, easing to 1 (tucked in)
+		local h = c.h
+		local slide = -CHAIR_IN * tuck * (1 - math.clamp(h, 0, 1)) + CHAIR_OUT * h -- + = away from the table
+		local turn = 0.17 * h * p.turnSign
+		local tip = -math.clamp((p.v or 0) * 0.006, -0.05, 0.05) -- tips back a touch while it slides
+		local lift = 0.22 * c.amp * hop(c.pk, 0.32)
+		return CFrame.new(-p.out * slide + Vector3.new(0, lift, 0)) * rot(UP, turn) * rot(p.side, tip)
+	end,
+	setup = function(p)
+		p.turnSign = (p.anchor.Position.Z >= 0) and 1 or -1
+		p.tuck = 0
+	end,
+	-- tucked all the way in and still: nothing to move until the mouse comes back
+	parked = function(p)
+		return (p.tuck or 0) >= 1
 	end,
 })
 
@@ -741,7 +783,7 @@ def("curtain", {
 def("window", {
 	scope = "Structure", anchor = "Glass", radius = 4.2, still = true,
 	with = { "NightSky", "Star", "Moon", "MoonShade", "Frame", "Sill" },
-	clickSound = { "swishLong", 0.3, 1.7 },
+	clickSound = { { "wipe1", "wipe2" }, 1.0, 1.0, 0.06 }, -- (a squeaky wipe on the glass, a different stroke each time)
 	setup = function(p)
 		for _, e in ipairs(p.parts) do
 			if e.name == "Star" then
@@ -1015,6 +1057,7 @@ local function effects(p)
 end
 
 local function settle(p)
+	p.parkedNow = nil
 	for _, e in ipairs(p.parts) do
 		e.part.CFrame = e.base
 	end
@@ -1079,7 +1122,18 @@ local function propAt(pos, isScreen)
 	end
 	local ray = isScreen and camera:ScreenPointToRay(pos.X, pos.Y) or camera:ViewportPointToRay(pos.X, pos.Y)
 	local hit = workspace:Raycast(ray.Origin, ray.Direction * 200, rayParams)
-	return hit and partToProp[hit.Instance] or nil, ray
+	local p = hit and partToProp[hit.Instance] or nil
+	if p and onlyScope and not onlyScope[p.def.scope] then
+		p = nil -- (another corner of the room: it stays still while this screen is open)
+	end
+	return p, ray
+end
+
+-- While a station's screen is open, only that station's own props answer the mouse (the trophies
+-- while Trophies is open, the balloons while Pack Party is): scopes = { [scope] = true }; nil lets
+-- every prop answer again.
+function RoomLife.setOnly(scopes)
+	onlyScope = scopes
 end
 
 -- Everything back where it was, right now (before a match, or when the room is hidden).
@@ -1091,7 +1145,28 @@ function RoomLife.rest()
 	end
 	table.clear(awake)
 	table.clear(ripples)
+	for _, ch in ipairs(kinds.chair or {}) do
+		ch.tuck = 0
+	end
+	chairsOut = false
 	resting = true
+end
+
+function RoomLife.setFocus(stationName)
+	focus = stationName
+end
+
+function RoomLife.baseCFrame(part)
+	local p = partToProp[part]
+	if not p then
+		return nil
+	end
+	for _, e in ipairs(p.parts) do
+		if e.part == part then
+			return e.base
+		end
+	end
+	return nil
 end
 
 local STEP = 1 / 120
@@ -1109,6 +1184,20 @@ function RoomLife.update(dt, mouse, active)
 		p, ray = propAt(mouse, false)
 	end
 	setHover(p)
+
+	-- The chairs: tucked in, out while the Duel Table has the mouse (or its panel is open)
+	do
+		local wantOut = focus == "DuelTable" or (hovered ~= nil and hovered.kind == "chair")
+		if wantOut and not chairsOut and kinds.chair and #kinds.chair > 0 then
+			sfx({ "whooshShort", 0.07, 0.75 }) -- a soft slide
+		end
+		chairsOut = wantOut
+		for _, ch in ipairs(kinds.chair or {}) do
+			wake(ch)
+			ch.tuck = math.min(1, (ch.tuck or 0) + dt * 1.4)
+			ch.target = wantOut and 1 or 0
+		end
+	end
 
 	-- Pickles keeps an eye on your cursor, and blinks
 	for _, pk in ipairs(kinds.pickles or {}) do
@@ -1157,12 +1246,21 @@ function RoomLife.update(dt, mouse, active)
 				q.pk = nil
 			end
 		end
-		local idle = q.target == 0 and math.abs(q.h) < 0.002 and math.abs(q.v) < 0.01 and q.pk == nil and not (d.always and active)
-		if idle then
+		local still = q.target == 0 and math.abs(q.h) < 0.002 and math.abs(q.v) < 0.01 and q.pk == nil
+		if still and not (d.always and active) then
 			q.h, q.v = 0, 0
 			settle(q)
 			awake[q] = nil
+		elseif still and d.parked and d.parked(q) then
+			-- at rest in a pose that doesn't change (the chairs, tucked in): placed once, then left be
+			if not q.parkedNow then
+				q.h, q.v = 0, 0
+				place(q)
+				effects(q)
+				q.parkedNow = true
+			end
 		else
+			q.parkedNow = nil
 			place(q)
 			effects(q)
 		end
@@ -1199,7 +1297,7 @@ function RoomLife.discoBoost()
 		return 1
 	end
 	local pk = p.pk and p.pk >= 0 and p.pk or nil
-	return 1 + 5 * math.max(0, p.h) + 14 * p.amp * fade(pk, 1.5) * (pk and 1 or 0)
+	return 1 + 1.2 * math.max(0, p.h) + 4 * p.amp * fade(pk, 1.5) * (pk and 1 or 0)
 end
 
 -- 0..1: how white a dance floor tile glows (under the cursor, and the ripples running past).

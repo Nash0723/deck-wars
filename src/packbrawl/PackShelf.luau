@@ -11,6 +11,8 @@
 --
 --   PackShelf.attach()           -> true if the room has a shelf
 --   PackShelf.setActive(on)      -- the Pack Party station is open (hover and selection show)
+--   PackShelf.roomHover(on)      -- the mouse is on the Pack Party corner in the room: every pack
+--                                   slides out of its niche a little, one after another
 --   PackShelf.select(packId)
 --   PackShelf.packAt(pos, isScreen) -> packId or nil (what is under a mouse/touch point)
 --   PackShelf.hover(packId or nil)
@@ -41,6 +43,8 @@ local state = {
 	bulbs = {},
 	t = 0,
 	conn = nil,
+	roomHover = false,
+	roomSince = 0,
 }
 PackShelf.state = state -- (for tests)
 
@@ -125,13 +129,15 @@ local function update(dt)
 	for id, p in pairs(state.packs) do
 		local sel = state.active and state.selected == id
 		local hov = state.active and state.hovered == id and not sel
-		local tLift = sel and 0.45 or (hov and 0.18 or 0)
-		local tFwd = sel and 1.0 or (hov and 0.25 or 0)
+		-- pointing at the corner from the room: each pack peeks out a little, left to right
+		local peek = not state.active and state.roomHover and (t - state.roomSince) >= (p.order or 0) * 0.06
+		local tLift = sel and 0.45 or (hov and 0.18 or (peek and 0.05 or 0))
+		local tFwd = sel and 1.0 or (hov and 0.25 or (peek and 0.32 or 0))
 		local tUp = sel and 1 or 0
 		if state.launched == id then
 			tLift, tFwd, tUp = 1.2, 9, 1
 		end
-		local speed = state.launched == id and 9 or 7
+		local speed = state.launched == id and 9 or (peek and 10 or 7)
 		p.lift = approach(p.lift, tLift, dt, speed)
 		p.fwd = approach(p.fwd, tFwd, dt, speed)
 		p.upright = approach(p.upright, tUp, dt, speed)
@@ -188,11 +194,11 @@ function PackShelf.attach()
 	if not shelf then
 		return false
 	end
-	for _, def in ipairs(Packs.List) do
+	for order, def in ipairs(Packs.List) do
 		local m = shelf:FindFirstChild("ShelfPack_" .. def.id)
 		local body = m and m:FindFirstChild("PackBody")
 		if body then
-			local p = { parts = {}, home = body.CFrame, lift = 0, fwd = 0, upright = 0, spin = 0 }
+			local p = { parts = {}, home = body.CFrame, lift = 0, fwd = 0, upright = 0, spin = 0, order = order - 1 }
 			for _, d in ipairs(m:GetDescendants()) do
 				if d:IsA("BasePart") then
 					table.insert(p.parts, { part = d, rel = body.CFrame:ToObjectSpace(d.CFrame), tr = d.Transparency })
@@ -231,6 +237,14 @@ function PackShelf.setActive(on)
 	if not on then
 		state.hovered = nil
 	end
+end
+
+function PackShelf.roomHover(on)
+	on = on and true or false
+	if on and not state.roomHover then
+		state.roomSince = state.t
+	end
+	state.roomHover = on
 end
 
 function PackShelf.select(id)

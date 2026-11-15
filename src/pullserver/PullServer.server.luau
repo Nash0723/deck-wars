@@ -200,6 +200,15 @@ PullRequest.OnServerEvent:Connect(function(player, count, forcedTier, packId, fr
 	end
 	local paid = not (trusted and (forcedTier ~= nil or free == true))
 	local price = paid and Packs.price(count) or 0
+	-- card storage: when it's full, fuse or sell at the Deck Shelf first (checked before paying;
+	-- a pack opened under the limit always fits, even a 10-pack)
+	do
+		local okRoom, room = call(economy(), "hasCardRoom", player)
+		if okRoom and room == false then
+			local okUsed, used, limit = call(economy(), "storage", player)
+			return refuse(player, "storage", { used = okUsed and used or nil, limit = okUsed and limit or nil })
+		end
+	end
 
 	busy[player] = true
 	lastPull[player] = now
@@ -244,12 +253,14 @@ PullRequest.OnServerEvent:Connect(function(player, count, forcedTier, packId, fr
 			return
 		end
 		PullResult:FireClient(player, payload)
-		-- The Plaza (PlazaServer): your rarest pull on your booth, and a banner for Mythic and up.
-		-- Free and forced developer rolls don't count.
-		if paid then
+		-- The Park (ParkServer): your rarest pull on your booth, and a banner (and for a Secret, a
+		-- line in everyone's chat). Free and forced developer rolls are "test" pulls: they still get
+		-- the banner and the chat line in this server, so you can try them, but they don't count
+		-- for the booth, the Hall of Pulls or the other servers.
+		do
 			local pullFeed = game:GetService("ServerScriptService"):FindFirstChild("PullFeed")
 			if pullFeed and pullFeed:IsA("BindableEvent") then
-				pullFeed:Fire(player, payload.cards)
+				pullFeed:Fire(player, payload.cards, not paid)
 			end
 		end
 		-- Achievements (Lucky Pull, Full Set) on the Trophy Wall. Dev forced-tier rolls don't count.

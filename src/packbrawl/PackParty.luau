@@ -12,7 +12,7 @@
 --     onStatus = function(text) end, -- short status lines (also shown in the panel)
 --     isActive = function() return true end, -- is the panel on screen? (shelf hover, Q/E keys)
 --     previews = true | false,       -- tier preview buttons (default: only in Studio)
---     noDive = true,                 -- skip the Dive into the room's Duel Table (the Plaza's altar)
+--     noDive = true,                 -- skip the Dive into the room's Duel Table (the Park's altar)
 --   })
 --   PackParty.request(count, tier, packId, free) -- also used by the developer panel
 --   PackParty.select(packId), PackParty.selected()
@@ -198,6 +198,10 @@ local REFUSED = {
 	cooldown = function()
 		return "Too fast! Try again in a moment."
 	end,
+	storage = function(r)
+		local full = (r.used and r.limit) and (" (" .. commas(r.used) .. " / " .. commas(r.limit) .. ")") or ""
+		return "Your card storage is full" .. full .. ". Fuse or sell cards at the Deck Shelf to make room."
+	end,
 	busy = function()
 		return "Still opening your last pack..."
 	end,
@@ -345,13 +349,38 @@ local function tierDot(parent, tier, size)
 	return d
 end
 
+-- The odds your next opening uses: boosted while you have lucky pulls (a Luck Potion), so the
+-- odds shown are always your real ones. Returns odds, lucky charges left.
+local function currentOdds()
+	local lp = Players.LocalPlayer
+	local charges = tonumber(lp:GetAttribute("LuckCharges")) or 0
+	if charges > 0 then
+		return PullRates.luckyOdds(tonumber(lp:GetAttribute("LuckMultiplier")) or 1.5), charges -- (ShopCatalog.LuckMultiplier, set by the server)
+	end
+	return PullRates.Odds, 0
+end
+
+local function oddsText()
+	local o, charges = currentOdds()
+	local f = function(x)
+		return string.format("%g", math.floor(x * 100 + 0.5) / 100)
+	end
+	local lead = charges > 0 and string.format("🍀 Lucky odds (%d lucky opening%s left): ", charges, charges == 1 and "" or "s") or "Rarity odds: "
+	return string.format("%sCommon %s%% · Rare %s%% · Epic %s%% · Mythic %s%% · Legendary %s%% · Secret %s%%. 10 packs always hold an %s or better.", lead, f(o.Common), f(o.Rare), f(o.Epic), f(o.Mythic), f(o.Legendary), f(o.Secret), PullRates.TenPullFloor)
+end
+
 local function fillContents(ui, def)
 	for _, c in ipairs(ui.contents:GetChildren()) do
 		if c:IsA("GuiObject") then
 			c:Destroy()
 		end
 	end
-	local _, list = Packs.cardOdds(def.id)
+	if ui.odds then
+		local _, charges = currentOdds()
+		ui.odds.Text = oddsText()
+		ui.odds.TextColor3 = charges > 0 and rgb(150, 235, 160) or rgb(175, 170, 195)
+	end
+	local _, list = Packs.cardOdds(def.id, (currentOdds()))
 	for i, e in ipairs(list) do
 		local row = make("Frame", { Name = "Row_" .. e.id, LayoutOrder = i, Size = UDim2.new(1, -8, 0, 20), BackgroundTransparency = 1 }, ui.contents)
 		local dot = tierDot(row, e.tier, 10)
@@ -487,6 +516,13 @@ function PackParty.mount(parent, opts)
 		state.connected = true
 		local _, PullResult = remotes()
 		PullResult.OnClientEvent:Connect(onResult)
+		Players.LocalPlayer:GetAttributeChangedSignal("LuckCharges"):Connect(function()
+			local ui = state.ui
+			local def = state.selected and Packs.get(state.selected)
+			if ui and ui.holder and ui.holder.Parent and def then
+				fillContents(ui, def)
+			end
+		end)
 		Players.LocalPlayer:GetAttributeChangedSignal(Packs.Currency):Connect(function()
 			refreshPrices()
 			local ui = state.ui
@@ -561,13 +597,12 @@ function PackParty.mount(parent, opts)
 	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, ui.contents)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }, ui.contents)
 	ui.share = make("TextLabel", { Name = "ShareNote", Position = UDim2.new(0, 0, 1, -(164 + B)), Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Text = "", Font = Enum.Font.GothamMedium, TextSize = 11, TextWrapped = true, TextColor3 = rgb(175, 170, 195), TextXAlignment = Enum.TextXAlignment.Left }, holder)
-	local o = PullRates.Odds
-	make("TextLabel", {
+	ui.odds = make("TextLabel", {
 		Name = "Odds",
 		Position = UDim2.new(0, 0, 1, -(134 + B)),
 		Size = UDim2.new(1, 0, 0, 30),
 		BackgroundTransparency = 1,
-		Text = string.format("Rarity odds: Common %g%% · Rare %g%% · Epic %g%% · Mythic %g%% · Legendary %g%% · Secret %g%%. 10 packs always hold an %s or better.", o.Common, o.Rare, o.Epic, o.Mythic, o.Legendary, o.Secret, PullRates.TenPullFloor),
+		Text = oddsText(),
 		Font = Enum.Font.GothamMedium,
 		TextSize = 11,
 		TextWrapped = true,

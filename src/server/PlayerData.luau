@@ -140,6 +140,7 @@ local function publish(player)
 		player:SetAttribute("Level", d.level)
 		player:SetAttribute("XP", d.xp)
 		player:SetAttribute("XPNeeded", Progression.xpForLevel(d.level))
+		player:SetAttribute("LuckCharges", type(d.boosts) == "table" and d.boosts.luckCharges or 0)
 		player:SetAttribute("WinStreak", p.winStreak)
 		player:SetAttribute("MatchesPlayed", p.matches)
 		player:SetAttribute("FirstWinReady", p.firstWinDay ~= Progression.today())
@@ -384,8 +385,9 @@ function PlayerData.noteCupWin(player)
 	changed(player, "cup")
 end
 
--- Today's daily reward: the friend's Gems for the streak day plus Nash's daily Coins.
--- Returns gems, day, coins; or nil and a reason.
+-- Today's daily reward: that day of the week's Gems and Coins, and on day 2 and day 7 a Luck
+-- Potion (its lucky pulls are added to the ones you have; see Progression.DailyWeek).
+-- Returns gems, day, coins, potion name, potion charges; or nil and a reason.
 function PlayerData.claimDaily(player)
 	local d = data(player)
 	if not d then
@@ -398,13 +400,17 @@ function PlayerData.claimDaily(player)
 	end
 	p.daily.lastClaimDay = Progression.today()
 	p.daily.streak = day
-	local gems = Progression.dailyReward(day)
-	local D = ShopCatalog.Daily
-	local coins = D and (D.coins + D.coinsPerStreakDay * (math.min(day, D.maxStreak) - 1)) or 0
+	local prize = Progression.dailyPrize(day)
+	local gems, coins = prize.gems, prize.coins or 0
 	d.gems = math.min(MAX, d.gems + gems)
 	d.coins = math.min(MAX, d.coins + coins)
+	local potion = prize.potion and ShopCatalog.PotionById and ShopCatalog.PotionById[prize.potion]
+	if potion then
+		d.boosts = type(d.boosts) == "table" and d.boosts or { luckCharges = 0, xpUntil = 0 }
+		d.boosts.luckCharges = math.max(0, math.floor(tonumber(d.boosts.luckCharges) or 0)) + potion.charges
+	end
 	changed(player, "daily")
-	return gems, day, coins
+	return gems, day, coins, potion and potion.name, potion and potion.charges
 end
 
 function PlayerData.claimQuest(player, index)

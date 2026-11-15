@@ -20,14 +20,15 @@ local CardData = require(Shared:WaitForChild("CardData"))
 local Rng = require(Shared:WaitForChild("Rng"))
 local ShopCatalog = require(Shared:WaitForChild("ShopCatalog"))
 local DeckRules = require(Shared:WaitForChild("DeckRules"))
+local CardLevels = require(Shared:WaitForChild("CardLevels"))
 local PlayerDecks = require(script.Parent:WaitForChild("PlayerDecks"))
 local Campaign = require(Shared:WaitForChild("Campaign"))
 -- Match rewards in Gems (one table in ShopCatalog.Match, next to Nash's Coins and anti-farming rules).
 local PullRates = {
-	WinGems = (ShopCatalog.Match and ShopCatalog.Match.winGems) or { Easy = 20, Medium = 35, Hard = 50 },
-	PvPWinGems = (ShopCatalog.Match and ShopCatalog.Match.pvpWinGems) or 40,
-	CupWinGems = (ShopCatalog.Match and ShopCatalog.Match.cupWinGems) or 150,
-	CupRunnerUpGems = (ShopCatalog.Match and ShopCatalog.Match.cupRunnerUpGems) or 50,
+	WinGems = (ShopCatalog.Match and ShopCatalog.Match.winGems) or { Easy = 40, Medium = 70, Hard = 100 },
+	PvPWinGems = (ShopCatalog.Match and ShopCatalog.Match.pvpWinGems) or 50,
+	CupWinGems = (ShopCatalog.Match and ShopCatalog.Match.cupWinGems) or 300,
+	CupRunnerUpGems = (ShopCatalog.Match and ShopCatalog.Match.cupRunnerUpGems) or 100,
 }
 
 -- Wins pay through the save system (PlayerData on Nash's profile). It's optional, so this script
@@ -197,11 +198,20 @@ function Match.new(seats, opts)
 	self.rng = Rng.new(seed + 11)
 	self.seats = seats
 	local setups = {}
+	-- Card levels change the numbers only against bots (unless CardLevels.InDuels): with a
+	-- player on each side, every card plays at its printed numbers and the level is just shown.
+	local humanTeams = {}
+	for i, seat in ipairs(seats) do
+		if seat.kind == "human" then
+			humanTeams[(i % 2 == 1) and 1 or 2] = true
+		end
+	end
+	local levelStats = CardLevels.InDuels or not (humanTeams[1] and humanTeams[2])
 	for i, seat in ipairs(seats) do
 		seat.name = seat.name or (seat.kind == "human" and seat.player.DisplayName) or ("Bot Bonkers (" .. (seat.difficulty or "Medium") .. ")")
 		local setup = setupForSeat(seat)
 		seat.themes = setup.themes
-		setups[i] = { deck = setup.deck, hero = setup.hero, family = setup.family, lanes = setup.lanes, name = seat.name }
+		setups[i] = { deck = setup.deck, hero = setup.hero, family = setup.family, lanes = setup.lanes, name = seat.name, levels = setup.levels, levelStats = levelStats }
 		if seat.kind == "human" then
 			seat.seq = 0
 			seat.ack = 0
@@ -448,7 +458,7 @@ function Match:finishIfOver()
 			local amount = 0
 			local beatHard = false
 			if result == "win" then
-				amount = PullRates.PvPWinGems or 40
+				amount = PullRates.PvPWinGems or 50
 				local botRate = nil
 				for o, other in ipairs(self.seats) do
 					if other.kind == "bot" and m.seats[o].team ~= team then
@@ -1426,7 +1436,7 @@ function Cup.advance(lobby, r, k, winner)
 		end
 		local prizes = humans >= 2
 		if prizes and e.kind == "human" then
-			addGems(e.player, PullRates.CupWinGems or 150)
+			addGems(e.player, PullRates.CupWinGems or 300)
 		end
 		-- Cup Champion (achievement) counts every Cup won, bots or not.
 		if e.kind == "human" and e.player and e.player.Parent and PlayerData and PlayerData.noteCupWin then
@@ -1437,7 +1447,7 @@ function Cup.advance(lobby, r, k, winner)
 		local second = final.a == winner and final.b or final.a
 		local s = second and cup.entrants[second]
 		if prizes and s and s.kind == "human" then
-			addGems(s.player, PullRates.CupRunnerUpGems or 50)
+			addGems(s.player, PullRates.CupRunnerUpGems or 100)
 		end
 		LobbyEvent:FireAllClients({ kind = "toast", text = "🏆 " .. e.name .. " won the tournament!" })
 		task.delay(30, function()
@@ -1654,7 +1664,7 @@ end
 -- Player, and PlayerData saves them with the cards.
 ---------------------------------------------------------------------------
 
-local PREF_KINDS = { Deck = "deck", Difficulty = "difficulty", Backdrop = "word", ActionCam = "bool", Fast = "bool", SeenHelp = "bool", Sound = "bool", SeenDaily = "bool" }
+local PREF_KINDS = { Deck = "deck", Difficulty = "difficulty", Backdrop = "word", ActionCam = "bool", Fast = "bool", SeenHelp = "bool", Sound = "bool", SeenDaily = "bool", SeenTour = "bool" }
 
 savePrefs = function(player, raw)
 	local clean = {}
@@ -1721,8 +1731,8 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 	elseif what == "ClaimDaily" then
 		-- The daily reward (the screen shows a pop-up when it's ready).
 		if PlayerData and PlayerData.claimDaily then
-			local gems, day, coins = PlayerData.claimDaily(player)
-			LobbyEvent:FireClient(player, { kind = "claimed", what = "daily", ok = gems ~= nil, gems = gems, day = day, coins = coins })
+			local gems, day, coins, potion, charges = PlayerData.claimDaily(player)
+			LobbyEvent:FireClient(player, { kind = "claimed", what = "daily", ok = gems ~= nil, gems = gems, day = day, coins = coins, potion = potion, charges = charges })
 		end
 	elseif what == "ClaimQuest" then
 		if PlayerData and PlayerData.claimQuest then

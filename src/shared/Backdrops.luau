@@ -1396,9 +1396,25 @@ end
 local LAMP = { TableLampCord = true, TableLampShade = true, TableLampTop = true, TableLampRim = true, TableLamp = true }
 local LIGHT_PROPS = { "ClockTime", "Brightness", "Ambient", "OutdoorAmbient", "ColorShift_Top", "ColorShift_Bottom", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "ExposureCompensation" }
 
+-- Part of the Duel Table? (Its hanging lamps live in the room's "Ceiling" folder on the client,
+-- tagged CeilingOf = "DuelTable", so their light stays on like the rest of the table's.)
+local function ofTable(d, duelTable)
+	if d:IsDescendantOf(duelTable) then
+		return true
+	end
+	local p = d
+	while p and p.Parent do
+		if p:GetAttribute("CeilingOf") == "DuelTable" then
+			return true
+		end
+		p = p.Parent
+	end
+	return false
+end
+
 local function hideRoom(room, duelTable)
 	for _, d in ipairs(room:GetDescendants()) do
-		local inTable = d:IsDescendantOf(duelTable)
+		local inTable = ofTable(d, duelTable)
 		if d:IsA("BasePart") then
 			if not inTable or LAMP[d.Name] then
 				save(d, "Transparency")

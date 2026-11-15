@@ -43,6 +43,8 @@ TableSounds.List = {
 	fall = { id = 9119198140, volume = 5 }, -- Pro Sound Effects: slide whistle, falling
 	boing = { id = 6075441854, volume = 1.0 }, -- boing, rising (community upload)
 	boing2 = { id = 2772396665, volume = 0.9 }, -- boing (community upload)
+	wipe1 = { id = 9114617172, volume = 1.0 }, -- Pro Sound Effects: glass squeak, hand wiping a window (one stroke)
+	wipe2 = { id = 9114617229, volume = 3.8 }, -- Pro Sound Effects: glass squeak, hand wiping a window (back and forth; recorded quiet)
 
 	-- Energy
 	zap = { id = 9114277757, volume = 2.0, minor = true }, -- Pro Sound Effects: electric zap

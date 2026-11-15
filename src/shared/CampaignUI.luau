@@ -286,7 +286,7 @@ local function drawChallenge(scroll)
 		end
 	end)
 	text(box, stage.name .. ", " .. stage.title, { Font = TITLE_FONT, TextSize = 17, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 3 })
-	text(box, "A " .. stage.difficulty .. " bot with a full " .. stage.family .. " deck, in " .. stage.worldName .. ".", { AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
+	text(box, (string.match(stage.difficulty, "^[AEIOUaeiou]") and "An " or "A ") .. stage.difficulty .. " bot with a full " .. stage.family .. " deck, in " .. stage.worldName .. ".", { AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
 	for i, r in ipairs(stage.rules) do
 		local def = Campaign.Rules[r]
 		if def then
@@ -420,7 +420,7 @@ local function drawMap(scroll)
 	make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, box)
 	text(box, stage.name .. ", " .. stage.title, { Font = TITLE_FONT, TextSize = 17, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 1 })
 	local deckWord = stage.boss and "boss deck" or (stage.tier == "full" and "full deck" or (stage.tier == "basic" and "starter deck" or "deck"))
-	text(box, "A " .. stage.difficulty .. " bot with a " .. stage.family .. " " .. deckWord .. ", " .. stage.enemyHp .. " hit points.", { AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = DIM, LayoutOrder = 2 })
+	text(box, (string.match(stage.difficulty, "^[AEIOUaeiou]") and "An " or "A ") .. stage.difficulty .. " bot with a " .. stage.family .. " " .. deckWord .. ", " .. stage.enemyHp .. " hit points.", { AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = DIM, LayoutOrder = 2 })
 	if stage.bossCard and CardData.Cards[stage.bossCard] then
 		local card = CardData.Cards[stage.bossCard]
 		text(box, "👑 Fights with " .. card.name .. " (" .. card.rarity .. ")", { TextSize = 13, TextColor3 = rarityColor(card.rarity), LayoutOrder = 3 })

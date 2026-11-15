@@ -1,17 +1,17 @@
 -- The Shop screen, the Gems / Coins counters and the reward toasts. Client only.
 -- The server (EconomyServer + EconomyManager) owns every number: this screen only shows the
--- snapshot it gets and sends requests ("Buy", "Equip", "BuyGems", "Emote") back.
+-- snapshot it gets and sends requests ("Buy", "Equip", "BuyGems", "BuyPotion", "Emote") back.
 --
 --   ShopUI.init({ makeCard = fn(parent, cardId, size) })  -- once, from DeckWarsClient
 --   ShopUI.hud(parent)                 -- Gems / Coins / level counters (top right of the menu)
 --   ShopUI.stationPanel(body)          -- the right-hand panel at the Shop counter
---   ShopUI.open(tab) / ShopUI.close()  -- the big Shop window (tabs "daily", "cosmetics", "exchange")
+--   ShopUI.open(tab) / ShopUI.close()  -- the big Shop window (tabs "potions", "cosmetics", "exchange")
 --   ShopUI.mountEmotes(matchUI, myHero, theirHero)  -- the 💬 emote button in matches
 --
 -- Tabs:
---   🃏 Daily Cards       six single cards a day for Coins (same for everyone, new at UTC midnight)
+--   🍀 Luck Potions      lucky pack openings, bought with Robux (cards only come from packs)
 --   🎨 Deck & Field      board themes, card backs, emotes and deck slots
---   💎 Exchange & Boosts Robux Gem bundles, Coins <-> Gems, Luck and XP boosters
+--   💎 Exchange & Boosts Robux Gem bundles, Coins <-> Gems, XP boosters
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -61,7 +61,7 @@ local state = {
 	toastHolder = nil,
 	window = nil,
 	content = nil,
-	tab = "daily",
+	tab = "potions",
 	tabButtons = {},
 	confirm = nil, -- { button, until } for "tap again to confirm" Gem purchases
 	emoteFns = {}, -- listeners for server-approved emotes
@@ -385,40 +385,65 @@ end
 
 local builders = {}
 
--- 🃏 Daily Cards
-function builders.daily(content, s)
-	local _, grid = section(content, "Today's cards", "Six cards for Coins, the same for every player today. Each can be bought once a day. Legendary and Secret cards only come from packs.", 1)
-	gridLayout(grid, 150, 270)
-	local countdown = text(content, "", { Name = "Countdown", LayoutOrder = 0, Size = UDim2.new(1, 0, 0, 22), Font = BOLD_FONT, TextColor3 = DIM })
-	Juice.onFrame(countdown, function()
-		countdown.Text = "⏳ New cards in " .. duration(since(s.resetIn))
-	end)
-	for k, offer in ipairs(ShopCatalog.dailyCards(s.day)) do
-		local def = CardData.get(offer.id)
-		local t = tile(grid, k, offer.rarity == "Mythic")
-		if state.makeCard then
-			local card = state.makeCard(t, offer.id, UDim2.fromOffset(126, 176))
-			card.Position = UDim2.fromOffset(12, 10)
-		else
-			text(t, def.name, { Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -20, 0, 40) })
+-- The odds line for lucky pulls ("Lucky odds: Epic 12%, ..."), or nil.
+local function luckyOddsLine()
+	local line = nil
+	pcall(function()
+		local pr = ReplicatedStorage:FindFirstChild("PackBrawl") and ReplicatedStorage.PackBrawl:FindFirstChild("PullRates")
+		if pr then
+			local PullRates = require(pr)
+			if PullRates.luckyOdds then
+				local o = PullRates.luckyOdds(ShopCatalog.LuckMultiplier)
+				line = string.format("Lucky odds: Epic %g%%, Mythic %g%%, Legendary %g%%, Secret %g%% (Common %g%%).", o.Epic, o.Mythic, o.Legendary, o.Secret, o.Common)
+			end
 		end
-		local owned = (s.dailyOwned and s.dailyOwned[offer.id]) or 0
-		text(t, owned > 0 and ("You own " .. owned) or "New for you!", {
-			Position = UDim2.fromOffset(10, 192),
-			Size = UDim2.new(1, -20, 0, 20),
-			TextSize = 14,
-			Font = BOLD_FONT,
-			TextColor3 = owned > 0 and DIM or GOOD,
-			TextXAlignment = Enum.TextXAlignment.Center,
-		})
-		local props = { Position = UDim2.fromOffset(10, 220), Size = UDim2.new(1, -20, 0, 40) }
-		if s.bought["s" .. offer.slot] then
-			statusButton(t, "Bought ✓", GOOD:Lerp(TILE, 0.4), props)
+	end)
+	return line
+end
+
+-- A little drawn potion bottle (Roblox has no 🧪 that shows everywhere): cork, neck, round body.
+local function potionBottle(parent, color, pos)
+	local holder = make("Frame", { Name = "Bottle", Size = UDim2.fromOffset(84, 100), Position = pos, AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, parent)
+	local cork = make("Frame", { Name = "Cork", Size = UDim2.fromOffset(22, 14), Position = UDim2.fromOffset(31, 0), BackgroundColor3 = rgb(170, 120, 70) }, holder)
+	corner(cork, 4)
+	local neck = make("Frame", { Name = "Neck", Size = UDim2.fromOffset(20, 22), Position = UDim2.fromOffset(32, 12), BackgroundColor3 = rgb(220, 230, 245), BackgroundTransparency = 0.25 }, holder)
+	corner(neck, 4)
+	local body = make("Frame", { Name = "Body", Size = UDim2.fromOffset(72, 68), Position = UDim2.fromOffset(6, 30), BackgroundColor3 = rgb(220, 230, 245), BackgroundTransparency = 0.25 }, holder)
+	corner(body, 34)
+	stroke(body, INK, 2)
+	local liquid = make("Frame", { Name = "Liquid", Size = UDim2.new(1, -10, 0.72, 0), Position = UDim2.new(0, 5, 1, -5), AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = color }, body)
+	corner(liquid, 30)
+	local shine = make("Frame", { Name = "Shine", Size = UDim2.fromOffset(10, 22), Position = UDim2.fromOffset(16, 14), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0.35 }, body)
+	corner(shine, 5)
+	text(body, "🍀", { Size = UDim2.new(1, 0, 0.6, 0), Position = UDim2.new(0, 0, 0.36, 0), TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center })
+	return holder
+end
+
+-- 🍀 Luck Potions (Robux)
+function builders.potions(content, s)
+	local odds = luckyOddsLine()
+	local _, grid = section(content, "Luck Potions", "🍀 Lucky pulls left: " .. s.luckCharges .. "\nA lucky pull multiplies the chance of Epic and better by " .. ShopCatalog.LuckMultiplier .. " for one pack opening (a 10-pack counts as one). " .. (odds or "") .. " Bought with Robux.", 1)
+	gridLayout(grid, 190, 268)
+	for k, p in ipairs(ShopCatalog.LuckPotions) do
+		local t = tile(grid, k, k == #ShopCatalog.LuckPotions)
+		local color = rgb(p.color[1], p.color[2], p.color[3])
+		potionBottle(t, color, UDim2.new(0.5, 0, 0, 12))
+		text(t, p.name, { Position = UDim2.fromOffset(10, 118), Size = UDim2.new(1, -20, 0, 24), Font = TITLE_FONT, TextSize = 19, TextColor3 = color:Lerp(TEXT, 0.35), TextXAlignment = Enum.TextXAlignment.Center })
+		text(t, "+" .. p.charges .. " lucky pulls", { Position = UDim2.fromOffset(10, 144), Size = UDim2.new(1, -20, 0, 20), Font = BOLD_FONT, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center })
+		text(t, p.blurb, { Position = UDim2.fromOffset(10, 168), Size = UDim2.new(1, -20, 0, 40), TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+		local props = { Position = UDim2.new(0, 10, 1, -48), Size = UDim2.new(1, -20, 0, 38) }
+		if p.productId == 0 then
+			statusButton(t, "Not on sale yet", nil, props)
+		elseif s.gemsRestricted then
+			statusButton(t, "Not available", nil, props)
 		else
-			priceButton(t, { Coins = offer.price }, function()
-				send("Buy", "card", offer.slot)
+			button(t, "R$ " .. p.robux, rgb(120, 230, 140), function()
+				send("BuyPotion", p.id)
 			end, props)
 		end
+	end
+	if s.gemsRestricted then
+		text(content, "Luck Potions aren't available where you live, because they change the odds of random packs.", { LayoutOrder = 2, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextColor3 = DIM, TextSize = 14 })
 	end
 end
 
@@ -556,21 +581,9 @@ function builders.exchange(content, s)
 		end
 	end
 
-	local luckLine = "🍀 Lucky pulls left: " .. s.luckCharges
 	local xpLeft = since(s.xpBoostLeft)
 	local xpLine = xpLeft > 0 and ("⚡ Double XP: " .. duration(xpLeft) .. " left") or "⚡ No XP boost on"
-	local odds = nil
-	pcall(function()
-		local pr = ReplicatedStorage:FindFirstChild("PackBrawl") and ReplicatedStorage.PackBrawl:FindFirstChild("PullRates")
-		if pr then
-			local PullRates = require(pr)
-			if PullRates.luckyOdds then
-				local o = PullRates.luckyOdds(ShopCatalog.LuckMultiplier)
-				odds = string.format("Lucky odds: Epic %g%%, Mythic %g%%, Legendary %g%%, Secret %g%% (Common %g%%).", o.Epic, o.Mythic, o.Legendary, o.Secret, o.Common)
-			end
-		end
-	end)
-	local _, grid3 = section(content, "Boosters", luckLine .. "     " .. xpLine .. "\nA lucky pull multiplies the chance of Epic and better by " .. ShopCatalog.LuckMultiplier .. " for one pack opening (a 10-pack counts as one). " .. (odds or ""), 4)
+	local _, grid3 = section(content, "XP Boosters", xpLine .. "\nLooking for luck? Luck Potions are in the first tab.", 4)
 	gridLayout(grid3, 176, 170)
 	for k, b in ipairs(ShopCatalog.Boosts) do
 		local t = tile(grid3, k)
@@ -583,7 +596,7 @@ function builders.exchange(content, s)
 end
 
 local TABS = {
-	{ key = "daily", name = "🃏 Daily Cards" },
+	{ key = "potions", name = "🍀 Luck Potions" },
 	{ key = "cosmetics", name = "🎨 Deck & Field" },
 	{ key = "exchange", name = "💎 Exchange & Boosts" },
 }

@@ -1,5 +1,5 @@
 -- Two new stations in the room, made from props that are already there:
---   Stations.PlazaDoor  the front door: walk out into the Plaza (PlazaClient)
+--   Stations.ParkDoor  the front door: walk out into the Park (ParkClient)
 --   Stations.Campaign   the painting over the Duel Table: the Campaign map (CampaignUI)
 -- The parts keep their names, sizes and places; they only move into a station Model so the room's
 -- hover glow, clicks and nav buttons treat them like the other stations. Each gets a "Sign".
@@ -61,7 +61,7 @@ local function station(name, partNames, signText, signAt)
 	return model
 end
 
-station("PlazaDoor", {
+station("ParkDoor", {
 	Door = true,
 	DoorPanel = true,
 	DoorKnob = true,
@@ -69,7 +69,7 @@ station("PlazaDoor", {
 	DoorFrameL = true,
 	DoorFrameR = true,
 	DoorFrameTop = true,
-}, "PLAZA", Vector3.new(-14, 13.2, 23.2))
+}, "PARK", Vector3.new(-14, 13.2, 23.2))
 
 station("Campaign", {
 	PaintingFrame = true,

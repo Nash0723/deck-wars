@@ -40,6 +40,18 @@ end
 
 local CardData = req("CardData")
 local Rng = req("Rng")
+local CardLevels = req("CardLevels")
+
+local NO_BONUS = { atk = 0, hp = 0, cost = 0 }
+
+-- What a card's level adds for this seat (nothing when levels are only shown).
+local function levelBonus(self, s, id, level)
+	local seat = self.seats[s]
+	if not seat or not seat.levelStats or not level or level <= 1 then
+		return NO_BONUS
+	end
+	return CardLevels.bonus(id, level)
+end
 
 local MatchEngine = {}
 MatchEngine.__index = MatchEngine
@@ -109,8 +121,21 @@ function MatchEngine.new(setups, seed)
 	for s, setup in ipairs(setups) do
 		table.insert(self.order, s)
 		local team = (s % 2 == 1) and 1 or 2
-		local deck = table.clone(setup.deck)
-		self.rng:shuffle(deck)
+		-- Each copy keeps its level (setup.levels[id] = the levels of that card's copies, best
+		-- first; bots and practice decks have none, so everything is level 1).
+		local given = {}
+		local pairs_ = {}
+		for _, id in ipairs(setup.deck) do
+			local list = type(setup.levels) == "table" and setup.levels[id]
+			given[id] = (given[id] or 0) + 1
+			local lv = type(list) == "table" and tonumber(list[given[id]]) or 1
+			table.insert(pairs_, { id, math.clamp(math.floor(lv), 1, CardLevels.maxLevel(id)) })
+		end
+		self.rng:shuffle(pairs_)
+		local deck, deckLv = {}, {}
+		for i, pr in ipairs(pairs_) do
+			deck[i], deckLv[i] = pr[1], pr[2]
+		end
 		table.insert(self.teams[team].seats, s)
 		self.seats[s] = {
 			team = team,
@@ -119,6 +144,8 @@ function MatchEngine.new(setups, seed)
 			hero = setup.hero or "bonk",
 			family = setup.family or dominantFamily(setup.deck),
 			deck = deck,
+			deckLv = deckLv, -- the level of each card in the deck
+			levelStats = setup.levelStats ~= false, -- false: levels are only shown (duels between players)
 			hand = {},
 			discard = {},
 			lost = {}, -- creatures that popped, newest last (The Mannequin Duke brings one back)
@@ -246,21 +273,24 @@ end
 -- Cards in hand
 ---------------------------------------------------------------------------
 
-function MatchEngine:addToHand(s, id, costMod, costOverride)
+-- level: the copy's card level (1 when left out: made-up cards, the second player's coin, ...).
+function MatchEngine:addToHand(s, id, costMod, costOverride, level)
 	local seat = self.seats[s]
 	if #seat.hand >= CardData.MaxHand then
 		table.insert(seat.discard, id)
 		self:emit({ type = "burn", seat = s, id = id })
 		return nil
 	end
-	local entry = { uid = self:uid(), id = id, costMod = costMod or 0, costOverride = costOverride }
+	level = math.max(1, math.floor(tonumber(level) or 1))
+	local entry = { uid = self:uid(), id = id, costMod = costMod or 0, costOverride = costOverride, level = level }
 	table.insert(seat.hand, entry)
-	self:emit({ type = "draw", seat = s, id = id, uid = entry.uid, cost = costOverride, costMod = costMod })
+	self:emit({ type = "draw", seat = s, id = id, uid = entry.uid, cost = costOverride, costMod = costMod, level = level })
 	return entry
 end
 
 function MatchEngine:draw(s)
 	local seat = self.seats[s]
+	local level = seat.deckLv and table.remove(seat.deckLv) or 1
 	local id = table.remove(seat.deck)
 	if not id then
 		-- An empty deck hurts more every time.
@@ -269,7 +299,7 @@ function MatchEngine:draw(s)
 		self:damageTeam(seat.team, seat.fatigue, nil)
 		return nil
 	end
-	return self:addToHand(s, id)
+	return self:addToHand(s, id, nil, nil, level)
 end
 
 function MatchEngine:findHand(s, uid)
@@ -294,7 +324,7 @@ function MatchEngine:costOf(s, entry)
 		return entry.costOverride
 	end
 	local c = card(entry.id)
-	local cost = c.cost + (entry.costMod or 0)
+	local cost = c.cost + (entry.costMod or 0) + levelBonus(self, s, entry.id, entry.level).cost
 	if entry.id == "scrapheap_titan" then
 		cost -= math.min(3, self:scrapOnSide(self.seats[s].team))
 	end
@@ -477,7 +507,7 @@ function MatchEngine:keywordsOf(u)
 end
 
 function MatchEngine:maxHpOf(u)
-	return card(u.id).hp + u.hpBonus
+	return card(u.id).hp + (u.lvHp or 0) + u.hpBonus
 end
 
 function MatchEngine:healthOf(u)
@@ -491,7 +521,7 @@ end
 
 function MatchEngine:attackOf(u)
 	local c = card(u.id)
-	local atk = c.atk + u.atkBonus + u.power + u.tempAtk
+	local atk = c.atk + (u.lvAtk or 0) + u.atkBonus + u.power + u.tempAtk
 	if self:isHome(u) then
 		atk += CardData.HomeBonus
 	end
@@ -525,7 +555,7 @@ end
 function MatchEngine:snapshot(u)
 	local c = card(u.id)
 	if u.kind == "building" then
-		return { uid = u.uid, id = u.id, kind = "building", owner = u.owner, team = u.team, lane = u.lane }
+		return { uid = u.uid, id = u.id, kind = "building", owner = u.owner, team = u.team, lane = u.lane, level = u.level }
 	end
 	return {
 		uid = u.uid,
@@ -536,7 +566,8 @@ function MatchEngine:snapshot(u)
 		lane = u.lane,
 		row = u.row,
 		atk = self:attackOf(u),
-		baseAtk = c.atk,
+		baseAtk = c.atk + (u.lvAtk or 0),
+		level = u.level or 1,
 		hp = self:healthOf(u),
 		maxHp = self:maxHpOf(u),
 		power = u.power,
@@ -566,10 +597,15 @@ function MatchEngine:refreshAll()
 	end
 end
 
-local function newCreature(self, s, id, lane, row)
+local function newCreature(self, s, id, lane, row, level)
+	level = math.clamp(math.floor(tonumber(level) or 1), 1, CardLevels.maxLevel(id))
+	local lv = levelBonus(self, s, id, level)
 	return {
 		uid = self:uid(),
 		id = id,
+		level = level, -- card level: its small stat bonus is part of the creature (washing keeps it)
+		lvAtk = lv.atk,
+		lvHp = lv.hp,
 		kind = "creature",
 		owner = s,
 		team = self.seats[s].team,
@@ -622,7 +658,7 @@ function MatchEngine:spawn(s, lane, id, opts)
 		end
 		self:setAt(team, lane, row, nil)
 	end
-	local u = newCreature(self, s, id, lane, row)
+	local u = newCreature(self, s, id, lane, row, opts.level)
 	if opts.damage then
 		u.damage = opts.damage
 	end
@@ -643,7 +679,7 @@ function MatchEngine:landIn(u)
 	end
 end
 
-function MatchEngine:build(s, lane, id)
+function MatchEngine:build(s, lane, id, level)
 	local team = self.seats[s].team
 	local l = self.lanes[team][lane]
 	local replaced = nil
@@ -651,7 +687,7 @@ function MatchEngine:build(s, lane, id)
 		replaced = l.building.uid
 		table.insert(self.seats[l.building.owner].discard, l.building.id)
 	end
-	l.building = { uid = self:uid(), id = id, kind = "building", owner = s, team = team, lane = lane }
+	l.building = { uid = self:uid(), id = id, kind = "building", owner = s, team = team, lane = lane, level = level or 1 }
 	self:emit({ type = "build", unit = self:snapshot(l.building), replaced = replaced })
 	return l.building
 end
@@ -1567,7 +1603,7 @@ function MatchEngine:returnToHand(u)
 	self:setAt(u.team, u.lane, u.row, nil)
 	self:emit({ type = "bounce", uid = u.uid })
 	if not card(u.id).token then
-		self:addToHand(u.owner, u.id)
+		self:addToHand(u.owner, u.id, nil, nil, u.level)
 	end
 end
 
@@ -2004,12 +2040,12 @@ function MatchEngine:act(s, action)
 		table.remove(seat.hand, index)
 		seat.played += 1
 		local row = c.type == "Creature" and self:freeRow(seat.team, action.lane, action.row) or nil
-		self:emit({ type = "play", seat = s, id = entry.id, handUid = entry.uid, cost = cost, lane = action.lane, row = row, magic = seat.magic })
+		self:emit({ type = "play", seat = s, id = entry.id, handUid = entry.uid, cost = cost, lane = action.lane, row = row, magic = seat.magic, level = entry.level or 1 })
 		if c.type == "Creature" then
-			local u = self:spawn(s, action.lane, entry.id, { how = "play", row = row })
+			local u = self:spawn(s, action.lane, entry.id, { how = "play", row = row, level = entry.level })
 			self:onPlay(u, target, combo)
 		elseif c.type == "Building" then
-			self:build(s, action.lane, entry.id)
+			self:build(s, action.lane, entry.id, entry.level)
 		else
 			if not c.token then
 				table.insert(seat.discard, entry.id)
@@ -2203,6 +2239,7 @@ function MatchEngine:viewFor(s)
 			deckCount = #seat.deck,
 			discardCount = #seat.discard,
 			dealt = seat.dealt,
+			levelStats = seat.levelStats, -- do this seat's card levels change numbers (vs bots) or just show?
 			bigMoveUsed = seat.bigMoveUsed,
 			bigMoveReady = self:bigMoveReady(i),
 			lanes = self:lanesOf(i),
@@ -2210,7 +2247,7 @@ function MatchEngine:viewFor(s)
 	end
 	if s and self.seats[s] then
 		for _, e in ipairs(self.seats[s].hand) do
-			table.insert(v.hand, { uid = e.uid, id = e.id, cost = self:costOf(s, e), baseCost = card(e.id).cost })
+			table.insert(v.hand, { uid = e.uid, id = e.id, cost = self:costOf(s, e), baseCost = card(e.id).cost, level = e.level or 1 })
 		end
 	end
 	return v

@@ -14,29 +14,60 @@ function Progression.xpForLevel(level)
 	return math.min(400, 80 + 20 * (math.max(1, level) - 1))
 end
 
--- Gems for reaching `level`: 30, and 100 on every 5th level.
+-- Gems for reaching `level`: 60, and 200 on every 5th level.
 function Progression.levelReward(level)
-	return (level % 5 == 0) and 100 or 30
+	return (level % 5 == 0) and 200 or 60
 end
 
--- The daily reward: claim once a day. Coming back the next day moves you up a day; a day missed
--- starts you at day 1 again. After day 7 it starts over at day 1 (and keeps your streak count).
-Progression.DailyRewards = { 20, 30, 40, 50, 60, 80, 150 }
+-- The daily reward is a week: claim once a day, and coming back the next day moves you up a day
+-- (a day missed starts you at day 1 again). After day 7 the next week starts at day 1, every
+-- week, for good (your streak count keeps growing). Each day pays Gems and Coins; day 2 adds a
+-- Small Luck Potion and day 7, the big one, a Big Luck Potion (ids from ShopCatalog.LuckPotions).
+-- It starts at 200 Gems (two packs), climbs 100 a day to 700 on day 6, and day 7 pays 1,000:
+-- 3,700 Gems a week.
+Progression.DailyWeek = {
+	{ gems = 200, coins = 150 },
+	{ gems = 300, coins = 175, potion = "potion_small" },
+	{ gems = 400, coins = 200 },
+	{ gems = 500, coins = 225 },
+	{ gems = 600, coins = 250 },
+	{ gems = 700, coins = 275 },
+	{ gems = 1000, coins = 300, potion = "potion_big" },
+}
+-- (just the Gems of each day, for the screens that only show those)
+Progression.DailyRewards = {}
+for i, day in ipairs(Progression.DailyWeek) do
+	Progression.DailyRewards[i] = day.gems
+end
 
+-- Which day of the week (1 to 7) the streak day `streakDay` is, and which week (1, 2, ...).
+function Progression.dailyWeekDay(streakDay)
+	return ((math.max(1, math.floor(streakDay or 1)) - 1) % #Progression.DailyWeek) + 1
+end
+
+function Progression.dailyWeek(streakDay)
+	return math.floor((math.max(1, math.floor(streakDay or 1)) - 1) / #Progression.DailyWeek) + 1
+end
+
+-- Everything the day pays: { gems, coins, potion = potion id or nil }.
+function Progression.dailyPrize(streakDay)
+	return Progression.DailyWeek[Progression.dailyWeekDay(streakDay)]
+end
+
+-- Just the Gems.
 function Progression.dailyReward(streakDay)
-	local n = #Progression.DailyRewards
-	return Progression.DailyRewards[((math.max(1, streakDay) - 1) % n) + 1]
+	return Progression.dailyPrize(streakDay).gems
 end
 
 -- Your first win each day pays this much extra.
-Progression.FirstWinBonus = 50
+Progression.FirstWinBonus = 100
 
--- Wins in a row pay extra: 2 in a row +5, 3 in a row +10 ... up to +25.
+-- Wins in a row pay extra: 2 in a row +10, 3 in a row +20 ... up to +50.
 function Progression.streakBonus(streak)
 	if streak < 2 then
 		return 0
 	end
-	return math.min(25, 5 * (streak - 1))
+	return math.min(50, 10 * (streak - 1))
 end
 
 -- Daily quests: three a day, picked from this list (at most one "win with a deck" quest).
@@ -45,21 +76,21 @@ end
 -- winDeck (win with the deck in `deck`).
 Progression.QuestXP = 30
 Progression.Quests = {
-	{ id = "win2", text = "Win 2 matches", kind = "win", target = 2, gems = 40 },
-	{ id = "play3", text = "Play 3 matches", kind = "match", target = 3, gems = 30 },
-	{ id = "creatures10", text = "Play 10 creatures", kind = "creature", target = 10, gems = 30 },
-	{ id = "spells4", text = "Cast 4 spells", kind = "spell", target = 4, gems = 30 },
-	{ id = "buildings3", text = "Build 3 buildings", kind = "building", target = 3, gems = 30 },
-	{ id = "sparks6", text = "Spark 6 times", kind = "spark", target = 6, gems = 30 },
-	{ id = "damage30", text = "Deal 30 damage to enemy heroes", kind = "damage", target = 30, gems = 40 },
-	{ id = "pops8", text = "Pop 8 enemy creatures", kind = "pop", target = 8, gems = 35 },
-	{ id = "hard1", text = "Beat a Hard bot", kind = "winHard", target = 1, gems = 60 },
-	{ id = "deckSnack", text = "Win with a Snack deck", kind = "winDeck", deck = "Snack", target = 1, gems = 45 },
-	{ id = "deckJunk", text = "Win with a Junk deck", kind = "winDeck", deck = "Junk", target = 1, gems = 45 },
-	{ id = "deckWeather", text = "Win with a Weather deck", kind = "winDeck", deck = "Weather", target = 1, gems = 45 },
-	{ id = "deckCritter", text = "Win with a Critter deck", kind = "winDeck", deck = "Critter", target = 1, gems = 45 },
-	{ id = "deckSpooky", text = "Win with a Spooky deck", kind = "winDeck", deck = "Spooky", target = 1, gems = 45 },
-	{ id = "deckRobo", text = "Win with a Robo deck", kind = "winDeck", deck = "Robo", target = 1, gems = 45 },
+	{ id = "win2", text = "Win 2 matches", kind = "win", target = 2, gems = 80 },
+	{ id = "play3", text = "Play 3 matches", kind = "match", target = 3, gems = 60 },
+	{ id = "creatures10", text = "Play 10 creatures", kind = "creature", target = 10, gems = 60 },
+	{ id = "spells4", text = "Cast 4 spells", kind = "spell", target = 4, gems = 60 },
+	{ id = "buildings3", text = "Build 3 buildings", kind = "building", target = 3, gems = 60 },
+	{ id = "sparks6", text = "Spark 6 times", kind = "spark", target = 6, gems = 60 },
+	{ id = "damage30", text = "Deal 30 damage to enemy heroes", kind = "damage", target = 30, gems = 80 },
+	{ id = "pops8", text = "Pop 8 enemy creatures", kind = "pop", target = 8, gems = 70 },
+	{ id = "hard1", text = "Beat a Hard bot", kind = "winHard", target = 1, gems = 120 },
+	{ id = "deckSnack", text = "Win with a Snack deck", kind = "winDeck", deck = "Snack", target = 1, gems = 90 },
+	{ id = "deckJunk", text = "Win with a Junk deck", kind = "winDeck", deck = "Junk", target = 1, gems = 90 },
+	{ id = "deckWeather", text = "Win with a Weather deck", kind = "winDeck", deck = "Weather", target = 1, gems = 90 },
+	{ id = "deckCritter", text = "Win with a Critter deck", kind = "winDeck", deck = "Critter", target = 1, gems = 90 },
+	{ id = "deckSpooky", text = "Win with a Spooky deck", kind = "winDeck", deck = "Spooky", target = 1, gems = 90 },
+	{ id = "deckRobo", text = "Win with a Robo deck", kind = "winDeck", deck = "Robo", target = 1, gems = 90 },
 }
 Progression.QuestById = {}
 for _, q in ipairs(Progression.Quests) do
@@ -72,12 +103,12 @@ Progression.QuestsPerDay = 3
 -- themes (won with each of the 6 themes: a deck counts for every theme it uses), cup (Cups won),
 -- fullSet (own every card of one theme).
 Progression.Achievements = {
-	{ id = "first_win", name = "First Blood", text = "Win a match", kind = "win", target = 1, gems = 50 },
-	{ id = "level_10", name = "Level Ten", text = "Reach level 10", kind = "level", target = 10, gems = 100 },
-	{ id = "lucky_pull", name = "Lucky Pull", text = "Pull a Legendary or Secret card", kind = "luckyPull", target = 1, gems = 100 },
-	{ id = "six_themes", name = "Six Flavours", text = "Win with a deck of each of the 6 themes", kind = "themes", target = 6, gems = 150 },
-	{ id = "cup_champion", name = "Cup Champion", text = "Win a Cup", kind = "cup", target = 1, gems = 200 },
-	{ id = "full_set", name = "Full Set", text = "Own every card of one theme", kind = "fullSet", target = 1, gems = 250 },
+	{ id = "first_win", name = "First Blood", text = "Win a match", kind = "win", target = 1, gems = 100 },
+	{ id = "level_10", name = "Level Ten", text = "Reach level 10", kind = "level", target = 10, gems = 200 },
+	{ id = "lucky_pull", name = "Lucky Pull", text = "Pull a Legendary or Secret card", kind = "luckyPull", target = 1, gems = 200 },
+	{ id = "six_themes", name = "Six Flavours", text = "Win with a deck of each of the 6 themes", kind = "themes", target = 6, gems = 300 },
+	{ id = "cup_champion", name = "Cup Champion", text = "Win a Cup", kind = "cup", target = 1, gems = 400 },
+	{ id = "full_set", name = "Full Set", text = "Own every card of one theme", kind = "fullSet", target = 1, gems = 500 },
 }
 Progression.AchievementById = {}
 for _, a in ipairs(Progression.Achievements) do
@@ -97,17 +128,17 @@ Progression.Trophies = {
 -- Each stop: trophies needed, and the reward (gems / coins / a cosmetic id).
 Progression.TrophyRoad = {
 	{ at = 10, coins = 300 },
-	{ at = 25, gems = 50 },
+	{ at = 25, gems = 200 },
 	{ at = 45, cosmetic = "bg_meadow" },
 	{ at = 70, coins = 600 },
-	{ at = 100, gems = 100 },
+	{ at = 100, gems = 400 },
 	{ at = 140, cosmetic = "bg_fire" },
 	{ at = 190, coins = 1000 },
-	{ at = 250, gems = 150 },
+	{ at = 250, gems = 600 },
 	{ at = 320, cosmetic = "bg_space" },
-	{ at = 400, gems = 250 },
+	{ at = 400, gems = 1000 },
 	{ at = 500, coins = 2500 },
-	{ at = 650, gems = 400 },
+	{ at = 650, gems = 1600 },
 }
 
 -- Trophies for one finished match. `m` is what PlayerData.recordMatch gets (plus m.pvp when no

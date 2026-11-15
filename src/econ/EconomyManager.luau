@@ -9,6 +9,9 @@
 --   EconomyManager.grantCards(player, { cardId, ... }) -> isNew { bool }, counts { number }, uniqueOwned
 --   EconomyManager.getCollection(player) -> { [cardId] = count } (a copy)
 --   EconomyManager.ownsCard(player, cardId) -> count
+--   EconomyManager.getCardLevels(player) -> { [cardId] = { copies at Lv1, Lv2, ... } } (a copy)
+--   EconomyManager.storage(player) -> copies kept, limit (see CardLevels)
+--   EconomyManager.fuseCard / fuseAllCopies / fuseEverything / sellCard  (the Deck Shelf)
 --   EconomyManager.takePullLuck(player) -> multiplier (1 = no Luck booster; uses one charge)
 --   EconomyManager.getDeckSlots(player) -> number
 --   EconomyManager.waitForData(player) -> the live saved table (or nil); then markDirty(player)
@@ -32,6 +35,7 @@ local function req(name)
 end
 
 local CardData = req("CardData")
+local CardLevels = req("CardLevels")
 local ShopCatalog = req("ShopCatalog")
 local ProfileStore = req("ProfileStore")
 
@@ -51,7 +55,9 @@ EconomyManager.Template = {
 	coins = ShopCatalog.StartingCoins,
 	xp = 0,
 	level = 1,
-	collection = {}, -- [cardId] = copies owned
+	collection = {}, -- [cardId] = copies owned (all levels together)
+	cardLevels = {}, -- [cardId] = { copies at Lv1, Lv2, ... } (see CardLevels; adds up to collection)
+	storageBonus = 0, -- extra card storage on top of CardLevels.StorageLimit (an upgrade, later)
 	decks = {}, -- saved decks (filled by the deck builder)
 	deckSlots = ShopCatalog.DeckSlots.start,
 	flags = {}, -- one-off flags, e.g. starterGranted
@@ -148,6 +154,9 @@ local function mirror(player)
 			player:SetAttribute("Gems", d.gems)
 			player:SetAttribute("Coins", d.coins)
 			player:SetAttribute("Level", d.level)
+			-- the pack screen shows the boosted odds while lucky pulls remain (Roblox asks for it)
+			player:SetAttribute("LuckCharges", d.boosts and d.boosts.luckCharges or 0)
+			player:SetAttribute("LuckMultiplier", ShopCatalog.LuckMultiplier or 1)
 		end)
 	end
 end
@@ -341,13 +350,49 @@ end
 -- Cards
 ---------------------------------------------------------------------------
 
+-- A card's copies by level ({ [level] = copies }), always matching the copies in d.collection
+-- (old saves only had the totals: their copies all start at level 1).
+local function levelsOf(d, id)
+	d.cardLevels = type(d.cardLevels) == "table" and d.cardLevels or {}
+	return CardLevels.normalize(id, CardLevels.fromList(d.cardLevels[id]), d.collection[id] or 0)
+end
+
+-- Writes a card's copies back (both tables). The last copy gone = the card isn't owned any more.
+local function setLevels(d, id, levels)
+	local total = CardLevels.total(levels)
+	d.cardLevels = type(d.cardLevels) == "table" and d.cardLevels or {}
+	if total > 0 then
+		d.collection[id] = total
+		d.cardLevels[id] = CardLevels.toList(levels)
+	else
+		d.collection[id] = nil
+		d.cardLevels[id] = nil
+	end
+end
+
+local function cardsKept(d)
+	local n = 0
+	for _, c in pairs(d.collection) do
+		n += c
+	end
+	return n
+end
+
+local function storageLimit(d)
+	return CardLevels.StorageLimit + math.max(0, math.floor(tonumber(d.storageBonus) or 0))
+end
+
 local function addCards(d, ids)
 	local isNew, counts = {}, {}
 	for i, id in ipairs(ids) do
 		if type(id) == "string" and CardData.Cards[id] then
 			local had = d.collection[id] or 0
 			isNew[i] = had == 0
-			d.collection[id] = math.min(EconomyManager.MaxCardCopies, had + 1)
+			if had < EconomyManager.MaxCardCopies then
+				local levels = levelsOf(d, id)
+				levels[1] = (levels[1] or 0) + 1
+				setLevels(d, id, levels)
+			end
 			counts[i] = d.collection[id]
 		else
 			isNew[i] = false
@@ -388,6 +433,130 @@ end
 function EconomyManager.ownsCard(player, id)
 	local d = EconomyManager.waitForData(player)
 	return d and (d.collection[id] or 0) or 0
+end
+
+function EconomyManager.getCardLevels(player)
+	local d = EconomyManager.waitForData(player)
+	local out = {}
+	if d then
+		for id in pairs(d.collection) do
+			out[id] = CardLevels.toList(levelsOf(d, id))
+		end
+	end
+	return out
+end
+
+-- Copies kept and the storage limit.
+function EconomyManager.storage(player)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return 0, CardLevels.StorageLimit
+	end
+	return cardsKept(d), storageLimit(d)
+end
+
+-- Is there room to open a pack? (While under the limit, a pack always fits, even a 10-pack.)
+function EconomyManager.hasCardRoom(player)
+	local used, limit = EconomyManager.storage(player)
+	return used < limit
+end
+
+---------------------------------------------------------------------------
+-- Fusing and selling (the Deck Shelf). The copies the player's saved decks use are always kept.
+---------------------------------------------------------------------------
+
+local function reservedFor(d, id)
+	return CardLevels.reserved(d.decks, id)
+end
+
+-- Two copies of `id` at `level` become one a level higher. Returns ok, why-not or the new level.
+function EconomyManager.fuseCard(player, id, level)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return false, "Your save hasn't loaded yet."
+	end
+	if type(id) ~= "string" or not CardData.Cards[id] then
+		return false, "Unknown card."
+	end
+	local levels = levelsOf(d, id)
+	local ok, why = CardLevels.canFuse(id, levels, level, reservedFor(d, id))
+	if not ok then
+		return false, why
+	end
+	CardLevels.fuse(levels, level)
+	setLevels(d, id, levels)
+	d.stats.fused = (d.stats.fused or 0) + 1
+	changed(player, "fuse")
+	return true, level + 1
+end
+
+-- Fuses every copy of `id` it can (lowest levels first). Returns ok, fuses, { levels made }.
+function EconomyManager.fuseAllCopies(player, id)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return false, "Your save hasn't loaded yet."
+	end
+	if type(id) ~= "string" or not CardData.Cards[id] then
+		return false, "Unknown card."
+	end
+	local levels = levelsOf(d, id)
+	local n, made = CardLevels.fuseAll(id, levels, reservedFor(d, id))
+	if n == 0 then
+		return false, "Nothing to fuse yet: you need 2 copies at the same level."
+	end
+	setLevels(d, id, levels)
+	d.stats.fused = (d.stats.fused or 0) + n
+	changed(player, "fuse")
+	return true, n, made
+end
+
+-- Fuses everything in the collection. Returns ok, fuses, the highest level any card reached.
+function EconomyManager.fuseEverything(player)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return false, "Your save hasn't loaded yet."
+	end
+	local total, best = 0, 1
+	for id in pairs(table.clone(d.collection)) do
+		if CardData.Cards[id] then
+			local levels = levelsOf(d, id)
+			local n, made = CardLevels.fuseAll(id, levels, reservedFor(d, id))
+			if n > 0 then
+				setLevels(d, id, levels)
+				total += n
+				best = math.max(best, table.unpack(made))
+			end
+		end
+	end
+	if total == 0 then
+		return false, "Nothing to fuse yet: you need 2 copies of a card at the same level."
+	end
+	d.stats.fused = (d.stats.fused or 0) + total
+	changed(player, "fuse")
+	return true, total, best
+end
+
+-- Sells one copy of `id` at `level` for Coins. Returns ok, why-not or the Coins paid.
+function EconomyManager.sellCard(player, id, level)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return false, "Your save hasn't loaded yet."
+	end
+	if type(id) ~= "string" or not CardData.Cards[id] then
+		return false, "Unknown card."
+	end
+	local levels = levelsOf(d, id)
+	local ok, why = CardLevels.canSell(id, levels, level, reservedFor(d, id))
+	if not ok then
+		return false, why
+	end
+	local coins = CardLevels.sellValue(id, level)
+	CardLevels.sell(levels, level)
+	setLevels(d, id, levels)
+	d.coins = math.min(ShopCatalog.MaxBalance, d.coins + coins)
+	d.stats.cardsSold = (d.stats.cardsSold or 0) + 1
+	changed(player, "sell")
+	return true, coins
 end
 
 function EconomyManager.getDeckSlots(player)
@@ -529,7 +698,6 @@ local function ownsCosmetic(d, id)
 end
 
 -- Buys something. kind / id:
---   "card", slot number        a card from today's rotation (once per slot per day)
 --   "cosmetic", cosmeticId     a board theme, card back or emote (board/card back get equipped)
 --   "deckslot", nil            one more deck slot
 --   "exchange", exchangeId     Coins <-> Gems (some are limited per day)
@@ -542,28 +710,8 @@ function EconomyManager.buy(player, kind, id)
 	end
 	rollDay(d)
 	if kind == "card" then
-		local slot = tonumber(id)
-		local offer = nil
-		for _, o in ipairs(ShopCatalog.dailyCards(today())) do
-			if o.slot == slot then
-				offer = o
-			end
-		end
-		if not offer then
-			return false, "That card isn't in today's shop."
-		end
-		local key = "s" .. offer.slot
-		if d.daily.bought[key] then
-			return false, "You already bought that one today."
-		end
-		local ok, why = payPrice(d, { Coins = offer.price })
-		if not ok then
-			return false, why
-		end
-		d.daily.bought[key] = true
-		local isNew, counts = addCards(d, { offer.id })
-		changed(player, "buy")
-		return true, "Bought " .. CardData.Cards[offer.id].name .. "!", { id = offer.id, isNew = isNew[1], count = counts[1] }
+		-- (cards aren't sold in the Shop any more: they only come from packs)
+		return false, "Cards aren't sold in the Shop any more. Open packs at the Pack Party!"
 	elseif kind == "cosmetic" then
 		local c = type(id) == "string" and ShopCatalog.CosmeticById[id]
 		if not c then
@@ -750,13 +898,18 @@ function EconomyManager.processReceipt(receipt, getPlayer, decisions)
 	if not player then
 		return notYet -- they left; Roblox asks again next time they join
 	end
-	local bundle = nil
+	local bundle, potion = nil, nil
 	for _, b in ipairs(ShopCatalog.GemBundles) do
 		if b.productId ~= 0 and b.productId == receipt.ProductId then
 			bundle = b
 		end
 	end
-	if not bundle then
+	for _, p in ipairs(ShopCatalog.LuckPotions) do
+		if p.productId ~= 0 and p.productId == receipt.ProductId then
+			potion = p
+		end
+	end
+	if not bundle and not potion then
 		deps.warn("EconomyManager: unknown developer product " .. tostring(receipt.ProductId))
 		return notYet
 	end
@@ -772,7 +925,12 @@ function EconomyManager.processReceipt(receipt, getPlayer, decisions)
 		end
 	end
 	if not seen then
-		d.gems = math.min(ShopCatalog.MaxBalance, d.gems + bundle.gems + bundle.bonus)
+		if bundle then
+			d.gems = math.min(ShopCatalog.MaxBalance, d.gems + bundle.gems + bundle.bonus)
+		else
+			-- a paid potion is always given in full, even past MaxLuckCharges
+			d.boosts.luckCharges = (d.boosts.luckCharges or 0) + potion.charges
+		end
 		d.stats.robuxSpent += tonumber(receipt.CurrencySpent) or 0
 		table.insert(d.receipts, pid)
 		while #d.receipts > EconomyManager.ReceiptHistory do

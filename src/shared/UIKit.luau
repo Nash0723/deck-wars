@@ -9,6 +9,7 @@
 --   UIKit.caption(button, "Coins", "120")           -- a button that shows [coin] 120 in the middle
 --   UIKit.closeButton(parent, onClick, props)       -- a round button with a drawn ✕ (Name "Close")
 --   UIKit.levelBadge(parent, 44, props)             -- the round level badge: badge.set(12)
+--   UIKit.levelPips(card, 3, 5)                     -- a card's level: ◆◆◆◇◇ in a small pill
 --
 -- Focus: when a window opens, everything that would crowd it slides out of the way, the room
 -- behind dims and softly blurs, and the window springs in. When it closes, they come back.
@@ -37,16 +38,17 @@ UIKit.TITLE_FONT = Enum.Font.FredokaOne
 UIKit.BODY_FONT = Enum.Font.GothamMedium
 UIKit.BOLD_FONT = Enum.Font.GothamBold
 
+-- Cozy: dark wood, cream and honey (see CozyTheme)
 UIKit.Color = {
-	ink = rgb(18, 14, 28),
-	panel = rgb(30, 25, 46),
-	panelHi = rgb(40, 34, 60),
-	tile = rgb(42, 36, 62),
-	tileHi = rgb(56, 48, 82),
-	line = rgb(70, 62, 98),
-	gold = rgb(255, 220, 90),
-	text = rgb(236, 232, 246),
-	dim = rgb(176, 170, 196),
+	ink = rgb(28, 19, 14),
+	panel = rgb(48, 33, 24),
+	panelHi = rgb(63, 44, 32),
+	tile = rgb(66, 47, 35),
+	tileHi = rgb(87, 63, 46),
+	line = rgb(120, 92, 68),
+	gold = rgb(255, 214, 120),
+	text = rgb(247, 237, 222),
+	dim = rgb(200, 184, 164),
 	good = rgb(70, 190, 110),
 	bad = rgb(220, 80, 80),
 	gem = rgb(110, 200, 255),
@@ -259,14 +261,14 @@ function UIKit.closeButton(parent, onClick, props)
 	return b
 end
 
--- The round level badge: a violet disc with a gold rim and the level centered in it.
+-- The round level badge: a warm cherry-wood disc with a gold rim and the level centered in it.
 -- Returns the badge (a Frame) with a .Value TextLabel; badge:SetAttribute is not needed:
 -- call UIKit.setLevel(badge, n).
 function UIKit.levelBadge(parent, px, props)
 	px = px or 44
 	local f = make("Frame", { Name = "Level", Size = UDim2.fromOffset(px, px), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0 }, parent)
 	round(f)
-	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(rgb(132, 108, 226), rgb(66, 48, 138)) }, f)
+	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(rgb(206, 112, 78), rgb(122, 52, 38)) }, f)
 	make("UIStroke", { Thickness = 2.5, Color = rgb(255, 208, 102), ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
 	local inner = make("Frame", { Name = "Inner", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -6, 1, -6), BackgroundTransparency = 1 }, f)
 	round(inner)
@@ -300,6 +302,87 @@ function UIKit.setLevel(badge, level)
 		-- three digits get a little smaller so they stay inside the disc
 		v.TextSize = math.floor(badge.Size.Y.Offset * (#s >= 3 and 0.36 or 0.46) + 0.5)
 	end
+end
+
+-- Card level pips: a small dark pill with one diamond per level, the reached ones filled in gold.
+-- At the card's max level the pill gets a solid gold rim. By default it sits centred on the
+-- bottom edge of `parent` (a card) and scales with it.
+--   local pips = UIKit.levelPips(card, 3, 5)      UIKit.setPips(pips, 4, 5, true) -- pops the new one
+local PIP = { size = 0.5, gap = 0.42, side = 0.9 }
+local PIP_ON = rgb(255, 214, 120)
+local PIP_OFF = rgb(112, 92, 74)
+
+local function pipsWidth(max)
+	return PIP.side + max * PIP.size + (max - 1) * PIP.gap
+end
+
+function UIKit.setPips(pill, level, max, animate)
+	max = math.max(1, max or pill:GetAttribute("Max") or 1)
+	level = math.clamp(level or 1, 1, max)
+	local was = pill:GetAttribute("Level") or 0
+	pill:SetAttribute("Level", level)
+	pill:SetAttribute("Max", max)
+	local atMax = level >= max
+	local stroke = pill:FindFirstChild("Rim")
+	if stroke then
+		stroke.Color = atMax and PIP_ON or rgb(150, 118, 80)
+		stroke.Transparency = atMax and 0 or 0.45
+		stroke.Thickness = atMax and 1.5 or 1
+	end
+	pill.BackgroundColor3 = atMax and rgb(74, 48, 20) or C.ink
+	for i = 1, max do
+		local d = pill:FindFirstChild("Pip" .. i)
+		if d then
+			local on = i <= level
+			local goal = { BackgroundColor3 = on and (atMax and rgb(255, 236, 170) or PIP_ON) or PIP_OFF, BackgroundTransparency = on and 0 or 0.35 }
+			if animate and on and i > was then
+				local sc = d:FindFirstChild("Pop") or make("UIScale", { Name = "Pop" }, d)
+				sc.Scale = 1.9
+				task.delay((i - was - 1) * 0.12, function()
+					tween(d, 0.25, goal)
+					tween(sc, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
+				end)
+			else
+				for k, v in pairs(goal) do
+					d[k] = v
+				end
+			end
+		end
+	end
+end
+
+function UIKit.levelPips(parent, level, max, props)
+	max = math.max(1, max or 1)
+	local w = pipsWidth(max)
+	local pill = make("Frame", {
+		Name = "LevelPips",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 1),
+		Size = UDim2.fromScale(1, 0.085),
+		BackgroundColor3 = C.ink,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		ZIndex = 6,
+	}, parent)
+	round(pill)
+	make("UIAspectRatioConstraint", { AspectRatio = w, DominantAxis = Enum.DominantAxis.Height }, pill)
+	make("UIStroke", { Name = "Rim", ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pill)
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(PIP.gap / w, 0),
+	}, pill)
+	for i = 1, max do
+		local d = make("Frame", { Name = "Pip" .. i, LayoutOrder = i, Size = UDim2.fromScale(PIP.size / w, PIP.size), Rotation = 45, BorderSizePixel = 0, ZIndex = 7 }, pill)
+		make("UICorner", { CornerRadius = UDim.new(0.22, 0) }, d)
+	end
+	for k, v in pairs(props or {}) do
+		pill[k] = v
+	end
+	UIKit.setPips(pill, level, max, false)
+	return pill
 end
 
 -- A faint light rim just inside a panel's outline, so it reads as one clean, finished piece.
@@ -556,6 +639,16 @@ function Focus.update()
 		Focus.blurNow = blur
 		tween(Focus.blur, 0.35, { Size = blur })
 	end
+end
+
+-- Is any watched window open right now? (`except`: leave that one out, e.g. the station panel.)
+function Focus.anyOpen(except)
+	for win, on in pairs(Focus.shownWas) do
+		if on and win.Parent and win ~= except then
+			return true
+		end
+	end
+	return false
 end
 
 -- Is any watched window with this chrome name in its hide list open right now?
