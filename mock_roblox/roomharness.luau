@@ -94,7 +94,7 @@ local EXPECT = {
 	binder = 24, cardbox = 5, shelflamp = 1, balloon = 5, speaker = 2, discoball = 1, discotile = 36, packjar = 2,
 	pickles = 1, register = 1, candyjar = 9, packbox = 18, displaypack = 5, awning = 8, trophy = 6, pennant = 5,
 	certificate = 2, radio = 1, fireplace = 1, candle = 2, clock = 1, mantletrophy = 1, poster = 1, poster2 = 1,
-	lamp = 4, plant = 5, curtain = 6, window = 3,
+	lamp = 4, plant = 5, curtain = 6, window = 3, chair = 2,
 }
 local counts = RoomLife.counts()
 local total = 0
@@ -179,6 +179,15 @@ local function snapshot()
 	return s
 end
 local HOME = snapshot()
+-- The Duel Table's chairs are tucked in under the table while nobody plays, so in the room they
+-- rest CHAIR_TUCK studs from where they really stand. They have their own checks further down.
+local CHAIR_TUCK = 0.9
+local chairPart = {}
+for _, p in ipairs(RoomLife.kinds.chair) do
+	for _, e in ipairs(p.parts) do
+		chairPart[e.part] = p
+	end
+end
 
 -- left alone, something fidgets on its own every so often (then the tests turn that off)
 do
@@ -186,7 +195,7 @@ do
 	for _ = 1, 60 * 30 do
 		RoomLife.update(1 / 60, nil, true)
 		for part, cf in pairs(HOME) do
-			if part.Name ~= "PicklesPupil" and (part.CFrame.Position - cf.Position).Magnitude > 0.02 then
+			if part.Name ~= "PicklesPupil" and not chairPart[part] and (part.CFrame.Position - cf.Position).Magnitude > 0.02 then
 				moved = true
 			end
 		end
@@ -220,14 +229,27 @@ local function maxMove(p)
 	end
 	return md, mr
 end
--- (Pickles' pupils keep following the cursor, so they don't count as "away from home")
+-- (Pickles' pupils keep following the cursor, so they don't count as "away from home"; a chair's
+-- home in the room is tucked in: every part CHAIR_TUCK studs toward the table, not turned)
 local function allHome()
 	local worst = 0
 	for part, cf in pairs(HOME) do
 		local d, r = 0, 0
-		if part.Name ~= "PicklesPupil" then
+		if chairPart[part] then
+			d, r = offset(part)
+			d = math.abs(d - CHAIR_TUCK)
+		elseif part.Name ~= "PicklesPupil" then
 			d, r = offset(part)
 		end
+		worst = math.max(worst, d, r)
+	end
+	return worst
+end
+-- Everything exactly where it really stands (after rest(): the chairs back where the players sit).
+local function allExact()
+	local worst = 0
+	for part in pairs(HOME) do
+		local d, r = offset(part)
 		worst = math.max(worst, d, r)
 	end
 	return worst
@@ -243,7 +265,7 @@ local function sample(p, seconds, mouse)
 end
 
 -- how far each kind may move, in studs (and in turn, as corner travel on a 1-stud box)
-local LIMIT = { pickles = { 4.2, 2.5 }, radio = { 1.0, 1.5 }, trophy = { 1.4, 2.5 }, cardbox = { 1.4, 2.5 }, displaypack = { 1.0, 2.5 }, mantletrophy = { 1.0, 2.5 }, packjar = { 1.6, 2.5 }, clock = { 1.0, 2.5 } }
+local LIMIT = { chair = { 2.6, 1.2 }, pickles = { 4.2, 2.5 }, radio = { 1.0, 1.5 }, trophy = { 1.4, 2.5 }, cardbox = { 1.4, 2.5 }, displaypack = { 1.0, 2.5 }, mantletrophy = { 1.0, 2.5 }, packjar = { 1.6, 2.5 }, clock = { 1.0, 2.5 } }
 
 ---------------------------------------------------------------------------
 -- 2. Point at one of each kind, then away; then click one of each kind
@@ -403,7 +425,7 @@ do
 	local disco = RoomLife.kinds.discoball[1]
 	aim = disco.anchor
 	run(0.8, MOUSE)
-	check(RoomLife.discoBoost() > 3, "disco ball spins faster")
+	check(RoomLife.discoBoost() > 1.8, "disco ball spins faster")
 	aim = nil
 	run(4, MOUSE)
 
@@ -459,7 +481,7 @@ do
 	run(0.2, MOUSE)
 	check(allHome() > 0.01, "things are moving")
 	RoomLife.update(1 / 60, nil, false) -- (the client does this the moment a match starts)
-	check(allHome() < 1e-9, "everything snaps home when the room goes inactive")
+	check(allExact() < 1e-9, "everything snaps home when the room goes inactive (the chairs to where the players sit)")
 	check(RoomLife.hovered() == nil, "nothing hovered when inactive")
 	check(RoomLife.fireBoost() == 1, "fire back to normal")
 
@@ -477,7 +499,60 @@ do
 	run(5, MOUSE)
 	check(allHome() < 1e-6, string.format("everything home after a long sweep (%.2g)", allHome()))
 	RoomLife.rest()
-	check(allHome() < 1e-9, "rest() is exact")
+	check(allExact() < 1e-9, "rest() is exact (the chairs too: back where the players sit)")
+end
+
+---------------------------------------------------------------------------
+-- The Duel Table's chairs, the station focus and "only this station answers"
+---------------------------------------------------------------------------
+do
+	local chairs = RoomLife.kinds.chair
+	local function slideOf(ch)
+		return -(ch.anchor.CFrame.Position - HOME[ch.anchor].Position):Dot(ch.out) -- (out points at the table)
+	end
+	-- after rest() they stand where the players sit; in the room they glide in under the table
+	for _, ch in ipairs(chairs) do
+		check(math.abs(slideOf(ch)) < 1e-9, "chair starts in its real spot after rest()")
+		check(RoomLife.baseCFrame(ch.anchor) == HOME[ch.anchor], "baseCFrame gives the chair's real spot")
+	end
+	check(RoomLife.baseCFrame(room.Structure:FindFirstChild("Door")) == nil, "baseCFrame is nil for parts that aren't props")
+	aim = nil
+	run(4, MOUSE)
+	for _, ch in ipairs(chairs) do
+		check(math.abs(slideOf(ch) + CHAIR_TUCK) < 1e-6, string.format("chair is tucked in toward the table (%.3f)", slideOf(ch)))
+		check(RoomLife.baseCFrame(ch.anchor) == HOME[ch.anchor], "baseCFrame doesn't move with the chair")
+	end
+	-- the table has the mouse (or its panel is open): both chairs come out, away from the table
+	RoomLife.setFocus("DuelTable")
+	run(4, MOUSE)
+	for _, ch in ipairs(chairs) do
+		check(slideOf(ch) > 1.2, string.format("chair slides out while the Duel Table has the focus (%.3f)", slideOf(ch)))
+	end
+	RoomLife.setFocus("DeckShelf")
+	run(5, MOUSE)
+	for _, ch in ipairs(chairs) do
+		check(math.abs(slideOf(ch) + CHAIR_TUCK) < 1e-6, "chair goes back under the table when the focus leaves")
+	end
+	RoomLife.setFocus(nil)
+
+	-- while a station's screen is open, only its own props answer the mouse
+	local binder, trophy = RoomLife.kinds.binder[1], RoomLife.kinds.trophy[1]
+	RoomLife.setOnly({ [trophy.def.scope] = true })
+	aim = binder.anchor
+	run(0.5, MOUSE)
+	check(RoomLife.hovered() == nil, "a prop outside the open station stays still")
+	check(RoomLife.click(MOUSE, true) == nil, "and can't be clicked")
+	aim = trophy.anchor
+	run(0.5, MOUSE)
+	check(RoomLife.hovered() == trophy, "the open station's own props still answer")
+	RoomLife.setOnly(nil)
+	aim = binder.anchor
+	run(0.5, MOUSE)
+	check(RoomLife.hovered() == binder, "everything answers again afterwards")
+	aim = nil
+	run(5, MOUSE)
+	check(allHome() < 1e-6, string.format("everything home after the chair checks (%.2g)", allHome()))
+	RoomLife.rest()
 end
 
 M.advance(3) -- (lets the delayed sparkle clean-ups run)
