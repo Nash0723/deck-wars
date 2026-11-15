@@ -60,6 +60,12 @@ jobs:
       - name: Campaign tests (every stage, opponents' decks, rules, stars, unlocks, rewards, drops, chests, the Challenge)
         run: tools/luaurun/target/release/luaurun tests/campaign_tests.luau src/shared src/server
 
+      - name: Park tests (your cards on show, likes once a day, best pulls and titles, banners, the Top Collector, the real-time sky)
+        run: tools/luaurun/target/release/luaurun tests/park_tests.luau src/shared mock_roblox
+
+      - name: Card level and trade tests (fusing, selling, storage, what a level gives, the Trading Post's rules)
+        run: tools/luaurun/target/release/luaurun tests/levels_trade_tests.luau src/shared
+
       - name: The game in the simulated Studio (join, daily reward, Shop, dev panel, a full bot match, a Campaign stage, the Plaza, rewards, autosave)
         run: |
           tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox | tee econharness.log
