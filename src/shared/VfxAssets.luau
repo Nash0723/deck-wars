@@ -17,4 +17,15 @@ return {
 	flame = "rbxassetid://123273213313146",
 	spark = "rbxassetid://101672694844069",
 	bits = "rbxassetid://121044323219504",
+	-- the second set
+	claw = "rbxassetid://114239295970102",
+	lightning = "rbxassetid://96280061614551",
+	wisp = "rbxassetid://91187352584917",
+	gear = "rbxassetid://85943967079481",
+	chevron = "rbxassetid://130487343405136",
+	splash = "rbxassetid://106139148938699",
+	crack = "rbxassetid://76943545713333",
+	vortex = "rbxassetid://117255481116327",
+	wings = "rbxassetid://115143260579943",
+	rune = "rbxassetid://84587990122822",
 }

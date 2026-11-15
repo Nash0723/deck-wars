@@ -512,6 +512,276 @@ EFFECTS = [
     ("bits", fx_bits),
 ]
 
+
+# ---------------------------------------------------------------------------------- second set
+def fx_claw(rng):
+    """Three claw rips, side by side (beasts)."""
+    def rips(w, shorten, hairs):
+        m = Mask()
+        r2 = np.random.default_rng(41)
+        for k, off in enumerate((-0.34, 0.0, 0.34)):
+            L = (0.8 if k == 1 else 0.68) * shorten
+            x = off
+            m.stroke((x - 0.2, -L), (x + 0.16, -0.1), (x + 0.02, L), w * (1.15 if k == 1 else 1.0), "leaf")
+            if hairs:
+                for h in range(2):
+                    hx = x + r2.uniform(-0.1, 0.1)
+                    m.stroke((hx - 0.12, -L * r2.uniform(0.3, 0.9)), (hx + 0.12, 0.0), (hx + 0.04, L * r2.uniform(0.5, 1.0)), 0.014, "leaf")
+        return m.arr()
+    rim = rips(0.115, 1.0, True)
+    mid = rips(0.07, 0.9, False)
+    core = rips(0.032, 0.76, False)
+    return (None, roughen(rim, rng, 0.42), roughen(mid, rng, 0.32), roughen(core, rng, 0.2, 2.0)), "vertical"
+
+
+def fx_lightning(rng):
+    """A bolt from the sky with two forks; it strikes at the bottom."""
+    r2 = np.random.default_rng(43)
+    main = [(0.06, -0.9)]
+    y = -0.9
+    while y < 0.72:
+        y += r2.uniform(0.16, 0.26)
+        main.append((r2.uniform(-0.22, 0.22), min(y, 0.8)))
+    main[-1] = (0.0, 0.8)
+    forks = [[main[2], (main[2][0] + 0.3, main[2][1] + 0.16), (main[2][0] + 0.26, main[2][1] + 0.36), (main[2][0] + 0.46, main[2][1] + 0.5)],
+             [main[4], (main[4][0] - 0.28, main[4][1] + 0.12), (main[4][0] - 0.4, main[4][1] + 0.34)]]
+    def zig(m, pts, w0, w1):
+        n = len(pts) - 1
+        for i in range(n):
+            a, b = pts[i], pts[i + 1]
+            wa = w0 + (w1 - w0) * i / n
+            wb = w0 + (w1 - w0) * (i + 1) / n
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            L = math.hypot(dx, dy) or 1
+            nx, ny = -dy / L, dx / L
+            m.poly([(a[0] + nx * wa, a[1] + ny * wa), (b[0] + nx * wb, b[1] + ny * wb), (b[0] - nx * wb, b[1] - ny * wb), (a[0] - nx * wa, a[1] - ny * wa)])
+            m.disc(b, wb)
+    def bolt(k, with_forks, splash):
+        m = Mask()
+        zig(m, main, 0.085 * k, 0.05 * k)
+        if with_forks:
+            for f in forks:
+                zig(m, f, 0.045 * k, 0.012 * k)
+        if splash:
+            for a in range(7):
+                ang = math.pi + a / 6 * math.pi
+                m.stroke((0, 0.8), (0.14 * math.cos(ang), 0.8 + 0.08 * math.sin(ang)), (splash * math.cos(ang), 0.8 + splash * 0.45 * math.sin(ang)), 0.03 * k, "blade")
+        return m.arr()
+    rim = bolt(1.0, True, 0.34)
+    mid = bolt(0.6, True, 0.22)
+    core = bolt(0.3, False, 0.0)
+    return (None, roughen(rim, rng, 0.22, 1.8), roughen(mid, rng, 0.18, 1.6), roughen(core, rng, 0.1, 1.3)), "vertical"
+
+
+def fx_wisp(rng):
+    """A little spirit: round head, hollow eyes, a tail that curls away."""
+    def ghost(k, eyes, dy=0.0):
+        m = Mask()
+        m.disc((0.0, -0.3 + dy), 0.4 * k)
+        m.stroke((0.0, -0.2 + dy), (0.34 * k, 0.3), (-0.2 * k, 0.86 * (0.55 + 0.45 * k)), 0.36 * k, "blade")
+        m.stroke((-0.3 * k, -0.2 + dy), (-0.62 * k, 0.1), (-0.5 * k, 0.4 * k), 0.1 * k, "blade")
+        m.stroke((0.3 * k, -0.2 + dy), (0.64 * k, 0.05), (0.56 * k, 0.36 * k), 0.1 * k, "blade")
+        if eyes:
+            m.ellipse((-0.15, -0.34 + dy), 0.075, 0.11, 0)
+            m.ellipse((0.15, -0.34 + dy), 0.075, 0.11, 0)
+            m.ellipse((0.0, -0.13 + dy), 0.05, 0.075, 0)
+        return m.arr()
+    rim = ghost(1.0, True)
+    mid = ghost(0.78, True)
+    core = ghost(0.4, False, -0.06)
+    return (None, roughen(rim, rng, 0.3, 2.6, 30), roughen(mid, rng, 0.24, 2.2, 30), roughen(core, rng, 0.22, 2.4, 30)), "vertical"
+
+
+def fx_gear(rng):
+    """A cog with a smaller cog and bolts flying off (machines, scrap)."""
+    def cog(m, c, r, teeth, tooth, hole, turn=0.0, v=255):
+        pts = []
+        for i in range(teeth * 4):
+            a = turn + i / (teeth * 4) * 2 * math.pi
+            rr = r + (tooth if (i % 4) in (0, 1) else 0)
+            pts.append((c[0] + rr * math.cos(a), c[1] + rr * math.sin(a)))
+        m.poly(pts, v)
+        m.disc(c, hole, 0)
+    m = Mask(); cog(m, (-0.12, 0.08), 0.5, 10, 0.13, 0.2); cog(m, (0.56, -0.5), 0.2, 7, 0.08, 0.08, 0.3)
+    rim = m.arr()
+    m = Mask(); cog(m, (-0.12, 0.08), 0.43, 10, 0.1, 0.27); cog(m, (0.56, -0.5), 0.15, 7, 0.06, 0.1, 0.3)
+    mid = m.arr()
+    m = Mask()
+    m.disc((-0.12, 0.08), 0.36); m.disc((-0.12, 0.08), 0.31, 0)
+    for k in range(5):
+        m.disc((-0.12 + 0.335 * math.cos(k * 1.2566), 0.08 + 0.335 * math.sin(k * 1.2566)), 0.045)
+    core = m.arr()
+    return (None, roughen(rim, rng, 0.2, 1.8), roughen(mid, rng, 0.18, 1.6), roughen(core, rng, 0.12, 1.4)), "radial"
+
+
+def fx_chevron(rng):
+    """Three arrowheads stacked, pointing up (stronger). Turned over, it means weaker."""
+    def stack(w, k):
+        m = Mask()
+        for i, (y, s) in enumerate(((0.36, 0.9), (-0.06, 0.72), (-0.44, 0.54))):
+            s *= k
+            m.poly([(-0.6 * s, y + 0.3 * s), (0.0, y - 0.3 * s), (0.6 * s, y + 0.3 * s), (0.6 * s - w * 0.3, y + 0.3 * s + w), (0.0, y - 0.3 * s + w * 1.5), (-0.6 * s + w * 0.3, y + 0.3 * s + w)])
+        return m.arr()
+    rim = stack(0.24, 1.0)
+    mid = shift(stack(0.15, 0.94), 0, 0.02)
+    core = shift(stack(0.07, 0.86), 0, 0.045)
+    return (None, roughen(rim, rng, 0.24, 2.0), roughen(mid, rng, 0.2, 1.8), roughen(core, rng, 0.14, 1.5)), "vertical"
+
+
+def fx_splash(rng):
+    """A crown of water thrown up, with drops."""
+    def crown(k, drops):
+        r2 = np.random.default_rng(47)
+        m = Mask()
+        m.ellipse((0, 0.6), 0.62 * k, 0.16 * k)
+        for i in range(9):
+            t = i / 8
+            a = math.radians(-160 + 140 * t)
+            L = (0.5 + 0.42 * math.sin(math.pi * t) + r2.uniform(-0.06, 0.06)) * k
+            root = ((t - 0.5) * 1.0 * k, 0.6)
+            tip = (root[0] + L * math.cos(a) * 0.75, 0.6 + L * math.sin(a) * 1.25)
+            midp = (root[0] + (tip[0] - root[0]) * 0.3, (0.6 + tip[1]) / 2)
+            m.stroke(root, midp, tip, 0.1 * k, "blade")
+            if drops and i % 2 == 0:
+                m.disc((tip[0] * 1.12, tip[1] - 0.1), 0.045)
+        return m.arr()
+    rim = crown(1.0, True)
+    mid = crown(0.8, False)
+    core = crown(0.52, False)
+    return (None, roughen(rim, rng, 0.3, 2.4), roughen(mid, rng, 0.26, 2.2), roughen(core, rng, 0.2, 2.0)), "vertical"
+
+
+def fx_crack(rng):
+    """The ground splitting from a blow: jagged cracks running out from the middle. Lies flat."""
+    r2 = np.random.default_rng(53)
+    paths = []
+    for i in range(7):
+        a = (i + r2.uniform(-0.3, 0.3)) / 7 * 2 * math.pi
+        pts = [(0.0, 0.0)]
+        r = 0.0
+        L = r2.uniform(0.6, 0.88)
+        while r < L:
+            r += r2.uniform(0.12, 0.22)
+            a += r2.uniform(-0.45, 0.45)
+            pts.append((min(r, L) * math.cos(a), min(r, L) * math.sin(a)))
+        paths.append(pts)
+        if i % 2 == 0 and len(pts) > 3:
+            b = pts[2]
+            a2 = a + r2.choice([-1, 1]) * 0.9
+            paths.append([b, (b[0] + 0.16 * math.cos(a2), b[1] + 0.16 * math.sin(a2)), (b[0] + 0.3 * math.cos(a2 + 0.3), b[1] + 0.3 * math.sin(a2 + 0.3))])
+    def draw(w, k):
+        m = Mask()
+        for pts in paths:
+            n = len(pts) - 1
+            for i in range(n):
+                a, b = pts[i], pts[i + 1]
+                a = (a[0] * k, a[1] * k); b = (b[0] * k, b[1] * k)
+                wa = w * (1 - i / n) + 0.006
+                wb = w * (1 - (i + 1) / n) + 0.004
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                L = math.hypot(dx, dy) or 1
+                nx, ny = -dy / L, dx / L
+                m.poly([(a[0] + nx * wa, a[1] + ny * wa), (b[0] + nx * wb, b[1] + ny * wb), (b[0] - nx * wb, b[1] - ny * wb), (a[0] - nx * wa, a[1] - ny * wa)])
+                m.disc(b, wb)
+        m.disc((0, 0), w * 1.6)
+        return m.arr()
+    rim = draw(0.085, 1.0)
+    mid = draw(0.05, 0.94)
+    core = draw(0.022, 0.8)
+    return (None, roughen(rim, rng, 0.2, 1.8), roughen(mid, rng, 0.16, 1.6), roughen(core, rng, 0.1, 1.3)), "radial"
+
+
+def fx_vortex(rng):
+    """Arms of wind curling into the middle (moving, swapping, bouncing back to the hand)."""
+    def swirl(w, k, arms):
+        m = Mask()
+        for i in range(arms):
+            a0 = i / arms * 2 * math.pi
+            pts_o, pts_i = [], []
+            for s in range(41):
+                t = s / 40
+                a = a0 + t * 2.6
+                r = (0.86 - 0.7 * t) * k
+                ww = w * math.sin(math.pi * min(1.0, t * 1.15)) ** 0.8 * (1 - 0.5 * t)
+                pts_o.append(((r + ww) * math.cos(a), (r + ww) * math.sin(a)))
+                pts_i.append(((r - ww) * math.cos(a), (r - ww) * math.sin(a)))
+            m.poly(pts_o + pts_i[::-1])
+        return m.arr()
+    rim = swirl(0.085, 1.0, 4)
+    mid = swirl(0.05, 0.98, 4)
+    core = swirl(0.022, 0.96, 4)
+    return (None, roughen(rim, rng, 0.34), roughen(mid, rng, 0.28), roughen(core, rng, 0.18, 1.8)), "ring"
+
+
+def fx_wings(rng):
+    """A pair of wings of light, spread (great arrivals, Big Moves)."""
+    def pair(k, wk, feathers):
+        m = Mask()
+        for side in (-1, 1):
+            # the arm of the wing, then feathers hanging from it, longest at the tip
+            shoulder = (side * 0.05, 0.05)
+            wrist = (side * 0.5 * k, -0.5 * k)
+            tipw = (side * 0.9 * k, -0.34 * k)
+            m.stroke(shoulder, (side * 0.2 * k, -0.42 * k), wrist, 0.075 * wk, "leaf")
+            m.stroke(wrist, (side * 0.74 * k, -0.56 * k), tipw, 0.06 * wk, "leaf")
+            for i in range(feathers):
+                t = i / (feathers - 1)
+                if t < 0.5:
+                    u = t / 0.5
+                    root = (shoulder[0] + (wrist[0] - shoulder[0]) * u, shoulder[1] + (wrist[1] - shoulder[1]) * u)
+                else:
+                    u = (t - 0.5) / 0.5
+                    root = (wrist[0] + (tipw[0] - wrist[0]) * u, wrist[1] + (tipw[1] - wrist[1]) * u)
+                L = (0.42 + 0.5 * t) * k
+                a = math.radians(96 - 62 * t)
+                tip = (root[0] + side * L * math.cos(a), root[1] + L * math.sin(a))
+                midp = (root[0] + side * L * 0.5 * math.cos(a - 0.35), root[1] + L * 0.5 * math.sin(a - 0.35))
+                m.stroke(root, midp, tip, (0.062 + 0.02 * t) * wk, "leaf")
+        m.ellipse((0, 0.1), 0.07 * k, 0.2 * k)
+        return m.arr()
+    rim = pair(1.0, 1.0, 9)
+    mid = pair(0.94, 0.6, 9)
+    core = pair(0.86, 0.26, 9)
+    return (None, roughen(rim, rng, 0.34), roughen(mid, rng, 0.28), roughen(core, rng, 0.18, 1.8)), "radial"
+
+
+def fx_rune(rng):
+    """A single sigil in a diamond frame (abilities, keywords, enchantments)."""
+    def bar(m, a, b, w, v=255):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        L = math.hypot(dx, dy) or 1
+        nx, ny = -dy / L * w, dx / L * w
+        m.poly([(a[0] + nx, a[1] + ny), (b[0] + nx, b[1] + ny), (b[0] - nx, b[1] - ny), (a[0] - nx, a[1] - ny)], v)
+    def frame(m, s, w):
+        pts = [(0, -s), (s * 0.78, 0), (0, s), (-s * 0.78, 0)]
+        for i in range(4):
+            bar(m, pts[i], pts[(i + 1) % 4], w)
+    def sigil(m, w, k=1.0):
+        bar(m, (0, -0.5 * k), (0, 0.5 * k), w)
+        bar(m, (0, -0.5 * k), (0.26 * k, -0.22 * k), w)
+        bar(m, (0.26 * k, -0.22 * k), (0, 0.04 * k), w)
+        bar(m, (0, 0.16 * k), (-0.26 * k, 0.4 * k), w)
+        bar(m, (0, 0.16 * k), (0.2 * k, 0.34 * k), w)
+    m = Mask(); frame(m, 0.86, 0.05); sigil(m, 0.075)
+    for c in ((0, -0.86), (0.67, 0), (0, 0.86), (-0.67, 0)):
+        m.disc(c, 0.085)
+    rim = m.arr()
+    m = Mask(); frame(m, 0.86, 0.02); sigil(m, 0.045)
+    mid = m.arr()
+    m = Mask(); sigil(m, 0.02, 0.96)
+    for c in ((0, -0.86), (0.67, 0), (0, 0.86), (-0.67, 0)):
+        m.disc(c, 0.04)
+    core = m.arr()
+    both = np.maximum(rim, mid)
+    glow = np.clip(blur(both, 14) * 1.4 + blur(both, 38) * 0.9, 0, 1) * 0.85
+    return (glow, roughen(rim, rng, 0.2, 1.8, 60), roughen(mid, rng, 0.16, 1.5, 60), roughen(core, rng, 0.1, 1.3, 60)), "vertical"
+
+
+EFFECTS += [
+    ("claw", fx_claw), ("lightning", fx_lightning), ("wisp", fx_wisp), ("gear", fx_gear), ("chevron", fx_chevron),
+    ("splash", fx_splash), ("crack", fx_crack), ("vortex", fx_vortex), ("wings", fx_wings), ("rune", fx_rune),
+]
+
 PALETTES = {  # glow, rim, middle, core  (the same numbers LayerFx uses in game)
     "ember": ((255, 150, 40), (196, 84, 12), (255, 184, 62), (255, 250, 226)),
     "frost": ((90, 190, 255), (30, 96, 190), (120, 214, 255), (240, 252, 255)),
@@ -559,7 +829,7 @@ def main():
             for j, p in enumerate(pals):
                 pal = PALETTES["smoke"] if (n == "puff" and j == 0) else PALETTES[p]
                 prev.paste(composite(sh, pal, cell), ((4 + j) * cell, r * cell))
-    prev.save(os.path.join(os.path.dirname(OUT), "preview.png"))
+    prev.save(os.path.join(os.path.dirname(OUT), "preview.png" if not only else "preview_part.png"))
 
 
 if __name__ == "__main__":

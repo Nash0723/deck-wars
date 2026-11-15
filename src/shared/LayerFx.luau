@@ -15,6 +15,13 @@
 --   LayerFx.play("slam", tableTop, { palette = "gold", size = 7 })      -- lies flat
 --   LayerFx.screen("hit", someFrame, UDim2.fromScale(0.5, 0.5), 260, { palette = "gold" })
 --
+-- Made to be read at a glance on a busy table:
+--   * effects in the air are drawn over the models (never cut in half by a creature), on a dark
+--     backing so they also show on a bright board;
+--   * every effect snaps in fast and then lingers (LayerFx.Linger) so there is time to see it;
+--   * LayerFx.play(..., { loop = true, follow = model }) keeps an effect running on something
+--     (auras) until its handle's :stop().
+--
 -- Client only. The pictures are uploaded images (VfxAssets); an effect whose sheet has no id
 -- yet is skipped, and play() returns nil.
 
@@ -33,6 +40,11 @@ LayerFx.Assets = Assets
 local Q = 512 -- one layer on a sheet
 local RECT = { Vector2.new(0, 0), Vector2.new(Q, 0), Vector2.new(0, Q), Vector2.new(Q, Q) }
 local GLOW, RIM, MID, CORE = 1, 2, 3, 4
+local SHADE = 5 -- palette slot of the dark backing (made from the rim colour when a palette has four)
+
+-- How much longer than its snap an effect stays to be looked at. The pop-in keeps its speed;
+-- the hold and the fade stretch. 1 = the old, quick effects.
+LayerFx.Linger = 1.7
 -- the four loose pictures on the "bits" sheet
 local DOT, DASH, CHIP, CURL = 1, 2, 3, 4
 
@@ -53,6 +65,9 @@ LayerFx.Palettes = {
 	holy = { rgb(255, 236, 170), rgb(214, 160, 50), rgb(255, 240, 180), rgb(255, 255, 255) },
 	smoke = { rgb(120, 120, 140), rgb(52, 50, 66), rgb(128, 126, 146), rgb(214, 214, 226) },
 	rose = { rgb(255, 110, 150), rgb(176, 30, 80), rgb(255, 150, 176), rgb(255, 240, 244) },
+	void = { rgb(150, 60, 255), rgb(38, 14, 70), rgb(120, 60, 210), rgb(255, 170, 255) },
+	toxic = { rgb(170, 255, 60), rgb(52, 120, 16), rgb(196, 255, 90), rgb(248, 255, 220) },
+	aqua = { rgb(70, 240, 220), rgb(14, 120, 130), rgb(120, 250, 232), rgb(236, 255, 252) },
 }
 
 -- Which colours a card family fights in.
@@ -249,7 +264,7 @@ R.pillar = { len = 0.8, sprites = (function()
 end)() }
 
 -- A thrown bolt (give opts.to; it flies there, then use "hit").
-R.bolt = { len = 0.3, travels = true, sprites = (function()
+R.bolt = { len = 0.42, travels = true, noLinger = true, sprites = (function()
 	local l = {}
 	local function b(layer, t0, a, from)
 		table.insert(l, sprite("bolt", layer, t0, 1, from, 1.0, { a = a, grow = 0.3, fade = 0.85 }))
@@ -334,6 +349,188 @@ R.nova = { len = 0.7, sprites = (function()
 	return l
 end)() }
 
+-- Claws raking across (beasts). Aim it along the attack.
+R.claw = { len = 0.4, aimTurn = 62, sprites = (function()
+	local l = {}
+	local function rake(layer, t0, t1, fade, a)
+		table.insert(l, sprite("claw", layer, t0, t1, 0.7, 1.0, { a = a or 1, grow = 0.22, fade = fade, drift = 0.08, y0 = -0.22, y1 = 0.06, ease = "out", wide0 = 0.8, wide1 = 1.05 }))
+	end
+	rake(GLOW, 0, 1, 0.3, 0.5)
+	rake(RIM, 0.07, 1, 0.55)
+	rake(MID, 0.03, 0.82, 0.45)
+	rake(CORE, 0, 0.58, 0.3)
+	throw(l, DASH, 6, { a0 = math.pi * 0.2, arc = math.pi * 0.6, near = 0.5, far = 0.95, size = 0.14, seed = 21, t0 = 0.12 })
+	return l
+end)() }
+
+-- Lightning striking down onto the position (storms, machines, raw power).
+R.zap = { len = 0.5, sprites = (function()
+	local l = {}
+	local function strike(layer, t0, t1, fade, a, wide)
+		table.insert(l, sprite("lightning", layer, t0, t1, 0.9, 1.0, { a = a or 1, grow = 0.1, fade = fade, ax = 0.5, ay = 0.9, wide0 = wide, wide1 = wide }))
+	end
+	strike(GLOW, 0, 1, 0.3, 0.6, 1.1)
+	strike(RIM, 0.05, 1, 0.5, 1, 1)
+	strike(MID, 0.02, 0.8, 0.45, 1, 1)
+	strike(CORE, 0, 0.5, 0.3, 1, 1)
+	-- the second flicker, leaning the other way, a moment later
+	table.insert(l, sprite("lightning", MID, 0.3, 0.62, 0.95, 1.0, { a = 0.9, grow = 0.1, fade = 0.4, ax = 0.5, ay = 0.9, r0 = 9, r1 = 9, wide0 = 0.8, wide1 = 0.8, c = CORE }))
+	stack(l, "burst", { size = 0.42, len = 0.7, spin = 10, glow = 0.3 })
+	table.insert(l, sprite("ring", CORE, 0.02, 0.5, 0.15, 0.7, { a = 0.9, grow = 0.6, fade = 0.3 }))
+	throw(l, DASH, 7, { a0 = -math.pi, arc = math.pi, near = 0.25, far = 0.6, size = 0.1, seed = 23 })
+	return l
+end)() }
+
+-- A spirit drifting up and away (hauntings, curses, grudges).
+R.wisp = { len = 0.8, sprites = (function()
+	local l = {}
+	local function ghost(layer, t0, t1, fade, a, sway)
+		table.insert(l, sprite("wisp", layer, t0, t1, 0.45, 1.0, { a = a or 1, grow = 0.3, fade = fade, y0 = 0.2, y1 = -0.3, r0 = -sway, r1 = sway, back = layer ~= GLOW }))
+	end
+	ghost(GLOW, 0, 1, 0.4, 0.55, 0)
+	ghost(RIM, 0.04, 1, 0.6, 1, 9)
+	ghost(MID, 0.02, 0.86, 0.5, 1, 7)
+	ghost(CORE, 0, 0.66, 0.4, 1, 5)
+	throw(l, DOT, 5, { a0 = math.pi * 0.2, arc = math.pi * 0.6, near = 0.3, far = 0.7, size = 0.12, seed = 25, life = 0.8, t0 = 0.2, c = MID })
+	return l
+end)() }
+
+-- Cogs spinning out (machines, scrap, buildings going up).
+R.gears = { len = 0.6, sprites = (function()
+	local l = stack({}, "gear", { spin = -70, from = 0.3 })
+	throw(l, CHIP, 7, { near = 0.5, far = 1.0, size = 0.12, seed = 27, twirl = 320, fall = 0.2 })
+	return l
+end)() }
+
+-- Arrowheads climbing: stronger.
+R.buff = { len = 0.6, sprites = (function()
+	local l = stack({}, "chevron", { from = 0.5, y = 0.2, dy = -0.42, back = true, glow = 0.5 })
+	for i = 1, 4 do
+		local x = (i - 2.5) * 0.3
+		table.insert(l, sprite("spark", (i % 2 == 0) and CORE or MID, 0.1 + i * 0.08, math.min(1, 0.65 + i * 0.08), 0.05, 0.2, { a = 1, grow = 0.3, fade = 0.5, x0 = x, x1 = x, y0 = 0.3, y1 = -0.5, c = (i % 2 == 0) and CORE or MID, bit = true }))
+	end
+	return l
+end)() }
+
+-- The same arrowheads turned over and sinking: weaker.
+R.debuff = { len = 0.6, sprites = (function()
+	return stack({}, "chevron", { from = 0.5, r = 180, y = -0.2, dy = 0.42, back = true, glow = 0.5 })
+end)() }
+
+-- Water thrown up in a crown (stands on its foot: the position is the ground).
+R.splash = { len = 0.6, sprites = (function()
+	local l = {}
+	local function crown(layer, t0, t1, fade, a)
+		table.insert(l, sprite("splash", layer, t0, t1, 0.35, 1.0, { a = a or 1, grow = 0.3, fade = fade, ax = 0.5, ay = 0.8, wide0 = 0.7, wide1 = 1.15, back = layer ~= GLOW }))
+	end
+	crown(GLOW, 0, 1, 0.35, 0.5)
+	crown(RIM, 0.05, 1, 0.55)
+	crown(MID, 0.02, 0.84, 0.45)
+	crown(CORE, 0, 0.6, 0.3)
+	throw(l, DOT, 8, { a0 = -math.pi * 0.85, arc = math.pi * 0.7, near = 0.45, far = 0.95, size = 0.1, seed = 29, fall = 0.5, life = 0.8, c = MID })
+	return l
+end)() }
+
+-- The ground splits under a heavy blow. Lies flat; the dark cracks stay a while.
+R.crack = { len = 0.9, flat = true, sprites = (function()
+	local l = {}
+	table.insert(l, sprite("crack", GLOW, 0, 0.7, 0.6, 1.05, { a = 0.6, grow = 0.2, fade = 0.3 }))
+	table.insert(l, sprite("crack", RIM, 0.0, 1, 0.45, 1.0, { a = 1, grow = 0.16, fade = 0.75 }))
+	table.insert(l, sprite("crack", MID, 0.0, 0.7, 0.45, 1.0, { a = 1, grow = 0.16, fade = 0.4 }))
+	table.insert(l, sprite("crack", CORE, 0.0, 0.45, 0.45, 1.0, { a = 1, grow = 0.14, fade = 0.3 }))
+	throw(l, CHIP, 8, { near = 0.4, far = 0.95, size = 0.09, seed = 31, twirl = 240 })
+	return l
+end)() }
+
+-- Wind curling in on itself (a creature moving, swapping, or going back to the hand).
+R.vortex = { len = 0.6, sprites = (function()
+	local l = {}
+	local function arm(layer, t0, t1, fade, a, turn)
+		table.insert(l, sprite("vortex", layer, t0, t1, 0.5, 1.0, { a = a or 1, grow = 0.4, fade = fade, drift = -0.25, r0 = 0, r1 = turn }))
+	end
+	arm(GLOW, 0, 1, 0.4, 0.5, -200)
+	arm(RIM, 0.05, 1, 0.6, 1, -220)
+	arm(MID, 0.02, 0.86, 0.5, 1, -250)
+	arm(CORE, 0, 0.66, 0.4, 1, -280)
+	return l
+end)() }
+
+-- Wings of light opening (the great arrivals and the Big Moves).
+R.wings = { len = 0.9, sprites = (function()
+	local l = {}
+	local function wing(layer, t0, t1, fade, a)
+		table.insert(l, sprite("wings", layer, t0, t1, 0.7, 1.0, { a = a or 1, grow = 0.3, fade = fade, drift = 0.06, wide0 = 0.25, wide1 = 1.0, wideIn = 0.3, y0 = 0.05, y1 = -0.08, back = layer ~= GLOW }))
+	end
+	wing(GLOW, 0, 1, 0.5, 0.55)
+	wing(RIM, 0.05, 1, 0.65)
+	wing(MID, 0.02, 0.9, 0.55)
+	wing(CORE, 0, 0.7, 0.4)
+	throw(l, DASH, 10, { a0 = -math.pi * 0.95, arc = math.pi * 0.9, near = 0.55, far = 1.1, size = 0.14, seed = 33, t0 = 0.15 })
+	table.insert(l, sprite("spark", CORE, 0.05, 0.5, 0.2, 0.7, { a = 1, grow = 0.4, fade = 0.4, r0 = 0, r1 = 40, c = CORE }))
+	return l
+end)() }
+
+-- A sigil flashing up (an ability firing, a keyword gained).
+R.rune = { len = 0.7, sprites = (function()
+	local l = stack({}, "rune", { from = 0.5, dy = -0.1, back = true, glow = 0.6 })
+	table.insert(l, sprite("ring", CORE, 0, 0.45, 0.3, 1.3, { a = 0.8, grow = 0.7, fade = 0.2 }))
+	return l
+end)() }
+
+-- An enchantment taking hold: wind winds in, the sigil stamps, light bursts out.
+R.enchant = { len = 1.0, sprites = (function()
+	local l = {}
+	table.insert(l, sprite("vortex", RIM, 0, 0.6, 1.5, 0.5, { a = 0.9, grow = 1, fade = 0.7, r0 = 0, r1 = -300 }))
+	table.insert(l, sprite("vortex", MID, 0, 0.6, 1.5, 0.5, { a = 1, grow = 1, fade = 0.7, r0 = 0, r1 = -330 }))
+	table.insert(l, sprite("vortex", CORE, 0, 0.55, 1.5, 0.5, { a = 1, grow = 1, fade = 0.7, r0 = 0, r1 = -360 }))
+	stack(l, "rune", { t0 = 0.3, len = 0.7, from = 1.6, size = 0.9, back = false, glow = 0.6 })
+	table.insert(l, sprite("ring", RIM, 0.36, 0.9, 0.4, 1.5, { a = 1, grow = 0.6, fade = 0.4 }))
+	table.insert(l, sprite("ring", CORE, 0.34, 0.75, 0.4, 1.45, { a = 1, grow = 0.6, fade = 0.3 }))
+	throw(l, DASH, 12, { near = 0.6, far = 1.2, size = 0.16, seed = 35, t0 = 0.36 })
+	for i = 1, 4 do
+		local ang = i * math.pi / 2 + 0.4
+		table.insert(l, sprite("spark", CORE, 0.4 + i * 0.05, math.min(1, 0.8 + i * 0.05), 0.05, 0.26, { a = 1, grow = 0.3, fade = 0.5, x0 = math.cos(ang) * 0.5, x1 = math.cos(ang) * 0.75, y0 = math.sin(ang) * 0.5, y1 = math.sin(ang) * 0.75, r0 = 0, r1 = 60, bit = true }))
+	end
+	return l
+end)() }
+
+-- Something enchanted keeps glowing: a soft halo that breathes and glints that climb. Loops;
+-- play it with { loop = true, follow = theModel } and stop it with the handle.
+R.aura = { len = 1.8, loop = true, noLinger = true, sprites = (function()
+	local l = {}
+	table.insert(l, sprite("flame", GLOW, 0, 1, 0.95, 1.1, { a = 0.4, steady = true, ax = 0.5, ay = 0.8, y0 = 0.4, y1 = 0.4 }))
+	table.insert(l, sprite("flame", RIM, 0, 1, 0.5, 0.74, { a = 0.55, cycle = true, phase = 0.5, ax = 0.5, ay = 0.8, y0 = 0.42, y1 = 0.2, wide0 = 1.1, wide1 = 0.8, fade = 0.5 }))
+	for i = 1, 3 do
+		local x = (i - 2) * 0.26
+		table.insert(l, sprite("flame", MID, 0, 1, 0.3, 0.6, { a = 0.5, cycle = true, phase = i / 3, ax = 0.5, ay = 0.8, x0 = x, x1 = x * 0.8, y0 = 0.42, y1 = 0.1, wide0 = 0.7, wide1 = 0.5, fade = 0.45, c = (i == 2) and CORE or MID }))
+	end
+	for i = 1, 6 do
+		local x = ((i * 0.618034) % 1 - 0.5) * 0.9
+		table.insert(l, sprite("spark", (i % 2 == 0) and CORE or MID, 0, 1, 0.06, 0.2, { a = 1, cycle = true, phase = i / 6 + 0.08, x0 = x, x1 = x * 1.1, y0 = 0.38, y1 = -0.5, r0 = 0, r1 = 50, fade = 0.55, c = (i % 2 == 0) and CORE or MID, bit = true }))
+	end
+	return l
+end)() }
+
+-- Every effect gets a dark backing under its glow, so it reads on a bright board as well as a
+-- dark one: a copy of each glow layer in the palette's shade colour.
+for _, recipe in pairs(R) do
+	local shades = {}
+	for _, sp in ipairs(recipe.sprites) do
+		if sp.l == GLOW and sp.s ~= "bits" and not sp.bit then
+			local copy = table.clone(sp)
+			copy.c = SHADE
+			copy.a = math.min(0.55, (sp.a or 1) * 0.9)
+			copy.from, copy.to = sp.from * 1.06, sp.to * 1.06
+			copy.z = -1
+			copy.shade = true
+			table.insert(shades, copy)
+		end
+	end
+	for _, sp in ipairs(shades) do
+		table.insert(recipe.sprites, 1, sp)
+	end
+end
+
 LayerFx.Recipes = R
 
 ---------------------------------------------------------------------------
@@ -365,7 +562,7 @@ function LayerFx.ready(name)
 		return false
 	end
 	for _, sp in ipairs(recipe.sprites) do
-		if not sp.bit and not imageFor(sp.s) then
+		if not sp.bit and not sp.shade and not imageFor(sp.s) then
 			return false
 		end
 	end
@@ -382,10 +579,12 @@ local function fxFolder()
 end
 
 local function resolvePalette(p)
-	if type(p) == "table" then
-		return p
+	local pal = type(p) == "table" and p or (LayerFx.Palettes[p] or LayerFx.Palettes.gold)
+	if pal[SHADE] then
+		return pal
 	end
-	return LayerFx.Palettes[p] or LayerFx.Palettes.gold
+	-- (a palette of four colours gets its dark backing from the rim colour)
+	return { pal[1], pal[2], pal[3], pal[4], pal[2]:Lerp(Color3.new(0, 0, 0), 0.78) }
 end
 
 local function buildSprites(fx, recipe, parent)
@@ -405,7 +604,7 @@ local function buildSprites(fx, recipe, parent)
 			img.AnchorPoint = Vector2.new(sp.ax or 0.5, sp.ay or 0.5)
 			img.Position = UDim2.fromScale(0.5, 0.5)
 			img.Size = UDim2.fromScale(0, 0)
-			img.ZIndex = (sp.bit and 6 or sp.l) + (sp.z or 0)
+			img.ZIndex = (sp.bit and 6 or sp.l) + (sp.z or 0) + 1
 			img.Visible = false
 			img.Parent = parent
 			table.insert(fx.sprites, { spec = sp, img = img })
@@ -417,18 +616,48 @@ end
 local function pose(fx, a)
 	local inner = fx.inner -- the size of 1 inside the container (the container leaves room around it)
 	local turn = fx.turn or 0
+	local linger = fx.linger or 1
+	local master = fx.alpha * (fx.fadeMul or 1)
 	for _, s in ipairs(fx.sprites) do
 		local sp, img = s.spec, s.img
-		if a < sp.t0 or a > sp.t1 then
+		local looping = sp.cycle or sp.steady
+		if not looping and (a < sp.t0 or a > sp.t1) then
 			if img.Visible then
 				img.Visible = false
 			end
 		else
-			local t = (a - sp.t0) / math.max(sp.t1 - sp.t0, 1e-4)
-			local g = math.clamp(t / (sp.grow or 0.35), 0, 1)
-			local e = sp.back and outBack(g) or outCubic(g)
-			local size = lerp(sp.from, sp.to, e) + (sp.drift or 0) * t
-			local wide = sp.wide0 and lerp(sp.wide0, sp.wide1, outCubic(t)) or 1
+			local t, size, alpha, rot
+			if sp.steady then
+				-- always there: it breathes once per loop and turns evenly
+				t = a
+				local breath = 0.5 - 0.5 * math.cos(a * math.pi * 2)
+				size = lerp(sp.from, sp.to, breath)
+				alpha = (sp.a or 1) * (0.7 + 0.3 * breath)
+				rot = lerp(sp.r0 or 0, sp.r1 or sp.r0 or 0, a)
+			else
+				if sp.cycle then
+					t = (a + (sp.phase or 0)) % 1
+				else
+					t = (a - sp.t0) / math.max(sp.t1 - sp.t0, 1e-4)
+				end
+				-- the snap keeps its speed however long the effect lingers (loose bits just fly)
+				local quick = (sp.bit or sp.cycle) and 1 or linger
+				local g = math.clamp(t * quick / (sp.grow or 0.35), 0, 1)
+				local e = sp.back and outBack(g) or outCubic(g)
+				size = lerp(sp.from, sp.to, e) + (sp.drift or 0) * t
+				local fade = sp.fade or 0.5
+				alpha = (sp.a or 1) * math.clamp(t * quick / 0.08, 0, 1)
+				if t > fade then
+					local k = (t - fade) / math.max(1 - fade, 1e-4)
+					alpha *= (1 - k) * (1 - k)
+				end
+				rot = lerp(sp.r0 or 0, sp.r1 or sp.r0 or 0, outCubic(t))
+			end
+			local wide = 1
+			if sp.wide0 then
+				local w = sp.wideIn and math.clamp(t * ((sp.bit or sp.cycle) and 1 or linger) / sp.wideIn, 0, 1) or t
+				wide = lerp(sp.wide0, sp.wide1, outCubic(w))
+			end
 			local m = sp.ease == "out" and outCubic(t) or t
 			local x = lerp(sp.x0 or 0, sp.x1 or sp.x0 or 0, m)
 			local y = lerp(sp.y0 or 0, sp.y1 or sp.y0 or 0, m)
@@ -436,17 +665,11 @@ local function pose(fx, a)
 				local c, sn = math.cos(math.rad(turn)), math.sin(math.rad(turn))
 				x, y = x * c - y * sn, x * sn + y * c
 			end
-			local fade = sp.fade or 0.5
-			local alpha = (sp.a or 1) * math.clamp(t / 0.08, 0, 1)
-			if t > fade then
-				local k = (t - fade) / math.max(1 - fade, 1e-4)
-				alpha *= (1 - k) * (1 - k)
-			end
 			img.Visible = true
 			img.Size = UDim2.fromScale(size * inner * wide, size * inner)
 			img.Position = UDim2.fromScale(0.5 + x * inner, 0.5 + y * inner)
-			img.Rotation = lerp(sp.r0 or 0, sp.r1 or sp.r0 or 0, outCubic(t)) + turn
-			img.ImageTransparency = 1 - alpha * fx.alpha
+			img.Rotation = rot + turn
+			img.ImageTransparency = 1 - math.clamp(alpha * master, 0, 1)
 		end
 	end
 end
@@ -485,7 +708,16 @@ local function advance(fx, a)
 		fx.done = true
 		return
 	end
-	if fx.from and fx.to then
+	if fx.follow then
+		local f = fx.follow
+		if f.Parent == nil then
+			finish(fx)
+			return
+		end
+		local p = (f:IsA("Model") and f:GetPivot().Position or f.Position) + fx.offset
+		fx.anchor.CFrame = CFrame.new(p)
+		fx.pos = p
+	elseif fx.from and fx.to then
 		local p = fx.from:Lerp(fx.to, a)
 		fx.anchor.CFrame = CFrame.new(p)
 		fx.pos = p
@@ -505,10 +737,21 @@ local function ensureLoop()
 			local fx = active[i]
 			fx.age += dt
 			local a = math.clamp(fx.age / fx.len, 0, 1)
-			if fx.age >= 0 then
+			if fx.loop then
+				-- runs until stopped: fades in, goes round and round, fades out when asked to stop
+				a = (math.max(fx.age, 0) / fx.len) % 1
+				fx.fadeMul = math.clamp(fx.age / 0.35, 0, 1)
+				if fx.stopAt then
+					fx.fadeMul *= 1 - math.clamp((fx.age - fx.stopAt) / 0.3, 0, 1)
+					if fx.age - fx.stopAt >= 0.3 then
+						finish(fx)
+					end
+				end
+			end
+			if fx.age >= 0 and not fx.done then
 				advance(fx, a)
 			end
-			if a >= 1 or fx.done then
+			if (a >= 1 and not fx.loop) or fx.done then
 				table.remove(active, i)
 				if not fx.done then
 					finish(fx)
@@ -528,14 +771,26 @@ Handle.__index = Handle
 function Handle:set(a)
 	advance(self.fx, math.clamp(a, 0, 1))
 end
-function Handle:stop()
-	if not self.fx.done then
-		finish(self.fx)
+-- Ends it now. A looping effect fades out first (pass true to cut it off at once).
+function Handle:stop(atOnce)
+	local fx = self.fx
+	if fx.done then
+		return
+	end
+	if fx.loop and not fx.manual and not atOnce then
+		fx.stopAt = fx.stopAt or math.max(fx.age, 0)
+	else
+		finish(fx)
 	end
 end
 
 local function start(fx, recipe, opts)
-	fx.len = (opts.seconds or recipe.len) * (opts.pace or 1)
+	local linger = recipe.noLinger and 1 or LayerFx.Linger
+	local seconds = opts.seconds or recipe.len * linger
+	fx.linger = math.max(1, seconds / recipe.len)
+	fx.len = seconds * (opts.pace or 1)
+	fx.loop = recipe.loop and opts.loop ~= false or opts.loop == true
+	fx.manual = opts.manual == true
 	fx.age = -(opts.delay or 0) * (opts.pace or 1)
 	fx.alpha = opts.alpha or 1
 	fx.onDone = opts.onDone
@@ -563,7 +818,12 @@ end
 --           size     in studs (default 4)
 --           aim      a direction in the world to point the picture along (slashes, hits)
 --           to       where a bolt flies to
---           seconds, delay, pace, alpha, onTop, manual, onDone, parent
+--           seconds  how long it lasts (default: the recipe's length times LayerFx.Linger)
+--           onTop    false lets models hide it (default: drawn over the models; flat effects
+--                    lie on the ground under them unless onTop = true)
+--           loop     true keeps it running until handle:stop()  ("aura" loops by itself)
+--           follow   a Model or part to stay on (with offset, a Vector3), for auras
+--           delay, pace, alpha, manual, onDone, parent, brightness
 function LayerFx.play(name, where, opts)
 	local recipe = R[name]
 	if not recipe or not LayerFx.ready(name) then
@@ -607,9 +867,9 @@ function LayerFx.play(name, where, opts)
 		gui.Size = UDim2.fromScale(size * room, size * room)
 		gui.LightInfluence = 0
 		gui.Brightness = opts.brightness or 1.3
-		gui.AlwaysOnTop = opts.onTop == true
+		gui.AlwaysOnTop = opts.onTop ~= false -- over the models, so a creature never cuts it in half
 		gui.ClipsDescendants = false
-		gui.StudsOffset = Vector3.new(0, 0, opts.toward or 1) -- a touch toward the camera, clear of the model
+		gui.StudsOffset = Vector3.new(0, 0, opts.toward or (opts.onTop == false and 1 or 0))
 		gui.Parent = anchor
 		fx.inner = 1 / room
 		buildSprites(fx, recipe, gui)
@@ -625,6 +885,10 @@ function LayerFx.play(name, where, opts)
 			fx.aim = opts.aim.Unit
 		end
 		fx.aimTurn = recipe.aimTurn
+	end
+	if opts.follow then
+		fx.follow = opts.follow
+		fx.offset = opts.offset or Vector3.zero
 	end
 	anchor.Parent = opts.parent or fxFolder()
 	return start(fx, recipe, opts)

@@ -83,7 +83,7 @@ table.sort(names)
 ---------------------------------------------------------------------------
 -- 1. The shipped ids: every sheet is either uploaded or cleanly skipped
 ---------------------------------------------------------------------------
-local SHEETS = { "burst", "slash", "ring", "circle", "pillar", "bolt", "puff", "bloom", "shield", "shard", "flame", "spark", "bits" }
+local SHEETS = { "burst", "slash", "ring", "circle", "pillar", "bolt", "puff", "bloom", "shield", "shard", "flame", "spark", "bits", "claw", "lightning", "wisp", "gear", "chevron", "splash", "crack", "vortex", "wings", "rune" }
 local uploaded = 0
 for _, s in ipairs(SHEETS) do
 	local id = Assets[s]
@@ -165,7 +165,21 @@ local function watch(name, root, frames, dumpAs)
 	return seenLayer, peak
 end
 
-local PAL = { hit = "ember", bigHit = "blood", slash = "steel", slam = "gold", circle = "arcane", pillar = "holy", bolt = "frost", puff = "smoke", bloom = "verdant", shield = "frost", shards = "frost", flame = "ember", glint = "gold", nova = "arcane" }
+-- How many frames an effect runs: longer than its recipe says (LayerFx.Linger), unless the recipe
+-- opts out. A looping one (aura) never ends by itself: it is watched for a while, then stopped.
+local function framesOf(recipe)
+	return math.ceil(recipe.len * (recipe.noLinger and 1 or LayerFx.Linger) * 30) + 3
+end
+local function endOf(recipe, handle)
+	if recipe.loop then
+		handle:stop() -- (fades out over 0.3 s)
+		M.advance(0.5)
+	else
+		M.advance(0.2)
+	end
+end
+
+local PAL = { claw = "verdant", zap = "frost", wisp = "arcane", gears = "rust", buff = "gold", debuff = "blood", splash = "aqua", crack = "ember", vortex = "void", wings = "holy", rune = "arcane", enchant = "toxic", aura = "void", hit = "ember", bigHit = "blood", slash = "steel", slam = "gold", circle = "arcane", pillar = "holy", bolt = "frost", puff = "smoke", bloom = "verdant", shield = "frost", shards = "frost", flame = "ember", glint = "gold", nova = "arcane" }
 
 for _, name in ipairs(names) do
 	local recipe = LayerFx.Recipes[name]
@@ -181,8 +195,10 @@ for _, name in ipairs(names) do
 	local gui = anchor and anchor:FindFirstChild("Layers")
 	check(gui ~= nil and gui:IsA(recipe.flat and "SurfaceGui" or "BillboardGui"), name .. ": the right kind of gui")
 	if gui then
-		local frames = math.ceil(recipe.len * 30) + 3
-		local seen, peak = watch(name, gui, frames)
+		local seen, peak = watch(name, gui, framesOf(recipe))
+		if recipe.loop then
+			check(anchor.Parent ~= nil and not done, name .. ": keeps running until it is stopped")
+		end
 		local layers = 0
 		for _ in pairs(seen) do
 			layers += 1
@@ -193,7 +209,7 @@ for _, name in ipairs(names) do
 			check((anchor.Position - Vector3.new(2, 5, -4)).Magnitude < 0.01 or anchor.Parent == nil, name .. ": arrives at its target")
 		end
 	end
-	M.advance(0.2)
+	endOf(recipe, h)
 	check(done, name .. ": onDone fired")
 	check(anchor == nil or anchor.Parent == nil, name .. ": cleaned up")
 	-- on the screen
@@ -204,8 +220,8 @@ for _, name in ipairs(names) do
 	local holder = screen:FindFirstChild("Fx_" .. name)
 	check(holder ~= nil, name .. ": screen holder")
 	if holder then
-		watch(name, holder, math.ceil(recipe.len * 30) + 3, FX_DUMP and name or nil)
-		M.advance(0.2)
+		watch(name, holder, framesOf(recipe), FX_DUMP and name or nil)
+		endOf(recipe, h2)
 		check(holder.Parent == nil, name .. ": screen effect cleaned up")
 	end
 	screen:Destroy()
