@@ -138,6 +138,26 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 ## Use your own models
 Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
 
+## Enchants: runes on your cards
+
+The **Enchanting Crystal** floats in the middle of the Park, on the island (the Pull Altar moved to the lawn in front of the Hall of Pulls). Walk up and press **E**, pick a creature or spell you own, and press **Enchant** (250 Coins) or **Lucky** (60 Gems: no Commons, better odds). The rune is rolled at random; the card's rim flickers through the colours, slows down and lands on the rarity, with a bigger burst for rarer runes.
+
+| Rarity | Odds | Lucky | Colour | Creature runes | Spell runes |
+|---|---|---|---|---|---|
+| Common | 46% | 0% | moonlight silver | Thick Hide (+1 health), Sharp Edge (+1 attack) | Inkwell (heal hero 1) |
+| Rare | 30% | 48% | sapphire | Iron Hide (+2 health), Thorns (+1 health, 1 damage back), Head Start (1 Power) | Mending Ink (heal hero 2) |
+| Epic | 14% | 30% | amethyst | Bubble Ward (+1 health, a Bubble), Leech (heal hero 1 per hit), Swift (+1 attack, Zoom) | Quick Cast (1 less, never below 1) |
+| Mythic | 7% | 14% | ruby | Fury (+2/+1), Last Word (+2 health, Grudge), Restless (Sturdy, Haunt) | Insight (draw a card) |
+| Legendary | 2.5% | 6.5% | gold | Titan Blood (+2/+3), Vampire (+1 attack, heal hero 2 and itself 1 per hit), Phoenix (rises once with half health) | Echo (1 less, draw a card) |
+| Secret | 0.5% | 1.5% | rainbow | Starborn (+3/+3, a Bubble), Crown of Ages (+2/+2, Sturdy, rises once at full health) | Wellspring (1 less, draw, heal hero 3) |
+
+- An enchant belongs to the card: every copy in every deck carries it. Buildings can't be enchanted.
+- Bad luck protection: after 8 enchants in a row below Epic, the next one is Epic or better (the window counts down).
+- Enchanting a card that already has a rune asks you to keep the new one or the old one.
+- Like card levels, enchant powers count against bots and in the Campaign. In duels against players the rune glows but cards play at their printed numbers (`Enchants.InDuels`).
+- What you see: a glowing rim and a rune gem on the card (hand, Deck Shelf, the window), a slow aura in the rune's colour under the creature on the table (ring, light, rising motes), a rune circle when it lands, and painted effects when Thorns, Leech, Phoenix or a spell rune fires.
+- Code: `src/shared/Enchants.luau` (runes, odds, colours: change numbers here), `EnchantFx.luau` (the look, on top of LayerFx), `EnchantUI.luau` (the window), `EconomyManager.enchantCard/chooseEnchant` (the save), hooks in `MatchEngine`, `MatchScreen`, `ParkBuilder` (`buildShrine`) and `ParkClient`. Tests: `tests/enchant_tests.luau`, `mock_roblox/enchantharness.luau`.
+
 ## Painted effects: four layers per picture
 Hits, slashes, spells, summons, knock-outs, heals, wards, the pack slash, card reveals and Pack Brawl's blows are now painted effects. Each one is a picture drawn as four layers (a soft **glow**, the dark **rim**, the bright **middle** and the white-hot **core**) that the game stacks and moves a little apart in time: the core snaps out first, the rim arrives last and lingers. The pictures are white, so each card family fights in its own colours (Snack orange, Weather blue, Spooky purple, Critter green, Junk rust, Robo steel) and pack reveals use the rarity's colour.
 

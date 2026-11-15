@@ -25,6 +25,8 @@ local DeckRules = require(here:WaitForChild("DeckRules"))
 local CardLevels = require(here:WaitForChild("CardLevels"))
 local Juice = require(here:WaitForChild("Juice"))
 local UIKit = require(here:WaitForChild("UIKit"))
+local Enchants = require(here:WaitForChild("Enchants"))
+local EnchantFx = require(here:WaitForChild("EnchantFx"))
 
 local rgb = Juice.rgb
 
@@ -230,6 +232,9 @@ end
 local function cardCell(parent, id, order)
 	local cell = make("Frame", { Name = "Cell_" .. id, Size = UDim2.fromOffset(104, 168), BackgroundTransparency = 1, LayoutOrder = order }, parent)
 	local card = kit.makeCard(cell, id, UDim2.fromOffset(104, 146), nil, nil, bestLevel(id))
+	if ownedCount(id) > 0 then
+		EnchantFx.decorateCard(card, state.snap and state.snap.enchants and state.snap.enchants[id])
+	end
 	local dim = make("Frame", { Name = "Dim", Size = UDim2.fromScale(1, 1), BackgroundColor3 = INK, BackgroundTransparency = 1, ZIndex = 20 }, card)
 	make("UICorner", { CornerRadius = UDim.new(0, 10) }, dim)
 	local badge = text(cell, "", { Name = "Badge", Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -16), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 13, Font = Enum.Font.FredokaOne })
@@ -465,6 +470,8 @@ local function showDetail()
 	local stage = make("Frame", { Name = "Stage", Size = UDim2.fromOffset(220, 308), Position = UDim2.fromOffset(24, 62), BackgroundTransparency = 1 }, root)
 	local big = kit.makeCard(stage, id, UDim2.fromScale(1, 1), nil, nil, best)
 	big.Name = "BigCard"
+	local enchant = state.snap and state.snap.enchants and state.snap.enchants[id]
+	EnchantFx.decorateCard(big, enchant, { gem = 28 })
 	-- the right column
 	local col = make("ScrollingFrame", {
 		Name = "Info",
@@ -489,8 +496,23 @@ local function showDetail()
 	local line = (now ~= "no bonus" and ("Now: " .. now) or "No bonus yet") .. (nextL and ("   ·   Lv " .. nextL .. ": " .. nextText) or "")
 	text(info, line, { Name = "BonusLine", Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 34), TextSize = 14, TextColor3 = TEXT })
 	text(info, CardLevels.InDuels and "Counts in every match." or "Counts against bots and in the Campaign. Duels with players use printed numbers.", { Size = UDim2.new(1, -24, 0, 16), Position = UDim2.fromOffset(12, 53), TextSize = 12, TextColor3 = DIM, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- its enchant (put on at the Enchanting Crystal in the Park)
+	if Enchants.canEnchant(id) then
+		local e = Enchants.get(enchant)
+		local box = make("Frame", { Name = "Enchant", Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = TILE, LayoutOrder = 4 }, col)
+		make("UICorner", { CornerRadius = UDim.new(0, 10) }, box)
+		if e then
+			local c = EnchantFx.color(e.rarity)
+			make("UIStroke", { Thickness = 2, Color = c, Transparency = 0.2 }, box)
+			text(box, "◆ " .. e.name .. "  ·  " .. e.rarity, { Size = UDim2.new(1, -24, 0, 20), Position = UDim2.fromOffset(12, 4), Font = Enum.Font.FredokaOne, TextSize = 16, TextColor3 = c })
+			text(box, e.text, { Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 24), TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd })
+		else
+			text(box, "◆ No enchant", { Size = UDim2.new(1, -24, 0, 20), Position = UDim2.fromOffset(12, 4), Font = Enum.Font.FredokaOne, TextSize = 16, TextColor3 = DIM })
+			text(box, "Enchant it at the big crystal in the middle of the Park.", { Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 24), TextSize = 13, TextColor3 = DIM, TextTruncate = Enum.TextTruncate.AtEnd })
+		end
+	end
 	-- one row per level
-	text(col, "Copies  ·  " .. CardLevels.total(lv) .. (reserved > 0 and ("  ·  your decks use " .. reserved) or ""), { Size = UDim2.new(1, -8, 0, 22), Font = Enum.Font.FredokaOne, TextSize = 17, TextColor3 = TEXT, LayoutOrder = 4 })
+	text(col, "Copies  ·  " .. CardLevels.total(lv) .. (reserved > 0 and ("  ·  your decks use " .. reserved) or ""), { Size = UDim2.new(1, -8, 0, 22), Font = Enum.Font.FredokaOne, TextSize = 17, TextColor3 = TEXT, LayoutOrder = 5 })
 	for l = 1, max do
 		local c = lv[l] or 0
 		local row = make("Frame", { Name = "Level_" .. l, Size = UDim2.new(1, -8, 0, 44), BackgroundColor3 = c > 0 and TILE or INK, BackgroundTransparency = c > 0 and 0 or 0.5, LayoutOrder = 10 + l }, col)

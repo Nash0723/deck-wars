@@ -147,7 +147,25 @@ function PlayerDecks.snapshot(player)
 			used += n
 		end
 	end
-	return { cards = p.cards, decks = list, slots = p.slots, levels = cardLevels(player, p.cards), reserved = reserved, storage = { used = used, limit = limit } }
+	local snap = { cards = p.cards, decks = list, slots = p.slots, levels = cardLevels(player, p.cards), reserved = reserved, storage = { used = used, limit = limit } }
+	-- enchants (the Enchanting Crystal in the Park, and the glow on cards everywhere)
+	if eco and eco.getEnchants then
+		local en = eco.getEnchants(player)
+		snap.enchants, snap.enchantPity, snap.enchantPending = en.enchants, en.pity, en.pending
+	end
+	return snap
+end
+
+-- The player's enchants ({ [cardId] = enchantId }) for a match setup.
+function PlayerDecks.enchantsFor(player)
+	local eco = getEconomy()
+	if player and eco and eco.getEnchants then
+		local ok, en = pcall(eco.getEnchants, player)
+		if ok and type(en) == "table" then
+			return en.enchants
+		end
+	end
+	return {}
 end
 
 -- Saves a deck into a slot. Decks that break the rules can still be saved (so you can finish

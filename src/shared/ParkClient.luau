@@ -28,6 +28,8 @@ local Juice = require(here:WaitForChild("Juice"))
 local UIKit = require(here:WaitForChild("UIKit")) -- the drawn close ✕ and Focus
 local Settings = require(here:WaitForChild("Settings")) -- (Graphics: Low turns the park's shadows off)
 local TradeUI = require(here:WaitForChild("TradeUI")) -- (trading cards at the Trading Post)
+local EnchantUI = require(here:WaitForChild("EnchantUI")) -- (the Enchanting Crystal on the island)
+local EnchantFx = require(here:WaitForChild("EnchantFx"))
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -129,7 +131,7 @@ local EFFECT_KEYS = {
 local AMBIENCE = {
 	birds = { id = 9116971178, volume = 0.3 },
 	crickets = { id = 9112764040, volume = 0.28 },
-	water = { id = 9120571336, volume = 0.5, at = "Altar", range = 70 },
+	water = { id = 9120571336, volume = 0.5, at = "EnchantShrine", range = 70 },
 	fire = { id = 90029322038324, volume = 0.7, at = "Campfire", range = 45 },
 }
 
@@ -1844,6 +1846,7 @@ function ParkClient.leave(instant, thenStation)
 	closeEditor()
 	closePacks()
 	TradeUI.close()
+	EnchantUI.close()
 	showHud(false)
 	S.hint.Visible = false
 	if not instant then
@@ -1902,7 +1905,8 @@ function ParkClient.doorPanel(body)
 	text(list, "Step outside into the park: everyone in this server walks around as their avatar.", { Size = UDim2.new(1, 0, 0, 40), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1 })
 	local lines = {
 		"🏆  Whoever here has the rarest cards stands on the Top Collector's pedestal.",
-		"✨  Open packs at the Pull Altar on the island. Mythic and up gets a banner for everyone.",
+		"✨  Open packs at the Pull Altar by the Hall of Pulls. Mythic and up gets a banner for everyone.",
+		"◆  Enchant your cards at the big crystal on the island. Every rune rarity glows its own colour.",
 		"🤝  Swap cards with other players at the Trading Post.",
 		"📜  Hall of Pulls and leaderboards: Campaign stars and levels.",
 		"🐾  Pick a creature to walk with you, and wear a title you've earned.",
@@ -1931,6 +1935,7 @@ function ParkClient.init(ctx)
 	S.ctx = ctx
 	buildGui()
 	TradeUI.init({ gui = S.gui, action = ParkAction, makeCard = ctx.makeCard, toast = toast })
+	EnchantUI.init({ gui = S.gui, makeCard = ctx.makeCard, toast = toast })
 	ParkEvent.OnClientEvent:Connect(function(e)
 		if type(e) ~= "table" then
 			return
@@ -1974,7 +1979,12 @@ function ParkClient.init(ctx)
 			return
 		end
 		if prompt.Name == "OpenPacks" then
+			EnchantUI.close()
 			openPacks()
+		elseif prompt.Name == "Enchant" then
+			closeEditor()
+			closePacks()
+			EnchantUI.open()
 		elseif prompt.Name == "Trade" then
 			closeEditor()
 			closePacks()
@@ -1995,6 +2005,7 @@ function ParkClient.init(ctx)
 		if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB then
 			closeEditor()
 			closePacks()
+			EnchantUI.close()
 			TradeUI.escape()
 		end
 	end)
@@ -2012,6 +2023,51 @@ function ParkClient.init(ctx)
 		if pack then
 			S.packBase = S.packBase or pack.CFrame
 			pack.CFrame = S.packBase * CFrame.new(0, math.sin(spin * 1.3) * 0.6, 0) * CFrame.Angles(0, spin * 0.7, math.sin(spin * 0.9) * 0.08)
+		end
+		-- the Enchanting Crystal floats and turns, its shards circle it, and the colours of the
+		-- enchant rarities run round the runes on the floor and through its heart
+		local shrine = root and root:FindFirstChild("EnchantShrine")
+		if shrine then
+			S.shrine = S.shrine or {}
+			local sh = S.shrine
+			local crystal = shrine:FindFirstChild("Crystal")
+			if crystal then
+				sh.crystalBase = sh.crystalBase or crystal:GetPivot()
+				crystal:PivotTo(sh.crystalBase * CFrame.new(0, math.sin(spin * 0.8) * 0.7, 0) * CFrame.Angles(0, spin * 0.35, 0))
+				local core = crystal:FindFirstChild("Core")
+				if core then
+					core.Color = EnchantFx.rainbowAt(spin * 0.05):Lerp(Color3.new(1, 1, 1), 0.35)
+					local l = core:FindFirstChildOfClass("PointLight")
+					if l then
+						l.Color = core.Color
+					end
+				end
+			end
+			local orbit = shrine:FindFirstChild("Orbit")
+			if orbit then
+				sh.center = sh.center or (sh.crystalBase and sh.crystalBase.Position) or shrine:GetPivot().Position
+				for i, m in ipairs(orbit:GetChildren()) do
+					if m:IsA("Model") then
+						sh[m] = sh[m] or m:GetPivot()
+						local a = (m:GetAttribute("Angle") or 0) + spin * 0.18
+						local r = m:GetAttribute("Radius") or 4
+						local y = (m:GetAttribute("Height") or 8) + math.sin(spin * 0.9 + i) * 0.4
+						local base = sh.center + Vector3.new(math.sin(a) * r, y - 8.4, math.cos(a) * r)
+						m:PivotTo(CFrame.new(base) * (sh[m] - sh[m].Position) * CFrame.Angles(0, spin * 0.6 + i, 0))
+					end
+				end
+			end
+			local runes = shrine:FindFirstChild("Runes")
+			if runes then
+				local order = { "Common", "Rare", "Epic", "Mythic", "Legendary", "Secret" }
+				for i, r in ipairs(runes:GetChildren()) do
+					if r:IsA("BasePart") then
+						local k = (spin * 0.25 + i / 24) % 1
+						local rarity = order[math.floor(k * 6) + 1] or "Common"
+						r.Color = EnchantFx.color(rarity, i / 24)
+					end
+				end
+			end
 		end
 		-- the Top Collector's rarest card floats over them, turning a little this way and that
 		local top = root and root:FindFirstChild("TopCollector")

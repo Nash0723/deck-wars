@@ -38,6 +38,7 @@ local CardData = req("CardData")
 local CardLevels = req("CardLevels")
 local ShopCatalog = req("ShopCatalog")
 local ProfileStore = req("ProfileStore")
+local Enchants = req("Enchants")
 
 local EconomyManager = {}
 
@@ -57,6 +58,9 @@ EconomyManager.Template = {
 	level = 1,
 	collection = {}, -- [cardId] = copies owned (all levels together)
 	cardLevels = {}, -- [cardId] = { copies at Lv1, Lv2, ... } (see CardLevels; adds up to collection)
+	enchants = {}, -- [cardId] = enchantId (see Enchants): every copy of that card carries it
+	enchantPity = 0, -- enchants in a row below Epic (bad luck protection)
+	enchantPending = false, -- { card, enchant } waiting for "keep new or old", or false
 	storageBonus = 0, -- extra card storage on top of CardLevels.StorageLimit (an upgrade, later)
 	decks = {}, -- saved decks (filled by the deck builder)
 	deckSlots = ShopCatalog.DeckSlots.start,
@@ -96,6 +100,7 @@ local deps = {
 	isDev = function()
 		return false
 	end,
+	random = nil, -- function() -> [0, 1) for enchant rolls (tests pass a seeded one)
 }
 local store = nil -- ProfileStore
 local profiles = {} -- [player] = profile
@@ -464,6 +469,93 @@ end
 ---------------------------------------------------------------------------
 -- Fusing and selling (the Deck Shelf). The copies the player's saved decks use are always kept.
 ---------------------------------------------------------------------------
+
+---------------------------------------------------------------------------
+-- Enchants (rules and odds in Enchants)
+---------------------------------------------------------------------------
+
+local enchantRng = nil
+local function rand01()
+	if deps.random then
+		return deps.random()
+	end
+	enchantRng = enchantRng or Random.new()
+	return enchantRng:NextNumber()
+end
+
+-- Rolls an enchant on a card the player owns. mode "lucky" pays Gems for better odds.
+-- Returns ok, then { card, enchant, rarity, old, pending, pity } or the reason it didn't work.
+-- If the card already had an enchant, the new one waits (pending) until chooseEnchant.
+function EconomyManager.enchantCard(player, id, mode)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return false, "Your save hasn't loaded yet."
+	end
+	if type(id) ~= "string" or not CardData.Cards[id] then
+		return false, "Unknown card."
+	end
+	if not Enchants.canEnchant(id) then
+		return false, "Only creatures and spells can be enchanted."
+	end
+	if (d.collection[id] or 0) <= 0 then
+		return false, "You don't own that card."
+	end
+	if type(d.enchantPending) == "table" then
+		return false, "Choose which enchant to keep first."
+	end
+	local lucky = mode == "lucky"
+	local price = lucky and Enchants.LuckyCost or Enchants.Cost
+	local ok, why = payPrice(d, price)
+	if not ok then
+		return false, why
+	end
+	local eid, rarity, pity = Enchants.roll(id, rand01, lucky, d.enchantPity or 0)
+	if not eid then
+		return false, "No enchant fits that card."
+	end
+	d.enchantPity = pity
+	d.stats.enchants = (d.stats.enchants or 0) + 1
+	local old = Enchants.get(d.enchants[id]) and d.enchants[id] or nil
+	local pending = old ~= nil
+	if pending then
+		d.enchantPending = { card = id, enchant = eid }
+	else
+		d.enchants[id] = eid
+	end
+	changed(player, "enchant")
+	return true, { card = id, enchant = eid, rarity = rarity, old = old, pending = pending, pity = pity, lucky = lucky }
+end
+
+-- Settles a pending enchant: keepNew true puts the new rune on, false keeps the old one.
+function EconomyManager.chooseEnchant(player, keepNew)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return false, "Your save hasn't loaded yet."
+	end
+	local p = d.enchantPending
+	if type(p) ~= "table" then
+		return false, "Nothing to choose."
+	end
+	d.enchantPending = false
+	if keepNew and Enchants.fits(p.enchant, p.card) then
+		d.enchants[p.card] = p.enchant
+	end
+	changed(player, "enchant")
+	return true, { card = p.card, enchant = d.enchants[p.card], kept = keepNew and "new" or "old" }
+end
+
+-- { enchants = { [cardId] = enchantId }, pity, pending } (copies)
+function EconomyManager.getEnchants(player)
+	local d = EconomyManager.waitForData(player)
+	if not d then
+		return { enchants = {}, pity = 0, pending = nil }
+	end
+	return {
+		enchants = Enchants.sanitize(d.enchants),
+		pity = d.enchantPity or 0,
+		pending = type(d.enchantPending) == "table" and table.clone(d.enchantPending) or nil,
+	}
+end
 
 local function reservedFor(d, id)
 	return CardLevels.reserved(d.decks, id)

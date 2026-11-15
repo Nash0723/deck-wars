@@ -212,6 +212,10 @@ function Match.new(seats, opts)
 		local setup = setupForSeat(seat)
 		seat.themes = setup.themes
 		setups[i] = { deck = setup.deck, hero = setup.hero, family = setup.family, lanes = setup.lanes, name = seat.name, levels = setup.levels, levelStats = levelStats }
+		if seat.kind == "human" and PlayerDecks.enchantsFor then
+			-- the player's enchanted cards carry their runes (powers only where levels count too)
+			setups[i].enchants = PlayerDecks.enchantsFor(seat.player)
+		end
 		if seat.kind == "human" then
 			seat.seq = 0
 			seat.ack = 0
