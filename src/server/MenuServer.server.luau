@@ -3,7 +3,9 @@
 -- Matches, lobbies, parties and rewards live in MatchServer; this script only answers these
 -- MenuAction requests: LoadSettings, SaveSettings, GetDecks, SaveDeck, DeleteDeck, ClaimAchievement,
 -- and the Deck Shelf's cards: FuseCard { id, level }, FuseAll { id }, FuseEverything, SellCard { id, level }
--- (each answered with "CardResult" and a fresh "Decks" snapshot; see CardLevels for the rules).
+-- (each answered with "CardResult" and a fresh "Decks" snapshot; see CardLevels for the rules),
+-- and the Enchanting Crystal's Enchant { id, mode = "coins" | "lucky" } and EnchantChoose
+-- { keep = "new" | "old" } (see Enchants).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -113,7 +115,7 @@ local function deckCallAllowed(player)
 	return c.n <= 12
 end
 
-local CARD_ACTIONS = { FuseCard = true, FuseAll = true, FuseEverything = true, SellCard = true }
+local CARD_ACTIONS = { FuseCard = true, FuseAll = true, FuseEverything = true, SellCard = true, Enchant = true, EnchantChoose = true }
 -- (everything else that reads or writes the profile counts against the same limit)
 local LIMITED = { GetDecks = true, SaveDeck = true, DeleteDeck = true, ClaimAchievement = true, ClaimRoad = true }
 
@@ -146,6 +148,23 @@ local function cardAction(player, what, options)
 			result.count, result.best = n, best
 		else
 			result.why = n
+		end
+	elseif what == "Enchant" then
+		-- the Enchanting Crystal in the Park (rules and odds in Enchants)
+		local ok, r = EconomyManager.enchantCard(player, id, options.mode == "lucky" and "lucky" or "coins")
+		result.ok = ok
+		if ok then
+			result.id, result.enchant, result.rarity, result.old, result.pending, result.pity = r.card, r.enchant, r.rarity, r.old, r.pending, r.pity
+		else
+			result.why = r
+		end
+	elseif what == "EnchantChoose" then
+		local ok, r = EconomyManager.chooseEnchant(player, options.keep == "new")
+		result.ok = ok
+		if ok then
+			result.id, result.enchant, result.kept = r.card, r.enchant, r.kept
+		else
+			result.why = r
 		end
 	elseif what == "SellCard" then
 		local ok, r = EconomyManager.sellCard(player, id, level)

@@ -10,8 +10,13 @@
 --
 -- Everything that scripts look for has a fixed name:
 --
---   Park.Altar                 the Pull Altar on the island (Model): Dais (with a ProximityPrompt
---                               "OpenPacks"), FloatingPack, LightPillar (shown on big pulls)
+--   Park.Altar                 the Pull Altar in front of the Hall of Pulls (Model): Dais (with a
+--                               ProximityPrompt "OpenPacks"), FloatingPack, LightPillar (big pulls)
+--   Park.EnchantShrine         the Enchanting Crystal on the island in the middle (Model): Base
+--                               (with a ProximityPrompt "Enchant"), Runes (Neon segments of the ring
+--                               on the floor), Crystal (floats: Core, Shell, Tip parts; the client
+--                               turns and bobs it), Orbit (broken shards floating round it) and
+--                               Fallen (broken shards on the ground)
 --   Park.TopCollector          the Top Collector's terrace (Model; ParkServer sets its attributes
 --                               ChampionId, ChampionName, Title, Cards, Count): AvatarSpot (where
 --                               the avatar stands), Card1 (floats overhead), Card2, Card3 (easels),
@@ -955,6 +960,7 @@ local BLANKET2 = polar(math.rad(302), 90)
 local BIRDBATH = SYCAMORE + Vector3.new(16, 0, 14)
 local CAMPFIRE = polar(math.rad(48), 80) -- a campfire circle on the south-east lawn
 local TRADING = polar(math.rad(240), 112) -- the Trading Post, on the west lawn beyond the sycamore
+local ALTAR_AT = HALL + HALL_FRONT * 17 -- the Pull Altar: in front of the Hall of Pulls
 local ALCOVES = { 30, 60, 120, 150, 210, 300, 330 } -- quiet nooks round the edge, degrees
 local SHORE_LAMPS = { 35, 100, 140, 173, 222, 260, 306, 325 } -- (none in the way of the paths or the terrace; 306 lights the stepping stones)
 local SHORE_BENCHES = { 42, 180, 215, 318 }
@@ -1831,6 +1837,96 @@ local function buildAltar(root)
 		light(c, rgb(214, 200, 255), 8, 0.5)
 	end
 	prompt(dais, "OpenPacks", "Open packs", "Pull Altar", 16)
+	-- (built round the middle, then moved in front of the Hall of Pulls: the island in the middle
+	-- of the pond is the Enchanting Crystal's)
+	local at = ALTAR_AT
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.CFrame = d.CFrame + at
+		end
+	end
+	return m
+end
+
+---------------------------------------------------------------------------
+-- The Enchanting Crystal: in the middle of the park, on the island. A big crystal floats over a
+-- round slate floor with a ring of runes, broken shards drift round it and lie cracked on the
+-- ground about it. The client turns and bobs the crystal, circles the floating shards and runs the
+-- colours of the enchant rarities through the runes and the crystal's heart.
+---------------------------------------------------------------------------
+
+local SHRINE_SLATE = rgb(74, 78, 98)
+local SHRINE_GLASS = rgb(196, 226, 255)
+local SHRINE_CORE = rgb(150, 210, 255)
+
+-- A long crystal shard: a glass block with a pointed tip (a turned cube) on top.
+local function shard(parent, name, cf, w, h, color, props)
+	local m = make("Model", { Name = name }, parent)
+	local body = part(m, "Body", Vector3.new(w, h, w * 0.8), cf, color or SHRINE_GLASS, Enum.Material.Glass, merge({ Transparency = 0.3 }, props or {}))
+	local tip = part(m, "Tip", Vector3.new(w * 0.72, w * 0.72, w * 0.72), cf * CFrame.new(0, h / 2, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35.26)), color or SHRINE_GLASS, Enum.Material.Glass, merge({ Transparency = 0.3 }, props or {}))
+	m.PrimaryPart = body
+	return m, body, tip
+end
+
+local function buildShrine(root)
+	local m = make("Model", { Name = "EnchantShrine" }, root)
+	local base = cylinder(m, "Base", 16, 0.8, CFrame.new(0, 0.4, 0), SHRINE_SLATE, Enum.Material.Slate)
+	cylinder(m, "Seal", 9, 0.12, CFrame.new(0, 0.86, 0), rgb(52, 54, 72), Enum.Material.Slate)
+	cylinder(m, "Heart", 2.4, 0.14, CFrame.new(0, 0.9, 0), SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
+	-- the ring of runes: little glowing marks in a circle (the client colours them)
+	local runes = make("Model", { Name = "Runes" }, m)
+	for i = 1, 24 do
+		local a = (i - 1) / 24 * TAU
+		local p = polar(a, 6.1) + Vector3.new(0, 0.86, 0)
+		local long = i % 2 == 0
+		part(runes, "Rune", Vector3.new(long and 0.9 or 0.45, 0.1, 0.32), CFrame.new(p) * CFrame.Angles(0, a + math.pi / 2, 0), SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
+	end
+	-- the crystal: a heart of light inside two turned glass bodies with points at both ends
+	local crystal = make("Model", { Name = "Crystal" }, m)
+	local mid = CFrame.new(0, 8.4, 0)
+	local core = part(crystal, "Core", Vector3.new(1.3, 5.6, 1.3), mid, SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
+	for k, turn in ipairs({ 0, 45 }) do
+		part(crystal, "Shell", Vector3.new(2.7, 6.2, 2.7), mid * CFrame.Angles(0, math.rad(turn), 0), SHRINE_GLASS, Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.42 + k * 0.08 }))
+	end
+	for _, y in ipairs({ 1, -1 }) do
+		part(crystal, "Tip", Vector3.new(2.25, 2.25, 2.25), mid * CFrame.new(0, y * 3.1, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35.26)), SHRINE_GLASS, Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.38 }))
+	end
+	crystal.PrimaryPart = core
+	light(core, SHRINE_CORE, 24, 1.6)
+	-- broken shards floating round it (the client circles them slowly)
+	local orbit = make("Model", { Name = "Orbit" }, m)
+	local rng = Random.new(77)
+	for i = 1, 7 do
+		local a = (i - 1) / 7 * TAU
+		local r = 3.8 + rng:NextNumber() * 1.2
+		local y = 6.4 + rng:NextNumber() * 4
+		local cf = CFrame.new(polar(a, r) + Vector3.new(0, y, 0)) * CFrame.Angles(rng:NextNumber() * 0.8 - 0.4, a, rng:NextNumber() * 0.9 - 0.45)
+		local s = shard(orbit, "Shard", cf, 0.42 + rng:NextNumber() * 0.25, 1.1 + rng:NextNumber() * 1.1, nil, NO_TOUCH)
+		s:SetAttribute("Angle", a)
+		s:SetAttribute("Radius", r)
+		s:SetAttribute("Height", y)
+	end
+	-- broken shards on the ground: leaning, half sunk, cracked off the big one
+	local fallen = make("Model", { Name = "Fallen" }, m)
+	local spots = {
+		{ 20, 8.9, 2.6, 0.9, 32 }, { 64, 9.6, 1.6, 0.6, -24 }, { 110, 8.7, 3.2, 1.1, 18 },
+		{ 152, 10.3, 1.3, 0.5, 40 }, { 205, 9.1, 2.2, 0.8, -36 }, { 250, 10.6, 1.5, 0.55, 22 },
+		{ 292, 8.8, 2.8, 1, -20 }, { 333, 10.1, 1.2, 0.45, 30 }, { 180, 5.4, 0.9, 0.35, 64 },
+		{ 40, 4.6, 0.8, 0.3, -70 },
+	}
+	for i, sp in ipairs(spots) do
+		local a = math.rad(sp[1])
+		local p = polar(a, sp[2])
+		local ground = sp[2] < 8 and 0.9 or 0
+		local cf = CFrame.new(p + Vector3.new(0, ground + sp[3] * 0.3, 0)) * CFrame.Angles(0, a, 0) * CFrame.Angles(math.rad(sp[5]), 0, math.rad(sp[5] * 0.4))
+		local _, body = shard(fallen, "Shard", cf, sp[4], sp[3], nil, { CanCollide = sp[3] > 2 })
+		if i % 3 == 1 then
+			-- a few still hold a little of the light
+			part(fallen, "Glint", Vector3.new(sp[4] * 0.3, sp[3] * 0.5, sp[4] * 0.3), cf, SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
+		end
+		body.Name = "Body"
+	end
+	prompt(base, "Enchant", "Enchant cards", "Enchanting Crystal", 18)
 	return m
 end
 
@@ -2175,6 +2271,7 @@ function ParkBuilder.build(workspaceRoot)
 	buildGround(root, pathPoints, terrainMade)
 	buildPond(root, terrainMade)
 	buildAltar(root)
+	buildShrine(root)
 	buildTopCollector(root)
 	buildBoards(root)
 	buildGazebo(root)

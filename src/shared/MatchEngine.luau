@@ -41,6 +41,7 @@ end
 local CardData = req("CardData")
 local Rng = req("Rng")
 local CardLevels = req("CardLevels")
+local Enchants = req("Enchants")
 
 local NO_BONUS = { atk = 0, hp = 0, cost = 0 }
 
@@ -51,6 +52,22 @@ local function levelBonus(self, s, id, level)
 		return NO_BONUS
 	end
 	return CardLevels.bonus(id, level)
+end
+
+-- The enchant on a seat's card (Enchants), or nil.
+local function enchantOf(self, s, id)
+	local seat = self.seats[s]
+	local eid = seat and seat.enchants and seat.enchants[id]
+	return eid and Enchants.get(eid) or nil
+end
+
+-- The same, only when its powers count in this match (like card levels: not in duels).
+local function liveEnchant(self, s, id)
+	local seat = self.seats[s]
+	if not seat or not seat.enchantStats then
+		return nil
+	end
+	return enchantOf(self, s, id)
 end
 
 local MatchEngine = {}
@@ -146,6 +163,8 @@ function MatchEngine.new(setups, seed)
 			deck = deck,
 			deckLv = deckLv, -- the level of each card in the deck
 			levelStats = setup.levelStats ~= false, -- false: levels are only shown (duels between players)
+			enchants = Enchants.sanitize(setup.enchants), -- [cardId] = enchantId (Enchants)
+			enchantStats = (setup.levelStats ~= false) or Enchants.InDuels, -- false: enchants only glow
 			hand = {},
 			discard = {},
 			lost = {}, -- creatures that popped, newest last (The Mannequin Duke brings one back)
@@ -328,6 +347,13 @@ function MatchEngine:costOf(s, entry)
 	if entry.id == "scrapheap_titan" then
 		cost -= math.min(3, self:scrapOnSide(self.seats[s].team))
 	end
+	do
+		-- Enchant: costs less, never below 1.
+		local en = liveEnchant(self, s, entry.id)
+		if en and en.costLess and cost > 1 then
+			cost = math.max(1, cost - en.costLess)
+		end
+	end
 	if c.type == "Spell" then
 		-- Mall Cop Phantom: enemy spells cost 1 more (each Phantom).
 		local enemy = self:enemyTeam(self.seats[s].team)
@@ -473,7 +499,7 @@ end
 
 function MatchEngine:hasKeyword(u, kw)
 	local c = card(u.id)
-	if c.keywords[kw] or u.given[kw] then
+	if c.keywords[kw] or u.given[kw] or (u.enKw and u.enKw[kw]) then
 		return true
 	end
 	local b = self:buildingIn(u)
@@ -507,7 +533,7 @@ function MatchEngine:keywordsOf(u)
 end
 
 function MatchEngine:maxHpOf(u)
-	return card(u.id).hp + (u.lvHp or 0) + u.hpBonus
+	return card(u.id).hp + (u.lvHp or 0) + (u.enHp or 0) + u.hpBonus
 end
 
 function MatchEngine:healthOf(u)
@@ -521,7 +547,7 @@ end
 
 function MatchEngine:attackOf(u)
 	local c = card(u.id)
-	local atk = c.atk + (u.lvAtk or 0) + u.atkBonus + u.power + u.tempAtk
+	local atk = c.atk + (u.lvAtk or 0) + (u.enAtk or 0) + u.atkBonus + u.power + u.tempAtk
 	if self:isHome(u) then
 		atk += CardData.HomeBonus
 	end
@@ -568,6 +594,8 @@ function MatchEngine:snapshot(u)
 		atk = self:attackOf(u),
 		baseAtk = c.atk + (u.lvAtk or 0),
 		level = u.level or 1,
+		enchant = u.enchant, -- an enchant id (Enchants) or nil
+		enchantLive = u.enchant ~= nil and u.enKw ~= nil, -- false: it only glows (duels)
 		hp = self:healthOf(u),
 		maxHp = self:maxHpOf(u),
 		power = u.power,
@@ -600,9 +628,22 @@ end
 local function newCreature(self, s, id, lane, row, level)
 	level = math.clamp(math.floor(tonumber(level) or 1), 1, CardLevels.maxLevel(id))
 	local lv = levelBonus(self, s, id, level)
+	local shown = enchantOf(self, s, id)
+	local en = liveEnchant(self, s, id)
+	local enKw = nil
+	if en then
+		enKw = {}
+		for _, kw in ipairs(en.keywords or {}) do
+			enKw[kw] = true
+		end
+	end
 	return {
 		uid = self:uid(),
 		id = id,
+		enchant = shown and shown.id or nil, -- its enchant: stats part of the creature (washing keeps them)
+		enAtk = en and en.atk or 0,
+		enHp = en and en.hp or 0,
+		enKw = enKw, -- nil when the enchant only glows
 		level = level, -- card level: its small stat bonus is part of the creature (washing keeps it)
 		lvAtk = lv.atk,
 		lvHp = lv.hp,
@@ -662,8 +703,20 @@ function MatchEngine:spawn(s, lane, id, opts)
 	if opts.damage then
 		u.damage = opts.damage
 	end
+	local en = liveEnchant(self, s, id)
+	if en then
+		if en.power then
+			u.power = math.min(CardData.PowerMax, u.power + en.power)
+		end
+		if en.bubble then
+			u.shield = true
+		end
+	end
 	self:setAt(team, lane, row, u)
 	self:emit({ type = "summon", unit = self:snapshot(u), replaced = replaced, how = opts.how })
+	if u.enchant then
+		self:emit({ type = "enchant", what = "arrive", uid = u.uid, enchant = u.enchant, live = en ~= nil })
+	end
 	self:landIn(u)
 	return u
 end
@@ -955,6 +1008,29 @@ function MatchEngine:pop(u, quiet)
 			self:damageTeam(self:enemyTeam(u.team), atk, u.owner)
 		end
 	end
+	-- Phoenix / Crown of Ages (enchants): the first time it pops, it rises again.
+	do
+		local en = liveEnchant(self, u.owner, u.id)
+		if en and en.rebirth and not u.reborn and not c.token and not self:unitAt(u.team, u.lane, u.row) and not self.over then
+			local back = self:spawn(u.owner, u.lane, u.id, { how = "rebirth", row = u.row, level = u.level })
+			back.reborn = true
+			back.playedTurn = -1
+			local keep = math.max(1, math.ceil(self:maxHpOf(back) * en.rebirth))
+			back.damage = self:maxHpOf(back) - keep
+			-- it came back from the discard pile
+			for _, pile in ipairs({ owner.discard, owner.lost }) do
+				for i = #pile, 1, -1 do
+					if pile[i] == u.id then
+						table.remove(pile, i)
+						break
+					end
+				end
+			end
+			self:emit({ type = "enchant", what = "rebirth", uid = back.uid, enchant = en.id, hp = self:healthOf(back) })
+			self:refresh(back)
+			return
+		end
+	end
 	-- Haunt: a Ghost rises where it fell.
 	if self:hasKeyword(u, "Haunt") and not self:unitAt(u.team, u.lane, u.row) then
 		local g = self:spawn(u.owner, u.lane, "ghost", { how = "haunt", row = u.row })
@@ -1232,7 +1308,16 @@ function MatchEngine:attack(u, enemy)
 		local defenderLane = self.lanes[enemy][targetLane]
 		local source = { unit = u, seat = u.owner }
 		local hp = self:healthOf(target)
-		self:damageCreature(target, atk, source)
+		local dealt = self:damageCreature(target, atk, source)
+		self:enchantHit(u, dealt)
+		do
+			-- Thorns: whoever hits it takes damage back.
+			local en = liveEnchant(self, target.owner, target.id)
+			if en and en.thorns and self:findUnit(u.uid) then
+				self:emit({ type = "enchant", what = "thorns", uid = target.uid, target = u.uid, enchant = en.id, amount = en.thorns })
+				self:damageCreature(u, en.thorns, { unit = target, seat = target.owner })
+			end
+		end
 		-- Melee overkill rolls on down the lane (to the Back creature, then the hero).
 		local melee = not (u.row == 2 and self:hasKeyword(u, "Ranged"))
 		if CARRY and melee and self:healthOf(target) <= 0 then
@@ -1266,12 +1351,50 @@ function MatchEngine:attack(u, enemy)
 	else
 		local defenderLane = self.lanes[enemy][u.lane]
 		self:damageTeam(enemy, atk, u.owner)
+		self:enchantHit(u, atk, enemy)
 		if defenderLane.building and defenderLane.building.id == "spiked_fence" then
 			self:emit({ type = "ability", uid = defenderLane.building.uid, id = "spiked_fence" })
 			self:damageCreature(u, 1, { seat = defenderLane.building.owner })
 		end
 	end
 	self:resolvePops()
+end
+
+-- Spell enchants: heal the hero and draw when cast.
+function MatchEngine:enchantCast(s, id)
+	local en = liveEnchant(self, s, id)
+	if not en or self.over then
+		return
+	end
+	if not (en.heroHeal or en.draw) then
+		return
+	end
+	local seat = self.seats[s]
+	self:emit({ type = "enchant", what = "cast", seat = s, id = id, enchant = en.id, team = seat.team })
+	if en.heroHeal then
+		self:healTeam(seat.team, en.heroHeal)
+	end
+	for _ = 1, en.draw or 0 do
+		self:draw(s)
+	end
+end
+
+-- Leech (and Vampire): a creature that dealt damage heals its hero (and itself).
+function MatchEngine:enchantHit(u, dealt, heroTeam)
+	if not dealt or dealt <= 0 or self.over then
+		return
+	end
+	local en = liveEnchant(self, u.owner, u.id)
+	if not (en and (en.leech or en.selfHeal)) then
+		return
+	end
+	self:emit({ type = "enchant", what = "leech", uid = u.uid, enchant = en.id, amount = en.leech or 0, team = u.team, hero = heroTeam })
+	if en.leech then
+		self:healTeam(u.team, en.leech)
+	end
+	if en.selfHeal and self:findUnit(u.uid) and u.damage > 0 then
+		self:healCreature(u, en.selfHeal)
+	end
 end
 
 function MatchEngine:endTurn()
@@ -2051,6 +2174,7 @@ function MatchEngine:act(s, action)
 				table.insert(seat.discard, entry.id)
 			end
 			self:castSpell(s, entry.id, target, entry)
+			self:enchantCast(s, entry.id)
 		end
 		self:resolvePops()
 		self:refreshAll()
@@ -2247,7 +2371,7 @@ function MatchEngine:viewFor(s)
 	end
 	if s and self.seats[s] then
 		for _, e in ipairs(self.seats[s].hand) do
-			table.insert(v.hand, { uid = e.uid, id = e.id, cost = self:costOf(s, e), baseCost = card(e.id).cost, level = e.level or 1 })
+			table.insert(v.hand, { uid = e.uid, id = e.id, cost = self:costOf(s, e), baseCost = card(e.id).cost, level = e.level or 1, enchant = self.seats[s].enchants and self.seats[s].enchants[e.id] })
 		end
 	end
 	return v

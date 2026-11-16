@@ -21,6 +21,7 @@ local Progression = require(Shared:WaitForChild("Progression"))
 local UIKit = require(Shared:WaitForChild("UIKit"))
 local CardLevels = require(Shared:WaitForChild("CardLevels"))
 local LayerFx = require(Shared:WaitForChild("LayerFx"))
+local EnchantFx = require(Shared:WaitForChild("EnchantFx")) -- (enchanted cards: rims, auras, trigger effects)
 
 local ABORT = "MatchScreenAbort" -- thrown to stop playback when the match ended meanwhile
 
@@ -1243,6 +1244,11 @@ function MatchScreen.init(ctx)
 		model.Parent = S.boardFolder
 		local entry = { uid = u.uid, id = u.id, kind = u.kind, slot = slot, row = u.row, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false }
 		S.units[u.uid] = entry
+		if u.enchant then
+			-- an enchanted creature stands in a slow glow of its enchant's colour
+			entry.enchant = u.enchant
+			EnchantFx.aura(model, u.enchant, S.boardFolder, entry.height, u.enchantLive ~= false)
+		end
 		if u.kind == "creature" then
 			F.makeLabel(entry)
 			F.setStats(entry, u)
@@ -1471,6 +1477,7 @@ function MatchScreen.init(ctx)
 				-- Calm cards in your hand: the picture stays still and nothing sweeps across them.
 				local card = ctx.makeCard(holder, h.id, UDim2.fromScale(1, 1), h.cost, "compact", shownLevel(h.level), F.levelsCount(v.you))
 				card.Name = "Card"
+				EnchantFx.decorateCard(card, h.enchant)
 				make("UIStroke", { Name = "Playable", Thickness = 4, Color = Color3.fromRGB(110, 255, 130), Transparency = 1 }, card)
 				local uid = h.uid
 				holder.MouseEnter:Connect(function()
@@ -2350,6 +2357,21 @@ function MatchScreen.init(ctx)
 			F.showcase(e)
 			F.step(0.7)
 		end
+	end
+
+	-- Enchants: a rune lights up as an enchanted creature arrives, Thorns, Leech, a Phoenix rising,
+	-- an enchanted spell (EnchantFx draws them in the enchant rarity's colour).
+	ANIM.enchant = function(e)
+		EnchantFx.matchEvent(e, {
+			units = S.units,
+			fx = F.fx,
+			unitPosition = F.unitPosition,
+			groundOf = F.groundOf,
+			heroPos = F.heroPos,
+			floatText = F.floatText,
+			step = F.step,
+			sound = F.sound,
+		})
 	end
 
 	ANIM.summon = function(e)
