@@ -2024,8 +2024,8 @@ function ParkClient.init(ctx)
 			S.packBase = S.packBase or pack.CFrame
 			pack.CFrame = S.packBase * CFrame.new(0, math.sin(spin * 1.3) * 0.6, 0) * CFrame.Angles(0, spin * 0.7, math.sin(spin * 0.9) * 0.08)
 		end
-		-- the Enchanting Crystal floats and turns, its shards circle it, and the colours of the
-		-- enchant rarities run round the runes on the floor and through its heart
+		-- the Enchanting Crystal floats and turns, its shards circle it, pinks and violets run
+		-- through its heart and the colours of the enchant rarities run round the runes on the floor
 		local shrine = root and root:FindFirstChild("EnchantShrine")
 		if shrine then
 			S.shrine = S.shrine or {}
@@ -2036,7 +2036,8 @@ function ParkClient.init(ctx)
 				crystal:PivotTo(sh.crystalBase * CFrame.new(0, math.sin(spin * 0.8) * 0.7, 0) * CFrame.Angles(0, spin * 0.35, 0))
 				local core = crystal:FindFirstChild("Core")
 				if core then
-					core.Color = EnchantFx.rainbowAt(spin * 0.05):Lerp(Color3.new(1, 1, 1), 0.35)
+					-- (a slow drift between violet and rose: hue 0.76 to 0.92, pastel)
+					core.Color = Color3.fromHSV(0.84 + math.sin(spin * 0.35) * 0.08, 0.42 + math.sin(spin * 0.9) * 0.08, 1)
 					local l = core:FindFirstChildOfClass("PointLight")
 					if l then
 						l.Color = core.Color

@@ -194,7 +194,7 @@ def("binder", {
 })
 
 def("cardbox", {
-	scope = "DeckShelf", anchor = "CardBox", pivot = "bottom", idle = true,
+	scope = "DeckShelf", anchor = "CardBox", with = { "CardBoxTrim" }, radius = 1.2, pivot = "bottom", idle = true,
 	clickSound = { "thudSmall", 0.4, 1.3 },
 	move = function(p, c)
 		local lift = 0.14 * c.h + 0.9 * c.amp * hop(c.pk, 0.5)
@@ -234,7 +234,8 @@ local CHAIR_IN = 0.9 -- studs under the table at rest (the armrests just touch t
 local CHAIR_OUT = 1.7 -- studs out from their real spot when pulled out
 def("chair", {
 	scope = "DuelTable", anchor = "ChairBase", radius = 7, pivot = "bottom", always = true,
-	with = { "ChairLeg", "ChairPost", "ChairFinial", "Armrest", "ArmPost", "ChairTopRail", "ChairSlat", "BackCushion", "Seat_Near", "Seat_Far" },
+	with = { "ChairLeg", "ChairPost", "ChairFinial", "Armrest", "ArmPost", "ChairTopRail", "ChairSlat", "BackCushion", "Seat_Near", "Seat_Far",
+		"ChairTrim", "ChairCushion", "ChairButton", "ChairFoot", "ChairEmblem" },
 	springK = 70, -- slower and softer than the other props: a chair is heavy
 	clickSound = { "thudSmall", 0.3, 1.1 },
 	move = function(p, c)
@@ -258,7 +259,7 @@ def("chair", {
 
 -- Pack Party -----------------------------------------------------------------
 def("balloon", {
-	scope = "PackParty", anchor = "Balloon", with = { "BalloonKnot", "BalloonString" }, radius = 0.6, flat = true,
+	scope = "PackParty", anchor = "Balloon", with = { "BalloonKnot", "BalloonString" }, radius = 0.75, flat = true,
 	pivot = "bottom", neighbors = 2.5, idle = true,
 	clickSound = { "boing2", 0.35, 1.3 },
 	move = function(p, c)
@@ -274,7 +275,7 @@ local function beat(t)
 end
 
 def("speaker", {
-	scope = "PackParty", anchor = "Speaker", with = { "SpeakerCone", "SpeakerDust" }, radius = 3,
+	scope = "PackParty", anchor = "Speaker", with = { "SpeakerCone", "SpeakerDust", "SpeakerTrim" }, radius = 3,
 	pivot = "bottom", clickSound = { "thud", 0.5, 0.6 },
 	setup = function(p)
 		local sum, n = Vector3.new(), 0
@@ -292,7 +293,8 @@ def("speaker", {
 		return CFrame.new(0, 0.05 * c.h * beat(c.t) + 0.3 * c.amp * hop(c.pk, 0.25), 0)
 	end,
 	extra = function(p, e, c)
-		if e.part == p.anchor then
+		-- (only the cones and dust caps pump; the cabinet and its trim stay put)
+		if e.name ~= "SpeakerCone" and e.name ~= "SpeakerDust" then
 			return nil
 		end
 		return CFrame.new(p.out * (0.12 * c.h * beat(c.t) + 0.32 * c.amp * fade(c.pk, 5)))
@@ -337,7 +339,7 @@ def("packjar", {
 -- Shop counter -----------------------------------------------------------------
 def("pickles", {
 	scope = "ShopCounter", anchor = "Pickles", radius = 5,
-	with = { "PickleBump", "PicklesApron", "PicklesHat", "PicklesHatBand", "PicklesMustache", "PicklesSmile", "PicklesEye", "PicklesPupil", "PicklesArm", "PicklesHand" },
+	with = { "PickleBump", "PicklesApron", "PicklesHat", "PicklesHatBand", "PicklesMustache", "PicklesSmile", "PicklesEye", "PicklesPupil", "PicklesArm", "PicklesHand", "PicklesBrow", "PicklesCheek", "PicklesTrim" },
 	pivot = "bottom", always = true, idle = true, clickSound = { "boing", 0.45, 1.0 },
 	setup = function(p)
 		p.nextBlink = 2 + math.random() * 3
@@ -423,7 +425,7 @@ def("pickles", {
 })
 
 def("register", {
-	scope = "ShopCounter", anchor = "Register", with = { "RegisterScreen", "RegisterDigits", "RegisterKey", "RegisterDrawer" }, radius = 2.2,
+	scope = "ShopCounter", anchor = "Register", with = { "RegisterScreen", "RegisterDigits", "RegisterKey", "RegisterDrawer", "RegisterBody" }, radius = 2.2,
 	pivot = "bottom", clickSound = { "ding", 0.5, 1.25 },
 	setup = function(p)
 		for _, e in ipairs(p.parts) do
@@ -463,7 +465,7 @@ def("register", {
 })
 
 def("candyjar", {
-	scope = "ShopCounter", anchor = "Jar", with = { "JarCandy" }, radius = 0.6,
+	scope = "ShopCounter", anchor = "Jar", with = { "JarCandy", "JarLid" }, radius = 0.8,
 	pivot = "bottom", neighbors = 1.3, idle = true, clickSound = { "ding", 0.25, 2.3 },
 	move = function(p, c)
 		return CFrame.new(0, 0.45 * c.amp * hop(c.pk, 0.35), 0) * rot(p.side, 0.06 * c.h * math.sin(10 * c.t + p.phase) + 0.12 * c.amp * ring(c.pk, 4, 15))
@@ -477,7 +479,7 @@ def("candyjar", {
 })
 
 def("packbox", {
-	scope = "ShopCounter", anchor = "PackBox", pivot = "bottomOut", neighbors = 1.3, idle = true,
+	scope = "ShopCounter", anchor = "PackBox", with = { "PackBoxTrim" }, radius = 0.85, pivot = "bottomOut", neighbors = 1.3, idle = true,
 	clickSound = { "thudSmall", 0.35, 1.5 },
 	move = function(p, c)
 		return CFrame.new(0, 0.55 * c.amp * hop(c.pk, 0.4), 0) * rot(p.tipOut, 0.17 * c.h + 0.12 * c.amp * ring(c.pk, 4, 14))
@@ -485,7 +487,7 @@ def("packbox", {
 })
 
 def("displaypack", {
-	scope = "ShopCounter", anchor = "DisplayPack", pivot = "bottom", neighbors = 0.6,
+	scope = "ShopCounter", anchor = "DisplayPack", with = { "DisplayPackTrim" }, radius = 0.75, pivot = "bottom", neighbors = 0.6,
 	clickSound = { "swish", 0.3, 1.2 },
 	move = function(p, c)
 		local spin = (c.amp >= 0.9 and c.pk) and TAU * ease(c.pk / 0.5) or 0
@@ -549,7 +551,7 @@ def("trophy", {
 })
 
 def("pennant", {
-	scope = "TrophyWall", anchor = "Pennant", pivot = "top", neighbors = 3.2, idle = true,
+	scope = "TrophyWall", anchor = "Pennant", with = { "PennantTrim" }, radius = 1.4, pivot = "top", neighbors = 3.2, idle = true,
 	move = function(p, c)
 		local a = c.h * (0.17 + 0.09 * math.sin(7 * c.t + p.phase)) + 0.35 * c.amp * math.max(0, ring(c.pk, 2.5, 9))
 		return rot(p.swingOut, math.max(0, a))
@@ -557,7 +559,7 @@ def("pennant", {
 })
 
 def("certificate", {
-	scope = "TrophyWall", anchor = "Certificate", with = { "Seal" }, radius = 1.4,
+	scope = "TrophyWall", anchor = "Certificate", with = { "Seal", "CertificateFrame" }, radius = 1.6,
 	pivot = "top", clickSound = { "swish", 0.25, 0.8 },
 	move = function(p, c)
 		return rot(p.out, 0.07 * c.h + 0.25 * c.amp * ring(c.pk, 2.2, 7))
@@ -676,7 +678,7 @@ def("candle", {
 })
 
 def("clock", {
-	scope = "Structure", anchor = "Clock", with = { "ClockFace", "ClockHand" }, radius = 1.6,
+	scope = "Structure", anchor = "Clock", with = { "ClockFace", "ClockHand", "ClockTrim" }, radius = 1.6,
 	pivot = "bottom", clickSound = { "ding", 0.4, 0.75 },
 	setup = function(p)
 		for _, e in ipairs(p.parts) do

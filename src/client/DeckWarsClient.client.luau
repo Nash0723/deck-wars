@@ -654,10 +654,10 @@ do
 		water_balloon = "🎈",
 	}
 
-	-- The picture in the middle of a card: a small 3D view of the creature or building,
-	-- or a big icon for spells.
+	-- The picture in the middle of a card: a small 3D view of the creature, building or spell
+	-- (a big icon for a spell that has no 3D model).
 	function addCardArt(art, def, calm)
-		if def.type == "Spell" then
+		if def.type == "Spell" and not CreatureBuilder.has(def.id) then
 			local icon = label(art, SPELL_ICONS[def.id] or "✨", { Name = "Icon", Size = UDim2.fromScale(0.9, 0.9), Position = UDim2.fromScale(0.05, 0.05), Font = Enum.Font.GothamBold })
 			if not calm then
 				cardLife.icons[icon] = math.random() * 6.28
@@ -3024,7 +3024,7 @@ do
 	do
 		local CEILING = {
 			DuelTable = { TableLamp = true, TableLampCord = true, TableLampRim = true, TableLampShade = true, TableLampTop = true },
-			PackParty = { DiscoBall = true, DiscoString = true, LightWire = true, PartyLight1 = true, PartyLight2 = true, PartyLight3 = true, StringLight = true },
+			PackParty = { DiscoBall = true, DiscoString = true, LightWire = true, PartyCan = true, PartyLight1 = true, PartyLight2 = true, PartyLight3 = true, StringLight = true },
 		}
 		local ceiling = room:FindFirstChild("Ceiling") or Instance.new("Folder")
 		ceiling.Name = "Ceiling"

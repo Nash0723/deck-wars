@@ -87,6 +87,7 @@ for _, n in ipairs({ "EconomyManager", "ProfileStore" }) do
 	mods[n] = moduleFrom(SRC .. "econ/" .. n .. ".luau", n, serverFolder)
 end
 mods.ParkKit = moduleFrom(SRC .. "park/ParkKit.luau", "ParkKit", ServerScriptService)
+mods.ParkPropData = moduleFrom(SRC .. "park/ParkPropData.luau", "ParkPropData", ServerScriptService)
 mods.ParkBuilder = moduleFrom(SRC .. "park/ParkBuilder.luau", "ParkBuilder", ServerScriptService)
 local remotes = Instance.new("Folder")
 remotes.Name = "Remotes"
