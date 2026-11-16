@@ -192,7 +192,7 @@ def moth_mailman():
     m.rbox("Satchel", (0.72, 0.28, 0.32), sc + V(0, 0.17, -0.02), shade(RED, 0.78), 0.1, "Leather", R=rot(y=-24), axis="z")
     m.cyl("Satchel", 0.05, 0.12, sc + V(-0.04, 0.06, -0.19), GOLD, "z", "Metal", R=rot(y=-24))
     for k, (dx, dy) in enumerate(((-0.14, 0.34), (0.1, 0.38))):
-        m.blk("Letter", (0.3, 0.2, 0.03), sc + V(dx, dy, 0.02), (252, 250, 244), R=rot(y=-24, z=(k - 0.5) * 20))
+        m.blk("SatchelLetter", (0.3, 0.2, 0.03), sc + V(dx, dy, 0.02), (252, 250, 244), R=rot(y=-24, z=(k - 0.5) * 20))
     for a_, b_ in ((sc + V(-0.2, 0.2, -0.04), V(0.2, 2.36, -0.5)), (V(0.2, 2.36, -0.5), V(-0.48, 2.5, -0.02))):
         m.seg("Strap", a_, b_, 0.06, LEATHER_D, "Leather", r2=0.03, ext=0.04)
     # arms in white gloves: one holding out a letter
@@ -423,7 +423,7 @@ def pigeon_squad():
             q = V(cx, 0, cz) + R @ V(-0.3 + t * 0.6, 1.16 - t * 0.36, -0.58 + abs(t - 0.5) * 0.12)
             m.blk("Crumb", (0.11, 0.1, 0.08), q, (226, 184, 112), R=rot(x=10, z=40 * t))
     fp = V(1.62, 0, 0.66)
-    m.cyl("FlagPole", 1.7, 0.07, fp + V(0, 0.85, 0), (204, 204, 214), "y", "Metal")
+    m.cyl("FlagStaff", 1.7, 0.07, fp + V(0, 0.85, 0), (204, 204, 214), "y", "Metal")
     m.ball("FlagTop", 0.14, fp + V(0, 1.74, 0), GOLD, "Metal")
     m.blk("Flag", (0.66, 0.44, 0.04), fp + V(0.34, 1.46, 0), RED, "Fabric", R=rot(y=-8))
     m.blk("Flag", (0.66, 0.1, 0.05), fp + V(0.34, 1.46, 0), WHITE, "Fabric", R=rot(y=-8))

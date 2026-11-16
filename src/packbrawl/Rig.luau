@@ -59,11 +59,16 @@ local HELD = set({
 	"PlungerBand", "WrenchBolt", "CaneBand", "FlashBand", "CannonRing", "CannonMouth", "FishTail", "FishEye",
 	"BananaTip", "BroomBand", "SpyglassBand", "GlueLabel", "WaferStripe", "Lollipop", "LollipopSwirl",
 	"BananaSpot", "CheeseHole",
+	-- things held by the remodelled creatures (a flag, pom-poms, candy, a potion, a flashlight's beam,
+	-- a shackle on a chain, a lantern, a cane's gem, an umbrella, a letter)
+	"FlagPole", "SockFlag", "FlagTip", "PomPom", "Candy", "Potion", "FlashBeam", "Shackle", "Lantern",
+	"CaneGem", "Umbrella", "UmbrellaPole", "UmbrellaTip", "UmbrellaRib", "UmbrellaHook", "Letter", "Stamp",
 })
 -- held things that are swung like weapons
 local WEAPON = set({
 	"Spear", "ForkHandle", "Wafer", "KnifeBlade", "Wrench", "PlungerStick", "Scepter", "BroomStick",
 	"Flashlight", "Cane", "Wand", "Cannon", "Staff", "Spyglass", "FishBone", "Banana", "Glue",
+	"FlagPole",
 })
 local LEG = set({
 	"Leg", "Foot", "Shoe", "Boot", "Thigh", "Shin", "Knee", "Hoof", "FrontLeg", "FrontFoot", "BackFoot",
@@ -96,6 +101,10 @@ local FACE = set({
 	"HatFeather", "HatPin", "HatGem", "CrownGem", "CrownGemShine", "HelmetRidge", "HelmetRivet", "NoseGuard",
 	"CheekGuard", "Goggle", "GoggleLens", "Forelock", "Mane", "Whiskers", "Snoot", "Chin", "Beard", "Brim",
 	"Visor", "VisorGlow", "Halo",
+	-- on the remodelled heads: the fridge's handle and frost, the blender jar's lid, fruit, swirls,
+	-- marks and handle, beads hanging from antlers, a TV's speaker grille
+	"HeadHandle", "Frost", "Icicle", "JarLid", "LidCap", "Fruit", "Swirl", "Measure", "JarHandle", "Smoothie",
+	"Bead", "Grille",
 })
 
 -- Per-creature fixes: { noHead = true } keeps the face on the body, { body = "PartName" } picks
@@ -113,6 +122,8 @@ local RIG_OVERRIDES = {
 	tornado_twins = { noLegs = true },
 	-- the snail's "Foot" is its whole slimy base; its eyes sit high up on stalks
 	sergeant_snail = { noLegs = true, faceReach = 1.4 },
+	-- the witch's wide mushroom-cap hat reaches well past her head
+	mushroom_witch = { faceReach = 2.0 },
 	-- couch legs are stubby furniture legs
 	couch_golem = {},
 	-- buildings

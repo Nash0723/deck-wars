@@ -910,7 +910,7 @@ def bunny_burrow():
     m.cyl("MailPost", 0.46, 0.07, mbx + V(0, 0.23, 0), WOOD_D, "y", "Wood")
     m.rbox("Mailbox", (0.24, 0.2, 0.34), mbx + V(0, 0.55, 0), (220, 64, 64), 0.08, axis="z")
     m.blk("MailFlag", (0.03, 0.14, 0.1), mbx + V(0.135, 0.66, 0.06), (250, 140, 40))
-    m.blk("Letter", (0.16, 0.1, 0.02), mbx + V(0, 0.55, -0.18), (250, 246, 230), R=Rx(-10) @ Rz(8))
+    m.blk("MailLetter", (0.16, 0.1, 0.02), mbx + V(0, 0.55, -0.18), (250, 246, 230), R=Rx(-10) @ Rz(8))
     # a signpost with a carrot arrow
     m.cyl("SignPost", 0.8, 0.08, (1.12, 0.5, 0.42), WOOD_D, "y", "Wood")
     m.rbox("SignBoard", (0.56, 0.24, 0.06), (1.12, 0.78, 0.38), WOOD_L, 0.06, "Wood", R=Rz(-5), axis="z")
@@ -1327,7 +1327,7 @@ def hero_bonk():
     m.ball("BeltKnot", 0.16, (0.2, 1.48, -0.52), (236, 196, 90), "Fabric")
     m.seg("BeltKnot", V(0.2, 1.44, -0.53), V(0.26, 1.18, -0.57), 0.04, (236, 196, 90), "Fabric")
     m.ell("Pouch", (0.26, 0.3, 0.16), (-0.42, 1.3, -0.44), (150, 98, 60), "Leather")
-    m.ell("Potion", (0.1, 0.12, 0.1), (-0.44, 1.5, -0.44), (120, 240, 200), "Neon")
+    m.ell("PouchVial", (0.1, 0.12, 0.1), (-0.44, 1.5, -0.44), (120, 240, 200), "Neon")
     # the head: wide and froggy, with eye bumps, spots, nostrils, cheeks and a cheeky smirk
     hc, hs = V(0, 2.55, -0.04), V(1.5, 0.98, 1.26)
     m.ell("Head", hs, hc, FROG)
