@@ -953,6 +953,18 @@ function MatchScreen.init(ctx)
 		return LayerFx.paletteFor(def and def.family or "Any")
 	end
 
+	-- How a card's family strikes up close: each has its own painted swipe.
+	local STRIKE = { Snack = "slash", Critter = "claw", Weather = "zap", Robo = "zap", Spooky = "wisp", Junk = "gears" }
+	function F.strikeOf(id)
+		local def = id and CardData.Cards[id]
+		return STRIKE[def and def.family or ""] or "slash"
+	end
+
+	-- Just above a unit's head: where status effects play, clear of the model itself.
+	function F.aboveOf(entry)
+		return entry.home.Position + Vector3.new(0, (entry.height or 2) + 0.9, 0)
+	end
+
 	-- The ground under a unit (for effects that lie flat or stand on their foot).
 	function F.groundOf(entry)
 		return entry.home.Position + Vector3.new(0, 0.12, 0)
@@ -2287,10 +2299,12 @@ function MatchScreen.init(ctx)
 	end
 
 	-- A layered effect on a unit (in the air at its middle, or on the ground under it).
-	local function unitFx(e, name, palette, size, onGround)
+	-- where: nil = at its middle, true or "ground" = on the ground under it, "above" = over its head
+	local function unitFx(e, name, palette, size, where)
 		local entry = S.units[e.uid]
 		if entry then
-			F.fx(name, onGround and F.groundOf(entry) or F.unitPosition(entry), { palette = palette, size = size })
+			local pos = (where == true or where == "ground") and F.groundOf(entry) or (where == "above" and F.aboveOf(entry)) or F.unitPosition(entry)
+			F.fx(name, pos, { palette = palette, size = size })
 		end
 	end
 
@@ -2358,6 +2372,9 @@ function MatchScreen.init(ctx)
 			if rarity == "Mythic" or rarity == "Legendary" or rarity == "Secret" then
 				F.fx("pillar", ground, { palette = rarity == "Secret" and "holy" or pal, size = 6, delay = 0.1 })
 			end
+			if rarity == "Legendary" or rarity == "Secret" then
+				F.fx("wings", F.aboveOf(entry), { palette = rarity == "Secret" and "holy" or pal, size = 5, delay = 0.35 })
+			end
 		end
 		F.step(e.how == "play" and 0.5 or 0.3)
 	end
@@ -2369,6 +2386,7 @@ function MatchScreen.init(ctx)
 		local built = F.spawnUnit(e.unit)
 		if built then
 			F.fx("slam", F.groundOf(built), { palette = "rust", size = 2.6, delay = 0.12 })
+			F.fx("gears", F.aboveOf(built), { palette = "rust", size = 2.4, delay = 0.2 })
 		end
 		F.sound("thudSmall", { volume = 0.6, pitch = 0.85 })
 		F.step(0.4)
@@ -2410,7 +2428,8 @@ function MatchScreen.init(ctx)
 		F.log(F.seatName(S.view, e.seat) .. " Sparks " .. cardName(e.id) .. "!", Color3.fromRGB(220, 170, 255))
 		if entry then
 			F.floatText(F.unitPosition(entry), "SPARK!", Color3.fromRGB(220, 160, 255), true)
-			F.fx("nova", F.unitPosition(entry), { palette = "arcane", size = 3 })
+			F.fx("vortex", F.unitPosition(entry), { palette = "arcane", size = 3.2 })
+			F.fx("nova", F.unitPosition(entry), { palette = "arcane", size = 3, delay = 0.35 })
 			F.sound("swish", { volume = 0.6 })
 			local home = entry.home
 			entry.busy = true
@@ -2497,7 +2516,9 @@ function MatchScreen.init(ctx)
 		F.step(0.24)
 		-- The hit: a swipe in the attacker's colours, a thump, and the target rocks back a little.
 		if toward.Magnitude <= 6 then
-			F.fx("slash", strikeAt - dir * 0.9, { palette = pal, size = 3, aim = dir })
+			local strike = F.strikeOf(entry.id)
+			-- (swipes sit just in front of the target, the rest lands on it)
+			F.fx(strike, (strike == "slash" or strike == "claw") and (strikeAt - dir * 0.9) or strikeAt, { palette = pal, size = 3, aim = dir })
 		end
 		S.hitPalette = pal
 		F.sound("punch", { volume = 0.55, pitch = 0.9 + math.random() * 0.2 })
@@ -2521,6 +2542,9 @@ function MatchScreen.init(ctx)
 				F.floatText(F.unitPosition(entry), "-" .. e.amount, Color3.fromRGB(255, 90, 90), e.amount >= 4)
 				F.flashModel(entry.model, Color3.fromRGB(255, 60, 60), 0.3)
 				F.fx(e.amount >= 4 and "bigHit" or "hit", F.unitPosition(entry), { palette = S.hitPalette or "ember", size = e.amount >= 4 and 3.4 or 2.6 })
+				if e.amount >= 5 then
+					F.fx("crack", F.groundOf(entry), { palette = S.hitPalette or "ember", size = 3.4, delay = 0.08 })
+				end
 			else
 				F.floatText(F.unitPosition(entry), "0", Color3.fromRGB(200, 200, 200))
 			end
@@ -2536,6 +2560,7 @@ function MatchScreen.init(ctx)
 		local pos = F.heroPos(e.team)
 		F.floatText(pos + Vector3.new(0, 1, 0), "-" .. e.amount, Color3.fromRGB(255, 70, 70), true)
 		F.fx("bigHit", pos + Vector3.new(0, 1, 0), { palette = "blood", size = 4 })
+		F.fx("crack", pos + Vector3.new(0, 0.12, 0), { palette = "blood", size = 4.2, delay = 0.1 })
 		F.sound("thud", { volume = 0.6 })
 		local bar = e.team == S.myTeam and ui.myHp or ui.enemyHp
 		bar.value = e.hp
@@ -2584,6 +2609,7 @@ function MatchScreen.init(ctx)
 		local gone = S.units[e.uid]
 		if gone then
 			F.fx("puff", F.unitPosition(gone), { palette = "rust", size = 3 })
+			F.fx("gears", F.unitPosition(gone), { palette = "rust", size = 2.8, delay = 0.1 })
 		end
 		F.removeUnit(e.uid)
 		F.step(0.3)
@@ -2592,7 +2618,7 @@ function MatchScreen.init(ctx)
 	ANIM.bounce = function(e)
 		local gone = S.units[e.uid]
 		if gone then
-			F.fx("glint", F.unitPosition(gone), { palette = "frost", size = 2.6 })
+			F.fx("vortex", F.unitPosition(gone), { palette = "frost", size = 3 })
 		end
 		F.removeUnit(e.uid, "bounce")
 		F.step(0.35)
@@ -2615,31 +2641,31 @@ function MatchScreen.init(ctx)
 		end
 		unitText(e, table.concat(bits, " "), Color3.fromRGB(140, 255, 160))
 		if e.atk > 0 or e.hp > 0 then
-			unitFx(e, "bloom", "gold", 2.6)
+			unitFx(e, "buff", "gold", 2.4, "above")
 		elseif e.atk < 0 or e.hp < 0 then
-			unitFx(e, "flame", "arcane", 2.4, true)
+			unitFx(e, "debuff", "blood", 2.4, "above")
 		end
-		F.step(0.12)
+		F.step(0.3)
 	end
 	ANIM.power = function(e)
 		unitText(e, "+" .. e.amount .. " ⚡ Power", Color3.fromRGB(255, 230, 110))
-		unitFx(e, "glint", "gold", 2.2)
-		F.step(0.1)
+		unitFx(e, "zap", "gold", 2.6, "above")
+		F.step(0.25)
 	end
 	ANIM.soak = function(e)
 		unitText(e, "💧 Soaked", Color3.fromRGB(120, 190, 255))
-		unitFx(e, "slam", "frost", 2.4, true)
-		F.step(0.1)
+		unitFx(e, "splash", "aqua", 2.8, true)
+		F.step(0.25)
 	end
 	ANIM.keyword = function(e)
 		unitText(e, "+" .. e.keyword, Color3.fromRGB(255, 220, 140))
-		unitFx(e, "glint", "gold", 2.2)
-		F.step(0.1)
+		unitFx(e, "rune", "gold", 2.2, "above")
+		F.step(0.25)
 	end
 	ANIM.wash = function(e)
 		unitText(e, "🧼 Washed!", Color3.fromRGB(200, 240, 255))
-		unitFx(e, "bloom", "frost", 2.6)
-		F.step(0.2)
+		unitFx(e, "splash", "aqua", 3, true)
+		F.step(0.3)
 	end
 	ANIM.shield = function(e)
 		unitText(e, "🛡 Bubble Wrap", Color3.fromRGB(200, 240, 255))
@@ -2661,10 +2687,13 @@ function MatchScreen.init(ctx)
 	end
 	ANIM.boo = function(e)
 		unitText(e, "👻 Boo! -attack", Color3.fromRGB(220, 180, 255))
-		unitFx(e, "flame", "arcane", 2.8, true)
+		unitFx(e, "wisp", "arcane", 2.8, "above")
 	end
 	ANIM.grudge = function(e)
 		F.log("Grudge! It hits back on the way out.", Color3.fromRGB(220, 160, 255))
+		if e.uid then
+			unitFx(e, "wisp", "void", 3)
+		end
 	end
 	ANIM.scrap = function(e)
 		F.setScrap(e.team, e.lane, e.amount)
@@ -2682,7 +2711,7 @@ function MatchScreen.init(ctx)
 		local entry = S.units[e.uid]
 		if entry then
 			F.floatText(F.unitPosition(entry) + Vector3.new(0, 0.6, 0), cardName(e.id) .. "!", Color3.fromRGB(255, 230, 150))
-			F.fx("glint", F.unitPosition(entry), { palette = F.palette(entry.id), size = 3 })
+			F.fx("rune", F.aboveOf(entry), { palette = F.palette(entry.id), size = 2.6 })
 			F.flashModel(entry.model, Color3.fromRGB(255, 230, 150), 0.3)
 		end
 		F.step(0.25)
@@ -2703,6 +2732,7 @@ function MatchScreen.init(ctx)
 			if team then
 				local at = F.heroPos(team)
 				F.fx("pillar", at - Vector3.new(0, 1.1, 0), { palette = "gold", size = 8 })
+				F.fx("wings", at + Vector3.new(0, 2.4, 0), { palette = "gold", size = 6, delay = 0.2 })
 				F.fx("nova", at + Vector3.new(0, 1.4, 0), { palette = "gold", size = 4.5, delay = 0.1 })
 			end
 			local pad = e.target and S.pads[e.target.team] and S.pads[e.target.team][e.target.lane]
