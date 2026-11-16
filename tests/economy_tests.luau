@@ -234,21 +234,19 @@ for d = 1, 5 do
 end
 check(differs, "the rotation changes from day to day")
 
--- buying a daily card
+-- cards aren't sold in the Shop any more (they only come from packs)
 EconomyManager.grant(alice, "Coins", 100000)
 local c0 = EconomyManager.getBalance(alice, "Coins")
+local had0 = EconomyManager.ownsCard(alice, rot[1].id)
 local ok, msg, extra = EconomyManager.buy(alice, "card", 1)
-check(ok and extra and extra.id == rot[1].id, "buy daily card 1 (" .. tostring(msg) .. ")")
-check(EconomyManager.getBalance(alice, "Coins") == c0 - rot[1].price, "the card's price was paid")
-check(EconomyManager.ownsCard(alice, rot[1].id) >= 1, "the card is in the collection")
-ok = EconomyManager.buy(alice, "card", 1)
-check(not ok, "each daily card only once a day")
+check(not ok and type(msg) == "string" and extra == nil, "daily cards can't be bought in the Shop any more")
 check(not EconomyManager.buy(alice, "card", 99), "unknown slot refused")
 check(not EconomyManager.buy(alice, "card", "1; drop" :: any), "junk slot refused")
-check(EconomyManager.getBalance(alice, "Coins") == c0 - rot[1].price, "refused buys cost nothing")
+check(EconomyManager.getBalance(alice, "Coins") == c0, "refused buys cost nothing")
+check(EconomyManager.ownsCard(alice, rot[1].id) == had0, "and give no card")
 now += 86400
-ok = EconomyManager.buy(alice, "card", 1)
-check(ok, "next day the slot can be bought again")
+check(not EconomyManager.buy(alice, "card", 1), "the next day too")
+check(EconomyManager.getBalance(alice, "Coins") == c0, "still nothing paid")
 
 -- cosmetics
 ok = EconomyManager.buy(alice, "cosmetic", "board_midnight")
@@ -306,16 +304,19 @@ check(not EconomyManager.buy(alice, "exchange", "coins_to_gems"), "coins to gems
 check(EconomyManager.getBalance(alice, "Gems") == g1 + ex.perDay * ex.get.Gems, "the exchange gave the Gems")
 check(EconomyManager.buy(alice, "exchange", "gems_to_coins"), "gems to coins (no daily limit)")
 
--- luck
+-- luck (Luck Potions are Robux products now; nothing in the Shop sells luck for Coins or Gems)
 check(EconomyManager.takePullLuck(alice) == 1, "no luck without a booster")
-check(EconomyManager.buy(alice, "boost", "luck_small"), "buy a Lucky Charm")
+check(not EconomyManager.buy(alice, "boost", "luck_small") and not EconomyManager.buy(alice, "boost", "luck_big"), "the old Coin/Gem luck charms are gone")
+for _, b in ipairs(ShopCatalog.Boosts) do
+	check(b.kind ~= "luck", b.id .. " isn't a luck booster")
+end
+check(EconomyManager.takePullLuck(alice) == 1, "a refused charm gives no luck")
+EconomyManager.devLuck(alice, 3)
 local lucks = {}
 for i = 1, 4 do
 	lucks[i] = EconomyManager.takePullLuck(alice)
 end
 check(lucks[1] == ShopCatalog.LuckMultiplier and lucks[3] == ShopCatalog.LuckMultiplier and lucks[4] == 1, "3 lucky openings, then normal")
-EconomyManager.devLuck(alice, ShopCatalog.MaxLuckCharges)
-check(not EconomyManager.buy(alice, "boost", "luck_big"), "luck charges are capped")
 EconomyManager.devLuck(alice, 0)
 
 -- lucky odds
@@ -429,6 +430,37 @@ check(EconomyManager.processReceipt({ PlayerId = alice.UserId, ProductId = 55501
 check(EconomyManager.getBalance(alice, "Gems") == gC + bundle.gems + bundle.bonus, "and the Gems came exactly once")
 check(backend.data["u101"].data.receipts[#backend.data["u101"].data.receipts] == "p-4", "the receipt id is in the save")
 bundle.productId = 0
+
+-- Luck Potion receipts
+check(#ShopCatalog.LuckPotions >= 1, "there are Luck Potions")
+for _, p in ipairs(ShopCatalog.LuckPotions) do
+	check(ShopCatalog.PotionById[p.id] == p and p.charges > 0 and p.robux > 0, p.id .. " is a real potion")
+end
+local potion = ShopCatalog.LuckPotions[1]
+check(EconomyManager.processReceipt({ PlayerId = alice.UserId, ProductId = 0, PurchaseId = "q-0" }, getPlayer, decisions) == "NotYet", "a potion that isn't on sale (product id 0) can't be bought")
+potion.productId = 55601
+local gP = EconomyManager.getBalance(alice, "Gems")
+local potionReceipt = { PlayerId = alice.UserId, ProductId = 55601, PurchaseId = "q-1", CurrencySpent = potion.robux }
+check(EconomyManager.processReceipt(potionReceipt, getPlayer, decisions) == "Granted", "a Luck Potion receipt is granted")
+check(EconomyManager.processReceipt(potionReceipt, getPlayer, decisions) == "Granted", "the same potion receipt again is still granted")
+check(EconomyManager.getBalance(alice, "Gems") == gP, "a potion gives no Gems")
+local potionLucks = 0
+for _ = 1, potion.charges + 2 do
+	if EconomyManager.takePullLuck(alice) == ShopCatalog.LuckMultiplier then
+		potionLucks += 1
+	end
+end
+check(potionLucks == potion.charges, "the potion's lucky openings arrived exactly once (" .. potionLucks .. ")")
+EconomyManager.devLuck(alice, ShopCatalog.MaxLuckCharges)
+check(EconomyManager.processReceipt({ PlayerId = alice.UserId, ProductId = 55601, PurchaseId = "q-2", CurrencySpent = potion.robux }, getPlayer, decisions) == "Granted", "a paid potion is granted at the cap too")
+local overCap = 0
+for _ = 1, ShopCatalog.MaxLuckCharges + potion.charges + 2 do
+	if EconomyManager.takePullLuck(alice) == ShopCatalog.LuckMultiplier then
+		overCap += 1
+	end
+end
+check(overCap == ShopCatalog.MaxLuckCharges + potion.charges, "and is given in full past the cap (" .. overCap .. ")")
+potion.productId = 0
 
 -- leaving saves; joining again loads the same numbers
 local final = EconomyManager.snapshot(alice)

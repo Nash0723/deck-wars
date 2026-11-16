@@ -25670,7 +25670,7 @@
                       <YS>0.62</YS>
                       <YO>0</YO>
                     </UDim2>
-                    <string name="Text">PACK SHELF</string>
+                    <string name="Text">PACK PARTY</string>
                     <Color3 name="TextColor3">
                       <R>1</R>
                       <G>0.8078</G>
@@ -40636,7 +40636,7 @@ MALL</string>
                     <YS>1</YS>
                     <YO>0</YO>
                   </UDim2>
-                  <string name="Text">TROPHY WALL</string>
+                  <string name="Text">TROPHIES</string>
                   <Color3 name="TextColor3">
                     <R>1</R>
                     <G>1</G>

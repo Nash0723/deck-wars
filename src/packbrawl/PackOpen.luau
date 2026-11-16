@@ -21,6 +21,7 @@ local here = script.Parent
 local Packs = require(here:WaitForChild("Packs"))
 local PackArt = require(here:WaitForChild("PackArt"))
 local Juice = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("Juice"))
+local LayerFx = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("LayerFx"))
 
 local make, tween, rgb = Juice.make, Juice.tween, Juice.rgb
 local WHITE = rgb(255, 255, 255)
@@ -292,6 +293,10 @@ function PackOpen.play(opts, onDone)
 		local s = screenSize()
 		local mid = (a + b) / 2
 		scene.burst(mid.X / s.X, mid.Y / s.Y, angle)
+		-- the painted cut: a swipe along the blade's path and the burst where the pack gives way
+		local paint = LayerFx.paletteFrom(accent)
+		LayerFx.screen("slash", stage, UDim2.new(0.5, p.X, 0.5, p.Y), PackArt.Width * 2.2 * k, { palette = paint, turn = angle - 90, zIndex = 31 })
+		LayerFx.screen("bigHit", stage, UDim2.new(0.5, p.X, 0.5, p.Y), PackArt.Width * 1.5 * k, { palette = paint, delay = 0.05, zIndex = 13 })
 		Juice.flash(gui, main:Lerp(WHITE, 0.7), 0.3, 0.55)
 		Juice.shake(stage, 12, 0.28)
 		Juice.sound("whoosh", 1.7, 0.7)

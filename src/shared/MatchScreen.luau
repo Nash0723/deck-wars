@@ -19,6 +19,9 @@ local CardData = require(Shared:WaitForChild("CardData"))
 local CreatureBuilder = require(Shared:WaitForChild("CreatureBuilder"))
 local Progression = require(Shared:WaitForChild("Progression"))
 local UIKit = require(Shared:WaitForChild("UIKit"))
+local CardLevels = require(Shared:WaitForChild("CardLevels"))
+local LayerFx = require(Shared:WaitForChild("LayerFx"))
+local EnchantFx = require(Shared:WaitForChild("EnchantFx")) -- (enchanted cards: rims, auras, trigger effects)
 
 local ABORT = "MatchScreenAbort" -- thrown to stop playback when the match ended meanwhile
 
@@ -146,8 +149,8 @@ function MatchScreen.init(ctx)
 	ui.timerText = label(ui.matchUI, "", { Name = "TimerText", Size = UDim2.fromOffset(220, 24), Position = UDim2.new(1, -24, 1, -148), AnchorPoint = Vector2.new(1, 1), Font = BOLD_FONT, TextScaled = false, TextSize = 18, TextStrokeTransparency = 0.45, TextXAlignment = Enum.TextXAlignment.Right })
 	ui.matchLabel = label(ui.matchUI, "", { Name = "MatchLabel", Size = UDim2.fromOffset(480, 22), Position = UDim2.new(0.5, 0, 0, 90), AnchorPoint = Vector2.new(0.5, 0), Font = BOLD_FONT, TextScaled = false, TextSize = 16, TextColor3 = Color3.fromRGB(255, 220, 140), TextStrokeTransparency = 0.5 })
 
-	-- Everything else waits behind the ⚙ button (top right): how to play, speed, sound, the match
-	-- log, and leaving.
+	-- Everything else waits behind the ⚙ button (top right): how to play, all settings (speed,
+	-- sound, the action camera and the match log live there) and leaving.
 	ui.menuButton = button(ui.matchUI, "⚙", Color3.fromRGB(60, 56, 84), function()
 		F.toggleMenu()
 	end, { Name = "MenuButton", Size = UDim2.fromOffset(46, 42), Position = UDim2.new(1, -14, 0, 12), AnchorPoint = Vector2.new(1, 0) })
@@ -174,6 +177,10 @@ function MatchScreen.init(ctx)
 	ui.logButton = menuItem("📜 Match log: Off", 4, nil, function()
 		F.setLog(not ui.logFrame.Visible)
 	end, "LogButton")
+	-- (kept for their keyboard shortcuts and labels, but out of the menu: Settings has them)
+	ui.speedButton.Visible = false
+	ui.soundButton.Visible = false
+	ui.logButton.Visible = false
 	-- Leaving a match that's still on forfeits it, so the first click only asks.
 	ui.leaveButton = menuItem("Leave match", 5, Color3.fromRGB(120, 60, 70), function()
 		F.pressLeave()
@@ -185,6 +192,8 @@ function MatchScreen.init(ctx)
 	ui.handFrame = make("Frame", { Name = "Hand", Size = UDim2.new(1, -590, 0, 172), Position = UDim2.new(0.5, 51, 1, -10), AnchorPoint = Vector2.new(0.5, 1), BackgroundTransparency = 1 }, ui.matchUI)
 	ui.handLayout = make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, ui.handFrame)
 	S.HAND_W, S.HAND_H = 122, 170
+	S.handTuck = 0 -- 0 = the hand is up, 1 = tucked down while you place a card (F.updateHandTuck)
+	local HAND_TUCK = 124 -- how far the hand tucks down (px)
 	function F.fitHand()
 		local n = 0
 		for _, c in ipairs(ui.handFrame:GetChildren()) do
@@ -202,8 +211,9 @@ function MatchScreen.init(ctx)
 	ui.handFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(F.fitHand)
 
 	-- One line that says what to do next, for a player's first few matches.
-	ui.coach = label(ui.matchUI, "", { Name = "CoachText", TextScaled = false, TextSize = 17, Size = UDim2.fromOffset(540, 34), Position = UDim2.new(0.5, 51, 1, -222), AnchorPoint = Vector2.new(0.5, 1), Font = BODY_FONT, TextColor3 = Color3.fromRGB(235, 232, 245), BackgroundColor3 = Color3.fromRGB(22, 18, 32), BackgroundTransparency = 0.35, Visible = false })
-	corner(ui.coach, 10)
+	ui.coach = label(ui.matchUI, "", { Name = "CoachText", TextScaled = false, TextSize = 17, Size = UDim2.fromOffset(540, 34), Position = UDim2.new(0.5, 51, 1, -222), AnchorPoint = Vector2.new(0.5, 1), Font = BODY_FONT, TextColor3 = Color3.fromRGB(255, 240, 214), BackgroundColor3 = Color3.fromRGB(36, 25, 18), BackgroundTransparency = 0.15, Visible = false })
+	corner(ui.coach, 17)
+	make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(214, 168, 98), Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ui.coach)
 	make("UIPadding", { PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 5), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, ui.coach)
 	-- Short messages ("Not enough magic") show for a moment under the other side's bar.
 	ui.toast = label(ui.matchUI, "", { Name = "Toast", Size = UDim2.fromOffset(560, 36), Position = UDim2.new(0.5, 0, 0, 116), AnchorPoint = Vector2.new(0.5, 0), Font = BOLD_FONT, TextScaled = false, TextSize = 17, TextWrapped = true, BackgroundColor3 = Color3.fromRGB(22, 18, 32), BackgroundTransparency = 0.25, Visible = false, ZIndex = 12 })
@@ -228,6 +238,8 @@ function MatchScreen.init(ctx)
 	ui.bannerScale = make("UIScale", { Scale = 1 }, ui.bannerText)
 	ui.popupHolder = make("Frame", { Size = UDim2.fromOffset(200, 280), Position = UDim2.fromScale(0.5, 0.45), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundTransparency = 1, ZIndex = 8 }, ui.matchUI)
 	ui.previewHolder = make("Frame", { Size = UDim2.fromOffset(220, 308), Position = UDim2.new(0, 16, 0.4, 0), AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1, Visible = false }, ui.matchUI)
+	-- The card the other side just played, shown big on the right with its level (F.showcase).
+	ui.showcase = make("Frame", { Name = "PlayedCard", Size = UDim2.fromOffset(184, 294), Position = UDim2.new(1, -24, 0.47, 0), AnchorPoint = Vector2.new(1, 0.5), BackgroundTransparency = 1, ZIndex = 9 }, ui.matchUI)
 	ui.rollText = label(ui.matchUI, "", { Size = UDim2.fromOffset(520, 40), Position = UDim2.fromScale(0.5, 0.27), AnchorPoint = Vector2.new(0.5, 0), TextColor3 = Color3.fromRGB(255, 230, 120), TextStrokeTransparency = 0, Visible = false, ZIndex = 12 })
 	ui.tip = label(ui.matchUI, "", { Size = UDim2.fromOffset(300, 26), Font = BODY_FONT, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 0.25, BackgroundColor3 = Color3.fromRGB(20, 16, 30), Visible = false, ZIndex = 20 })
 	corner(ui.tip, 6)
@@ -394,11 +406,22 @@ function MatchScreen.init(ctx)
 	end
 
 	local popupToken = nil
-	function F.popup(cardId, seconds, fromTop)
+	-- Does this seat's card level change its numbers here (a match against bots)?
+	function F.levelsCount(seat)
+		local sv = S.view and S.view.seats and S.view.seats[seat]
+		return sv ~= nil and sv.levelStats ~= false
+	end
+
+	-- A level worth showing (2 and up), or nil.
+	local function shownLevel(level)
+		return (level and level >= 2) and level or nil
+	end
+
+	function F.popup(cardId, seconds, fromTop, level, boosted)
 		ui.popupHolder:ClearAllChildren()
 		local token = {}
 		popupToken = token
-		local card = ctx.makeCard(ui.popupHolder, cardId, UDim2.fromScale(1, 1))
+		local card = ctx.makeCard(ui.popupHolder, cardId, UDim2.fromScale(1, 1), nil, nil, shownLevel(level), boosted)
 		ctx.cardLife.wake(card, true)
 		card.Position = UDim2.fromScale(0, fromTop and -1.6 or 1.6)
 		TweenService:Create(card, TweenInfo.new(0.4 * PACE, Enum.EasingStyle.Back), { Position = UDim2.fromScale(0, 0) }):Play()
@@ -415,12 +438,73 @@ function MatchScreen.init(ctx)
 		end)
 	end
 
+	-- The other side's card, big on the right: "<name> plays · Lv 3" over it. It slides in, stays
+	-- while the card lands, and slides away (a newer play replaces it).
+	local showcaseToken = nil
+	function F.showcase(e)
+		local v = S.view
+		ui.showcase:ClearAllChildren()
+		local token = {}
+		showcaseToken = token
+		local level = shownLevel(e.level)
+		local head = label(ui.showcase, "", {
+			Name = "Who",
+			Size = UDim2.new(1, 0, 0, 28),
+			Font = BOLD_FONT,
+			TextScaled = false,
+			TextSize = 15,
+			RichText = true,
+			TextColor3 = Color3.fromRGB(247, 237, 222),
+			BackgroundColor3 = Color3.fromRGB(28, 19, 14),
+			TextTransparency = 1,
+			BackgroundTransparency = 1,
+			ZIndex = 9,
+		})
+		corner(head, 14)
+		local who = F.seatName(v, e.seat)
+		head.Text = who .. " plays" .. (level and ('  <font color="#FFD678">·  Lv ' .. level .. "</font>") or "")
+		local holder = make("Frame", { Name = "Holder", Size = UDim2.fromOffset(184, 258), Position = UDim2.fromOffset(250, 36), Rotation = 7, BackgroundTransparency = 1, ZIndex = 9 }, ui.showcase)
+		-- a soft shadow BEHIND the card (siblings draw by ZIndex: shadow 1, card 2), so the card keeps
+		-- its full colours whether or not you own it
+		local shadow = make("Frame", { Name = "Shadow", Size = UDim2.new(1, 8, 1, 8), Position = UDim2.fromOffset(0, 5), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.65, ZIndex = 1 }, holder)
+		corner(shadow, 14)
+		local card = ctx.makeCard(holder, e.id, UDim2.fromScale(1, 1), e.cost, nil, level, F.levelsCount(e.seat))
+		card.ZIndex = 2
+		ctx.cardLife.wake(card, true)
+		TweenService:Create(holder, TweenInfo.new(0.45 * PACE, Enum.EasingStyle.Back), { Position = UDim2.fromOffset(0, 36), Rotation = 0 }):Play()
+		TweenService:Create(head, TweenInfo.new(0.3 * PACE), { TextTransparency = 0, BackgroundTransparency = 0.12 }):Play()
+		F.sound("swish", { volume = 0.5, pitch = 1.1 })
+		if level and CardLevels.maxLevel(e.id) <= level then
+			-- a maxed card gets a little gold glint as it lands
+			task.delay(0.35 * PACE, function()
+				if showcaseToken == token and card.Parent then
+					local glint = make("Frame", { Name = "Glint", Size = UDim2.new(1, 10, 1, 10), Position = UDim2.fromOffset(-5, -5), BackgroundTransparency = 1, ZIndex = 3 }, holder)
+					corner(glint, 14)
+					local st = make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(255, 214, 120), Transparency = 0 }, glint)
+					TweenService:Create(st, TweenInfo.new(0.8), { Transparency = 1, Thickness = 9 }):Play()
+				end
+			end)
+		end
+		task.delay(2.1 * PACE, function()
+			if showcaseToken ~= token then
+				return
+			end
+			TweenService:Create(holder, TweenInfo.new(0.3 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.fromOffset(250, 36), Rotation = 6 }):Play()
+			TweenService:Create(head, TweenInfo.new(0.25 * PACE), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+			task.delay(0.32 * PACE, function()
+				if showcaseToken == token then
+					ui.showcase:ClearAllChildren()
+				end
+			end)
+		end)
+	end
+
 	S.previewKey = nil
-	function F.preview(cardId, cost)
-		local key = cardId .. ":" .. tostring(cost)
+	function F.preview(cardId, cost, level, boosted)
+		local key = cardId .. ":" .. tostring(cost) .. ":" .. tostring(level) .. ":" .. tostring(boosted)
 		if S.previewKey ~= key then
 			ui.previewHolder:ClearAllChildren()
-			ctx.cardLife.wake(ctx.makeCard(ui.previewHolder, cardId, UDim2.fromScale(1, 1), cost), true)
+			ctx.cardLife.wake(ctx.makeCard(ui.previewHolder, cardId, UDim2.fromScale(1, 1), cost, nil, shownLevel(level), boosted), true)
 			local def = CardData.Cards[cardId]
 			local lines = {}
 			for _, kw in ipairs(CardData.Keywords) do
@@ -853,6 +937,40 @@ function MatchScreen.init(ctx)
 	end
 
 
+	-- A painted, layered effect (LayerFx) at a spot on the table, at the match's pace.
+	function F.fx(name, pos, opts)
+		if not pos then
+			return nil
+		end
+		opts = opts or {}
+		opts.pace = PACE
+		opts.parent = S.boardFolder
+		return LayerFx.play(name, pos, opts)
+	end
+
+	-- The colours a card fights in (its family's).
+	function F.palette(id)
+		local def = id and CardData.Cards[id]
+		return LayerFx.paletteFor(def and def.family or "Any")
+	end
+
+	-- How a card's family strikes up close: each has its own painted swipe.
+	local STRIKE = { Snack = "slash", Critter = "claw", Weather = "zap", Robo = "zap", Spooky = "wisp", Junk = "gears" }
+	function F.strikeOf(id)
+		local def = id and CardData.Cards[id]
+		return STRIKE[def and def.family or ""] or "slash"
+	end
+
+	-- Just above a unit's head: where status effects play, clear of the model itself.
+	function F.aboveOf(entry)
+		return entry.home.Position + Vector3.new(0, (entry.height or 2) + 0.9, 0)
+	end
+
+	-- The ground under a unit (for effects that lie flat or stand on their foot).
+	function F.groundOf(entry)
+		return entry.home.Position + Vector3.new(0, 0.12, 0)
+	end
+
 	function F.floatText(pos, text, color, big)
 		local holder = F.fxPart(pos)
 		local bb = Instance.new("BillboardGui")
@@ -929,7 +1047,7 @@ function MatchScreen.init(ctx)
 		local root = entry.model.PrimaryPart or entry.model:FindFirstChildWhichIsA("BasePart")
 		local bb = Instance.new("BillboardGui")
 		bb.Name = "Stats"
-		bb.Size = UDim2.fromOffset(120, 44)
+		bb.Size = UDim2.fromOffset(120, 54)
 		bb.StudsOffsetWorldSpace = Vector3.new(0, entry.height + 0.55, 0)
 		bb.AlwaysOnTop = true
 		bb.LightInfluence = 0
@@ -939,7 +1057,8 @@ function MatchScreen.init(ctx)
 		local back = make("Frame", { Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Color3.fromRGB(25, 20, 35), BackgroundTransparency = 0.2 }, bb)
 		corner(back, 8)
 		entry.statsLabel = label(back, "", { Size = UDim2.new(1, -8, 1, -4), Position = UDim2.fromOffset(4, 2), RichText = true })
-		entry.statusLabel = label(bb, "", { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 25), TextStrokeTransparency = 0.3, Font = BODY_FONT })
+		entry.statusLabel = label(bb, "", { Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 36), TextStrokeTransparency = 0.3, Font = BODY_FONT })
+		entry.pipsRow = make("Frame", { Name = "Level", Size = UDim2.new(1, 0, 0, 10), Position = UDim2.fromOffset(0, 25), BackgroundTransparency = 1 }, bb)
 	end
 
 	function F.setStats(entry, u)
@@ -950,6 +1069,17 @@ function MatchScreen.init(ctx)
 		local atkColor = u.atk > (u.baseAtk or u.atk) and "#8CFF8C" or (u.atk < (u.baseAtk or u.atk) and "#FF9C9C" or "#FFFFFF")
 		local hpColor = u.hp < u.maxHp and "#FF9C9C" or "#FFFFFF"
 		entry.statsLabel.Text = string.format('<font color="%s">⚔%d</font>  <font color="%s">❤%d</font>', atkColor, u.atk, hpColor, u.hp)
+		-- its card level (2 and up), as the same pips the cards have
+		local row = entry.pipsRow
+		if row then
+			local lv = shownLevel(u.level)
+			local pips = row:FindFirstChild("LevelPips")
+			if lv and not pips then
+				UIKit.levelPips(row, lv, CardLevels.maxLevel(u.id), { Size = UDim2.fromScale(0, 1), Position = UDim2.fromScale(0.5, 0.5) })
+			elseif pips and not lv then
+				pips:Destroy()
+			end
+		end
 		local bits = {}
 		if u.new then
 			table.insert(bits, "💤")
@@ -1114,6 +1244,11 @@ function MatchScreen.init(ctx)
 		model.Parent = S.boardFolder
 		local entry = { uid = u.uid, id = u.id, kind = u.kind, slot = slot, row = u.row, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false }
 		S.units[u.uid] = entry
+		if u.enchant then
+			-- an enchanted creature stands in a slow glow of its enchant's colour
+			entry.enchant = u.enchant
+			EnchantFx.aura(model, u.enchant, S.boardFolder, entry.height, u.enchantLive ~= false)
+		end
 		if u.kind == "creature" then
 			F.makeLabel(entry)
 			F.setStats(entry, u)
@@ -1305,7 +1440,12 @@ function MatchScreen.init(ctx)
 			return
 		end
 		model.Name = "BotOpponent"
-		model:PivotTo(CFrame.new(seatFar.Position.X, 0, seatFar.Position.Z) * seatFar.CFrame.Rotation)
+		-- (the chair's real spot: in the room the chairs slide in and out, see RoomLife)
+		local seatCF = seatFar.CFrame
+		pcall(function()
+			seatCF = require(script.Parent:WaitForChild("RoomLife")).baseCFrame(seatFar) or seatCF
+		end)
+		model:PivotTo(CFrame.new(seatCF.Position.X, 0, seatCF.Position.Z) * seatCF.Rotation)
 		model.Parent = S.boardFolder
 		S.botAvatar = model
 		S.botBase = model:GetPivot()
@@ -1335,14 +1475,18 @@ function MatchScreen.init(ctx)
 				holder:SetAttribute("Cost", h.cost)
 				holder:SetAttribute("HandUid", h.uid)
 				-- Calm cards in your hand: the picture stays still and nothing sweeps across them.
-				local card = ctx.makeCard(holder, h.id, UDim2.fromScale(1, 1), h.cost, "compact")
+				local card = ctx.makeCard(holder, h.id, UDim2.fromScale(1, 1), h.cost, "compact", shownLevel(h.level), F.levelsCount(v.you))
 				card.Name = "Card"
+				EnchantFx.decorateCard(card, h.enchant)
 				make("UIStroke", { Name = "Playable", Thickness = 4, Color = Color3.fromRGB(110, 255, 130), Transparency = 1 }, card)
 				local uid = h.uid
 				holder.MouseEnter:Connect(function()
+					if S.drag and S.drag.started then
+						return -- (dragging a card over the others: no lift, no big preview)
+					end
 					S.handHover = uid
 					card.Position = UDim2.fromOffset(0, -30)
-					F.preview(h.id, h.cost)
+					F.preview(h.id, h.cost, h.level, F.levelsCount(v.you))
 				end)
 				holder.MouseLeave:Connect(function()
 					if S.handHover == uid then
@@ -1703,19 +1847,20 @@ function MatchScreen.init(ctx)
 				return
 			end
 			d.started = true
+			F.hidePreview()
 			local c = CardData.Cards[d.id]
 			-- Creatures, buildings and aimed spells light up where they can go.
 			if c.type ~= "Spell" or a.needsTarget then
 				F.onCardClicked(d.uid)
 				ui.promptBar.Visible = false
 			end
-			local cost = nil
+			local cost, level = nil, nil
 			for _, h in ipairs(S.view.hand) do
 				if h.uid == d.uid then
-					cost = h.cost
+					cost, level = h.cost, h.level
 				end
 			end
-			d.ghost = ctx.makeCard(ui.matchUI, d.id, UDim2.fromOffset(96, 134), cost, "compact")
+			d.ghost = ctx.makeCard(ui.matchUI, d.id, UDim2.fromOffset(96, 134), cost, "compact", shownLevel(level), F.levelsCount(S.view.you))
 			d.ghost.Name = "DragCard"
 			d.ghost.AnchorPoint = Vector2.new(0.5, 0.6)
 			d.ghost.Rotation = -4
@@ -1753,8 +1898,9 @@ function MatchScreen.init(ctx)
 		end
 		local c = CardData.Cards[d.id]
 		if c.type == "Spell" and not a.needsTarget then
+			-- let go anywhere above the (tucked) hand to cast it; back on the hand puts it back
 			local height = camera.ViewportSize and camera.ViewportSize.Y or 720
-			if p.Y < height - 190 then
+			if p.Y < height - 190 + math.floor(S.handTuck * HAND_TUCK) then
 				F.send({ kind = "play", handUid = d.uid })
 			end
 			return
@@ -1925,6 +2071,11 @@ function MatchScreen.init(ctx)
 		F.toggleMenu()
 	end
 
+	-- The match log on or off (Settings > Match log).
+	function MatchScreen.setLog(on)
+		F.setLog(on == true)
+	end
+
 	-- The part to show an emote bubble over: your hero (mine = true) or the other side's first one.
 	function MatchScreen.heroPart(mine)
 		if not S.view then
@@ -1940,14 +2091,15 @@ function MatchScreen.init(ctx)
 	end
 
 	-- Your saved settings (DeckWarsClient calls this when they arrive from the server).
+	-- The old in-match Sound and Speed switches left the ⚙ menu (Settings has the volume and the
+	-- table speed), so a saved "muted" or "fast" from them no longer sticks: it could not be
+	-- switched back from the menu any more.
 	function MatchScreen.applyPrefs(prefs)
-		local sound = prefs.get("Sound")
-		if sound ~= nil and (sound == true) ~= (S.soundOn == true) then
-			F.setSound(sound == true, false)
+		if S.soundOn == false then
+			F.setSound(true, false)
 		end
-		local fast = prefs.get("Fast")
-		if fast ~= nil and (fast == true) ~= (S.fast == true) then
-			F.setFast(fast == true, false)
+		if S.fast then
+			F.setFast(false, false)
 		end
 	end
 
@@ -2153,6 +2305,16 @@ function MatchScreen.init(ctx)
 		end
 	end
 
+	-- A layered effect on a unit (in the air at its middle, or on the ground under it).
+	-- where: nil = at its middle, true or "ground" = on the ground under it, "above" = over its head
+	local function unitFx(e, name, palette, size, where)
+		local entry = S.units[e.uid]
+		if entry then
+			local pos = (where == true or where == "ground") and F.groundOf(entry) or (where == "above" and F.aboveOf(entry)) or F.unitPosition(entry)
+			F.fx(name, pos, { palette = palette, size = size })
+		end
+	end
+
 	ANIM.turn = function(e)
 		local v = S.view
 		F.clearPick()
@@ -2188,12 +2350,28 @@ function MatchScreen.init(ctx)
 		if mine and S.stats then
 			S.stats.played += 1
 		end
-		F.log(F.seatName(v, e.seat) .. " plays " .. cardName(e.id) .. ".", mine and Color3.fromRGB(170, 255, 180) or Color3.fromRGB(255, 200, 170))
+		S.lastPlayLevel = e.level
+		F.log(F.seatName(v, e.seat) .. " plays " .. cardName(e.id) .. ((e.level or 1) >= 2 and (" (Lv " .. e.level .. ")") or "") .. ".", mine and Color3.fromRGB(170, 255, 180) or Color3.fromRGB(255, 200, 170))
 		if not mine then
-			-- Show what the other side played, like turning their card over.
-			F.popup(e.id, 1.2, true)
-			F.step(0.9)
+			-- Show what the other side played, big and clear on the right, with its level.
+			F.showcase(e)
+			F.step(0.7)
 		end
+	end
+
+	-- Enchants: a rune lights up as an enchanted creature arrives, Thorns, Leech, a Phoenix rising,
+	-- an enchanted spell (EnchantFx draws them in the enchant rarity's colour).
+	ANIM.enchant = function(e)
+		EnchantFx.matchEvent(e, {
+			units = S.units,
+			fx = F.fx,
+			unitPosition = F.unitPosition,
+			groundOf = F.groundOf,
+			heroPos = F.heroPos,
+			floatText = F.floatText,
+			step = F.step,
+			sound = F.sound,
+		})
 	end
 
 	ANIM.summon = function(e)
@@ -2201,8 +2379,25 @@ function MatchScreen.init(ctx)
 		if e.replaced then
 			F.removeUnit(e.replaced)
 		end
-		F.spawnUnit(u)
+		local entry = F.spawnUnit(u)
 		F.sound("thudSmall", { volume = 0.7 })
+		if entry then
+			-- It lands in its family's colours; the rarer the card, the bigger the arrival.
+			local def = CardData.Cards[u.id]
+			local pal = F.palette(u.id)
+			local rarity = def and def.rarity or "Common"
+			local ground = F.groundOf(entry)
+			F.fx("slam", ground, { palette = pal, size = 3.2, delay = 0.12 })
+			if rarity == "Epic" or rarity == "Mythic" or rarity == "Legendary" or rarity == "Secret" then
+				F.fx("circle", ground, { palette = pal, size = 3.4, seconds = 1.1 })
+			end
+			if rarity == "Mythic" or rarity == "Legendary" or rarity == "Secret" then
+				F.fx("pillar", ground, { palette = rarity == "Secret" and "holy" or pal, size = 6, delay = 0.1 })
+			end
+			if rarity == "Legendary" or rarity == "Secret" then
+				F.fx("wings", F.aboveOf(entry), { palette = rarity == "Secret" and "holy" or pal, size = 5, delay = 0.35 })
+			end
+		end
 		F.step(e.how == "play" and 0.5 or 0.3)
 	end
 
@@ -2210,7 +2405,11 @@ function MatchScreen.init(ctx)
 		if e.replaced then
 			F.removeUnit(e.replaced)
 		end
-		F.spawnUnit(e.unit)
+		local built = F.spawnUnit(e.unit)
+		if built then
+			F.fx("slam", F.groundOf(built), { palette = "rust", size = 2.6, delay = 0.12 })
+			F.fx("gears", F.aboveOf(built), { palette = "rust", size = 2.4, delay = 0.2 })
+		end
 		F.sound("thudSmall", { volume = 0.6, pitch = 0.85 })
 		F.step(0.4)
 	end
@@ -2218,10 +2417,26 @@ function MatchScreen.init(ctx)
 	ANIM.spell = function(e)
 		local v = S.view
 		if e.seat == v.you then
-			F.popup(e.id, 1.0, false)
+			F.popup(e.id, 1.0, false, S.lastPlayLevel, F.levelsCount(v.you))
 		end
 		if e.target then
 			F.glowLanes({ { team = e.target.team, lane = e.target.lane, color = Color3.fromRGB(200, 140, 255) } })
+		end
+		do
+			-- A spell circle where it lands (on its target, its lane, or the caster's own side).
+			local pal = F.palette(e.id)
+			local hit = e.targetUid and S.units[e.targetUid]
+			local pad = e.target and S.pads[e.target.team] and S.pads[e.target.team][e.target.lane]
+			local spot = hit and F.groundOf(hit) or (pad and pad.creature.Position + Vector3.new(0, pad.creature.Size.Y / 2 + 0.12, 0))
+			if spot then
+				F.fx("circle", spot, { palette = pal, size = 3.6, seconds = 0.9 })
+				F.fx("glint", spot + Vector3.new(0, 1.6, 0), { palette = pal, size = 2.4, delay = 0.25 })
+			else
+				local team = S.view.seats[e.seat] and S.view.seats[e.seat].team
+				if team then
+					F.fx("nova", F.heroPos(team) + Vector3.new(0, 1.2, 0), { palette = pal, size = 3 })
+				end
+			end
 		end
 		F.step(0.7)
 		F.glowLanes({})
@@ -2235,6 +2450,8 @@ function MatchScreen.init(ctx)
 		F.log(F.seatName(S.view, e.seat) .. " Sparks " .. cardName(e.id) .. "!", Color3.fromRGB(220, 170, 255))
 		if entry then
 			F.floatText(F.unitPosition(entry), "SPARK!", Color3.fromRGB(220, 160, 255), true)
+			F.fx("vortex", F.unitPosition(entry), { palette = "arcane", size = 3.2 })
+			F.fx("nova", F.unitPosition(entry), { palette = "arcane", size = 3, delay = 0.35 })
 			F.sound("swish", { volume = 0.6 })
 			local home = entry.home
 			entry.busy = true
@@ -2312,8 +2529,20 @@ function MatchScreen.init(ctx)
 				entry.model:PivotTo(home + dir * reach * a + Vector3.new(0, math.sin(a * math.pi) * 0.4, 0))
 			end
 		end)
+		-- From the back row it's a shot: a bolt flies ahead of the lunge.
+		local pal = F.palette(entry.id)
+		local strikeAt = (target and F.unitPosition(target)) or (targetPos + Vector3.new(0, 1, 0))
+		if toward.Magnitude > 6 then
+			F.fx("bolt", F.unitPosition(entry), { to = strikeAt, palette = pal, size = 2.4, seconds = 0.22 })
+		end
 		F.step(0.24)
-		-- The hit: a thump, and the target rocks back a little.
+		-- The hit: a swipe in the attacker's colours, a thump, and the target rocks back a little.
+		if toward.Magnitude <= 6 then
+			local strike = F.strikeOf(entry.id)
+			-- (swipes sit just in front of the target, the rest lands on it)
+			F.fx(strike, (strike == "slash" or strike == "claw") and (strikeAt - dir * 0.9) or strikeAt, { palette = pal, size = 3, aim = dir })
+		end
+		S.hitPalette = pal
 		F.sound("punch", { volume = 0.55, pitch = 0.9 + math.random() * 0.2 })
 		if target then
 			F.knock(target, dir)
@@ -2334,6 +2563,10 @@ function MatchScreen.init(ctx)
 			if e.amount > 0 then
 				F.floatText(F.unitPosition(entry), "-" .. e.amount, Color3.fromRGB(255, 90, 90), e.amount >= 4)
 				F.flashModel(entry.model, Color3.fromRGB(255, 60, 60), 0.3)
+				F.fx(e.amount >= 4 and "bigHit" or "hit", F.unitPosition(entry), { palette = S.hitPalette or "ember", size = e.amount >= 4 and 3.4 or 2.6 })
+				if e.amount >= 5 then
+					F.fx("crack", F.groundOf(entry), { palette = S.hitPalette or "ember", size = 3.4, delay = 0.08 })
+				end
 			else
 				F.floatText(F.unitPosition(entry), "0", Color3.fromRGB(200, 200, 200))
 			end
@@ -2348,6 +2581,8 @@ function MatchScreen.init(ctx)
 	ANIM.heroDamage = function(e)
 		local pos = F.heroPos(e.team)
 		F.floatText(pos + Vector3.new(0, 1, 0), "-" .. e.amount, Color3.fromRGB(255, 70, 70), true)
+		F.fx("bigHit", pos + Vector3.new(0, 1, 0), { palette = "blood", size = 4 })
+		F.fx("crack", pos + Vector3.new(0, 0.12, 0), { palette = "blood", size = 4.2, delay = 0.1 })
 		F.sound("thud", { volume = 0.6 })
 		local bar = e.team == S.myTeam and ui.myHp or ui.enemyHp
 		bar.value = e.hp
@@ -2366,6 +2601,7 @@ function MatchScreen.init(ctx)
 		end
 		local pos = F.heroPos(e.team)
 		F.floatText(pos + Vector3.new(0, 1, 0), "+" .. e.amount, Color3.fromRGB(120, 255, 140), true)
+		F.fx("bloom", pos + Vector3.new(0, 0.6, 0), { palette = "verdant", size = 3.6 })
 		local bar = e.team == S.myTeam and ui.myHp or ui.enemyHp
 		bar.value = e.hp
 		F.setBar(bar, e.hp, S.view.teams[e.team].maxHp)
@@ -2376,22 +2612,36 @@ function MatchScreen.init(ctx)
 		local entry = S.units[e.uid]
 		if entry and e.amount > 0 then
 			F.floatText(F.unitPosition(entry), "+" .. e.amount, Color3.fromRGB(120, 255, 140))
+			F.fx("bloom", F.unitPosition(entry), { palette = "verdant", size = 2.8 })
 			F.step(0.15)
 		end
 	end
 
 	ANIM.pop = function(e)
+		local gone = S.units[e.uid]
+		if gone then
+			F.fx("puff", F.unitPosition(gone), { palette = "smoke", size = 3 })
+		end
 		F.removeUnit(e.uid)
 		F.sound("bonk", { volume = 0.45 })
 		F.step(0.35)
 	end
 
 	ANIM.wreck = function(e)
+		local gone = S.units[e.uid]
+		if gone then
+			F.fx("puff", F.unitPosition(gone), { palette = "rust", size = 3 })
+			F.fx("gears", F.unitPosition(gone), { palette = "rust", size = 2.8, delay = 0.1 })
+		end
 		F.removeUnit(e.uid)
 		F.step(0.3)
 	end
 
 	ANIM.bounce = function(e)
+		local gone = S.units[e.uid]
+		if gone then
+			F.fx("vortex", F.unitPosition(gone), { palette = "frost", size = 3 })
+		end
 		F.removeUnit(e.uid, "bounce")
 		F.step(0.35)
 	end
@@ -2412,43 +2662,60 @@ function MatchScreen.init(ctx)
 			table.insert(bits, (e.hp > 0 and "+" or "") .. e.hp .. " ❤")
 		end
 		unitText(e, table.concat(bits, " "), Color3.fromRGB(140, 255, 160))
-		F.step(0.12)
+		if e.atk > 0 or e.hp > 0 then
+			unitFx(e, "buff", "gold", 2.4, "above")
+		elseif e.atk < 0 or e.hp < 0 then
+			unitFx(e, "debuff", "blood", 2.4, "above")
+		end
+		F.step(0.3)
 	end
 	ANIM.power = function(e)
 		unitText(e, "+" .. e.amount .. " ⚡ Power", Color3.fromRGB(255, 230, 110))
-		F.step(0.1)
+		unitFx(e, "zap", "gold", 2.6, "above")
+		F.step(0.25)
 	end
 	ANIM.soak = function(e)
 		unitText(e, "💧 Soaked", Color3.fromRGB(120, 190, 255))
-		F.step(0.1)
+		unitFx(e, "splash", "aqua", 2.8, true)
+		F.step(0.25)
 	end
 	ANIM.keyword = function(e)
 		unitText(e, "+" .. e.keyword, Color3.fromRGB(255, 220, 140))
-		F.step(0.1)
+		unitFx(e, "rune", "gold", 2.2, "above")
+		F.step(0.25)
 	end
 	ANIM.wash = function(e)
 		unitText(e, "🧼 Washed!", Color3.fromRGB(200, 240, 255))
-		F.step(0.2)
+		unitFx(e, "splash", "aqua", 3, true)
+		F.step(0.3)
 	end
 	ANIM.shield = function(e)
 		unitText(e, "🛡 Bubble Wrap", Color3.fromRGB(200, 240, 255))
+		unitFx(e, "shield", "frost", 2.8)
 	end
 	ANIM.blocked = function(e)
 		unitText(e, "🛡 Blocked!", Color3.fromRGB(200, 240, 255))
+		unitFx(e, "shield", "steel", 3)
 		F.step(0.15)
 	end
 	ANIM.freeze = function(e)
 		unitText(e, "❄ Frozen", Color3.fromRGB(180, 230, 255))
+		unitFx(e, "shards", "frost", 3)
 	end
 	ANIM.thaw = function(e)
 		unitText(e, "❄ Thaws (skips this attack)", Color3.fromRGB(180, 230, 255))
+		unitFx(e, "shards", "frost", 2)
 		F.step(0.2)
 	end
 	ANIM.boo = function(e)
 		unitText(e, "👻 Boo! -attack", Color3.fromRGB(220, 180, 255))
+		unitFx(e, "wisp", "arcane", 2.8, "above")
 	end
 	ANIM.grudge = function(e)
 		F.log("Grudge! It hits back on the way out.", Color3.fromRGB(220, 160, 255))
+		if e.uid then
+			unitFx(e, "wisp", "void", 3)
+		end
 	end
 	ANIM.scrap = function(e)
 		F.setScrap(e.team, e.lane, e.amount)
@@ -2466,6 +2733,7 @@ function MatchScreen.init(ctx)
 		local entry = S.units[e.uid]
 		if entry then
 			F.floatText(F.unitPosition(entry) + Vector3.new(0, 0.6, 0), cardName(e.id) .. "!", Color3.fromRGB(255, 230, 150))
+			F.fx("rune", F.aboveOf(entry), { palette = F.palette(entry.id), size = 2.6 })
 			F.flashModel(entry.model, Color3.fromRGB(255, 230, 150), 0.3)
 		end
 		F.step(0.25)
@@ -2481,6 +2749,19 @@ function MatchScreen.init(ctx)
 		local hero = CardData.Heroes[e.hero]
 		F.banner("★ " .. (hero and hero.bigMove or "Big Move") .. "!", 1.2, Color3.fromRGB(255, 200, 80))
 		F.sound("gong", { volume = 0.5 })
+		do
+			local team = S.view.seats[e.seat] and S.view.seats[e.seat].team
+			if team then
+				local at = F.heroPos(team)
+				F.fx("pillar", at - Vector3.new(0, 1.1, 0), { palette = "gold", size = 8 })
+				F.fx("wings", at + Vector3.new(0, 2.4, 0), { palette = "gold", size = 6, delay = 0.2 })
+				F.fx("nova", at + Vector3.new(0, 1.4, 0), { palette = "gold", size = 4.5, delay = 0.1 })
+			end
+			local pad = e.target and S.pads[e.target.team] and S.pads[e.target.team][e.target.lane]
+			if pad then
+				F.fx("circle", pad.creature.Position + Vector3.new(0, pad.creature.Size.Y / 2 + 0.12, 0), { palette = "gold", size = 4, delay = 0.3 })
+			end
+		end
 		F.log(F.seatName(S.view, e.seat) .. " uses " .. (hero and hero.bigMove or "a Big Move") .. "!", Color3.fromRGB(255, 210, 120))
 		F.step(1.0)
 	end
@@ -2685,7 +2966,7 @@ function MatchScreen.init(ctx)
 				if def then
 					order += 1
 					local done = q.progress >= q.target
-					F.rewardRow((done and "✅ " or "📜 ") .. def.text .. "  " .. q.progress .. "/" .. q.target .. (done and "  (claim it on the Trophy Wall)" or ""), done and Color3.fromRGB(140, 255, 160) or Color3.fromRGB(220, 215, 235), order)
+					F.rewardRow((done and "✅ " or "📜 ") .. def.text .. "  " .. q.progress .. "/" .. q.target .. (done and "  (claim it in Trophies)" or ""), done and Color3.fromRGB(140, 255, 160) or Color3.fromRGB(220, 215, 235), order)
 				end
 			end
 		elseif payload.gemsEarned then
@@ -3044,7 +3325,7 @@ function MatchScreen.init(ctx)
 			if not S.handHover then
 				local u = hit.unit and hit.unit.data
 				if u then
-					F.preview(u.id)
+					F.preview(u.id, nil, u.level, F.levelsCount(u.owner))
 				else
 					F.hidePreview()
 				end
@@ -3107,6 +3388,13 @@ function MatchScreen.init(ctx)
 			end
 		end
 		if text and not ui.promptBar.Visible then
+			text = "💡  " .. text
+			-- (a little pop whenever the advice changes, so a new player's eye goes to it)
+			if ui.coach.Text ~= text or not ui.coach.Visible then
+				local s = ui.coach:FindFirstChild("CoachPop") or make("UIScale", { Name = "CoachPop" }, ui.coach)
+				s.Scale = 1.12
+				TweenService:Create(s, TweenInfo.new(0.35, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+			end
 			ui.coach.Text = text
 			ui.coach.Visible = true
 		else
@@ -3142,13 +3430,67 @@ function MatchScreen.init(ctx)
 	end
 
 	-- Creatures breathe and sway a little while they wait.
+	-- Every unit on the board is kept where it belongs. An animation that got cut short (a newer
+	-- update, an overlapping hit) used to leave a creature stuck under the table or off its spot,
+	-- so only its stats bar showed: now any unit that's been "busy" far longer than any animation,
+	-- has lost its model, or sits at the wrong size is put right within a frame.
+	local BUSY_MAX = 2.5 -- seconds (the longest unit animation is well under 1)
+	function F.healUnit(uid, entry, dt)
+		local model = entry.model
+		if not model or model.Parent ~= S.boardFolder then
+			return "rebuild" -- its model went missing (built again after the loop)
+		end
+		if entry.busy then
+			entry.busyFor = (entry.busyFor or 0) + dt
+			if entry.busyFor > BUSY_MAX then
+				entry.busy = false -- (an animation never finished)
+			else
+				return false
+			end
+		end
+		entry.busyFor = 0
+		-- a broken position (NaN, or flung far off the table) can't be pivoted back: rebuild
+		local at = model:GetPivot().Position
+		if at.X ~= at.X or at.Y ~= at.Y or at.Z ~= at.Z or (at - entry.home.Position).Magnitude > 60 then
+			return "rebuild"
+		end
+		local ok, sc = pcall(function()
+			return model:GetScale()
+		end)
+		if ok and type(sc) == "number" and entry.scale and math.abs(sc - entry.scale) > 0.01 then
+			ctx.setScale(model, entry.scale)
+		end
+		return true
+	end
+
 	function F.idle(dt)
 		local t = clock()
-		for _, entry in pairs(S.units) do
-			if entry.kind == "creature" and not entry.busy and entry.model.Parent then
-				local bob = (math.sin(t * 1.3 + entry.phase) + 1) * 0.02
-				local lean = math.sin(t * 1.3 + entry.phase + 0.9) * 0.014
-				entry.model:PivotTo(entry.home * CFrame.new(0, bob, 0) * CFrame.Angles(lean, 0, 0))
+		local rebuild = nil
+		for uid, entry in pairs(S.units) do
+			local okay = F.healUnit(uid, entry, dt or 1 / 60)
+			if okay == "rebuild" then
+				rebuild = rebuild or {}
+				table.insert(rebuild, uid)
+			elseif okay then
+				if entry.kind == "creature" then
+					local bob = (math.sin(t * 1.3 + entry.phase) + 1) * 0.02
+					local lean = math.sin(t * 1.3 + entry.phase + 0.9) * 0.014
+					entry.model:PivotTo(entry.home * CFrame.new(0, bob, 0) * CFrame.Angles(lean, 0, 0))
+				elseif (entry.model:GetPivot().Position - entry.home.Position).Magnitude > 0.05 then
+					entry.model:PivotTo(entry.home) -- a building that was nudged goes back
+				end
+			end
+		end
+		for _, uid in ipairs(rebuild or {}) do
+			local entry = S.units[uid]
+			if entry and entry.data and S.boardFolder.Parent then
+				S.units[uid] = nil
+				if entry.model then
+					pcall(function()
+						entry.model:Destroy()
+					end)
+				end
+				F.spawnUnit(entry.data, true)
 			end
 		end
 		for _, entry in pairs(S.heroes) do
@@ -3182,6 +3524,22 @@ function MatchScreen.init(ctx)
 		end
 	end
 
+	-- While you place a card (dragging it, or picked and waiting for a lane or target) the hand
+	-- tucks down so only its top edge shows and the near lanes are free to drop on; it comes
+	-- back up after. The coach line rides along above it.
+	function F.updateHandTuck(dt)
+		local placing = (S.drag ~= nil and S.drag.started) or (S.pick ~= nil and S.pick.kind == "card")
+		local goal = placing and 1 or 0
+		if math.abs(goal - S.handTuck) < 0.002 then
+			S.handTuck = goal
+		else
+			S.handTuck += (goal - S.handTuck) * (1 - math.exp(-dt * 14))
+		end
+		local drop = math.floor(S.handTuck * HAND_TUCK + 0.5)
+		ui.handFrame.Position = UDim2.new(0.5, 51, 1, -10 + drop)
+		ui.coach.Position = UDim2.new(0.5, 51, 1, -222 + drop)
+	end
+
 	function MatchScreen.update(dt)
 		if ctx.getMode() ~= "match" then
 			ui.vignette.Visible = false
@@ -3195,6 +3553,7 @@ function MatchScreen.init(ctx)
 		end
 		F.updateTurnText()
 		F.dragUpdate()
+		F.updateHandTuck(dt)
 		F.updateCoach()
 		F.updateHover()
 		F.updateGhost(dt)

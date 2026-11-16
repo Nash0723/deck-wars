@@ -83,7 +83,7 @@ end
 local shared = Instance.new("Folder")
 shared.Name = "DeckWars"
 shared.Parent = ReplicatedStorage
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "Juice", "ShopCatalog", "Backdrops" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "VfxAssets", "LayerFx", "Juice", "ShopCatalog", "Backdrops" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = Instance.new("Folder")

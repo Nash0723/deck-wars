@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("DeckWars")
 local DeckRules = require(Shared:WaitForChild("DeckRules"))
+local CardLevels = require(Shared:WaitForChild("CardLevels"))
 
 local PlayerDecks = {}
 
@@ -99,7 +100,22 @@ function PlayerDecks.ensureStarter(player)
 	return true
 end
 
--- What the deck builder shows: { cards = { [id] = copies }, decks = { { slot, deck, ok, problems } }, slots }.
+-- Each owned card's copies by level: { [id] = { copies at Lv1, Lv2, ... } }.
+local function cardLevels(player, cards)
+	local eco = getEconomy()
+	if eco and eco.getCardLevels then
+		return eco.getCardLevels(player)
+	end
+	local out = {}
+	for id, n in pairs(cards) do
+		out[id] = { n }
+	end
+	return out
+end
+
+-- What the deck builder shows: { cards = { [id] = copies }, decks = { { slot, deck, ok, problems } },
+-- slots, levels = { [id] = { copies at Lv1, Lv2, ... } }, reserved = { [id] = copies your decks
+-- use }, storage = { used, limit } }.
 function PlayerDecks.snapshot(player)
 	PlayerDecks.ensureStarter(player)
 	local p = profile(player)
@@ -115,7 +131,41 @@ function PlayerDecks.snapshot(player)
 			table.insert(list, { slot = slot, deck = clean, ok = ok, problems = problems })
 		end
 	end
-	return { cards = p.cards, decks = list, slots = p.slots }
+	local reserved = {}
+	for id in pairs(p.cards) do
+		local n = CardLevels.reserved(p.decks, id)
+		if n > 0 then
+			reserved[id] = n
+		end
+	end
+	local used, limit = 0, CardLevels.StorageLimit
+	local eco = getEconomy()
+	if eco and eco.storage then
+		used, limit = eco.storage(player)
+	else
+		for _, n in pairs(p.cards) do
+			used += n
+		end
+	end
+	local snap = { cards = p.cards, decks = list, slots = p.slots, levels = cardLevels(player, p.cards), reserved = reserved, storage = { used = used, limit = limit } }
+	-- enchants (the Enchanting Crystal in the Park, and the glow on cards everywhere)
+	if eco and eco.getEnchants then
+		local en = eco.getEnchants(player)
+		snap.enchants, snap.enchantPity, snap.enchantPending = en.enchants, en.pity, en.pending
+	end
+	return snap
+end
+
+-- The player's enchants ({ [cardId] = enchantId }) for a match setup.
+function PlayerDecks.enchantsFor(player)
+	local eco = getEconomy()
+	if player and eco and eco.getEnchants then
+		local ok, en = pcall(eco.getEnchants, player)
+		if ok and type(en) == "table" then
+			return en.enchants
+		end
+	end
+	return {}
 end
 
 -- Saves a deck into a slot. Decks that break the rules can still be saved (so you can finish
@@ -165,7 +215,14 @@ function PlayerDecks.setupFor(player, slot)
 	if not ok then
 		return nil, problems[1]
 	end
-	return DeckRules.setupFor(deck), deck
+	-- the deck plays your best copies: k copies of a card in the deck = your k highest levels
+	local setup = DeckRules.setupFor(deck)
+	local levels = cardLevels(player, p.cards)
+	setup.levels = {}
+	for id, k in pairs(DeckRules.counts(deck.cards)) do
+		setup.levels[id] = CardLevels.top(CardLevels.fromList(levels[id]), k)
+	end
+	return setup, deck
 end
 
 -- A saved deck's name and first theme, for lobby lists (nil if the slot is empty).

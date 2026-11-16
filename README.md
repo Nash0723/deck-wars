@@ -59,6 +59,7 @@ tools/luaurun/target/release/luaurun -D GAMES=40 bal/campaign_balance.luau src/s
 tools/luaurun/target/release/luaurun mock_roblox/econharness.luau mock_roblox            # the whole game in a simulated Studio: title, daily reward, Shop, dev panel, a full bot match, a Campaign stage, the Plaza
 tools/luaurun/target/release/luaurun mock_roblox/pullharness.luau mock_roblox src/shared src/packbrawl  # Pack Brawl in a simulated Studio, about 10 s
 tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox                           # the room's props answering the mouse (hover, click, back in place)
+tools/luaurun/target/release/luaurun mock_roblox/fxharness.luau mock_roblox                             # the layered effects (every recipe, in the world and on the screen)
 ```
 
 `-D NAME=VALUE` sets a setting before the script runs, for example `-D SOAK_GAMES=200` for more bot games in the rules tests (put it before the script path).
@@ -136,6 +137,36 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 
 ## Use your own models
 Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
+
+## Enchants: runes on your cards
+
+The **Enchanting Crystal** floats in the middle of the Park, on the island (the Pull Altar moved to the lawn in front of the Hall of Pulls). Walk up and press **E**, pick a creature or spell you own, and press **Enchant** (250 Coins) or **Lucky** (60 Gems: no Commons, better odds). The rune is rolled at random; the card's rim flickers through the colours, slows down and lands on the rarity, with a bigger burst for rarer runes.
+
+| Rarity | Odds | Lucky | Colour | Creature runes | Spell runes |
+|---|---|---|---|---|---|
+| Common | 46% | 0% | moonlight silver | Thick Hide (+1 health), Sharp Edge (+1 attack) | Inkwell (heal hero 1) |
+| Rare | 30% | 48% | sapphire | Iron Hide (+2 health), Thorns (+1 health, 1 damage back), Head Start (1 Power) | Mending Ink (heal hero 2) |
+| Epic | 14% | 30% | amethyst | Bubble Ward (+1 health, a Bubble), Leech (heal hero 1 per hit), Swift (+1 attack, Zoom) | Quick Cast (1 less, never below 1) |
+| Mythic | 7% | 14% | ruby | Fury (+2/+1), Last Word (+2 health, Grudge), Restless (Sturdy, Haunt) | Insight (draw a card) |
+| Legendary | 2.5% | 6.5% | gold | Titan Blood (+2/+3), Vampire (+1 attack, heal hero 2 and itself 1 per hit), Phoenix (rises once with half health) | Echo (1 less, draw a card) |
+| Secret | 0.5% | 1.5% | rainbow | Starborn (+3/+3, a Bubble), Crown of Ages (+2/+2, Sturdy, rises once at full health) | Wellspring (1 less, draw, heal hero 3) |
+
+- An enchant belongs to the card: every copy in every deck carries it. Buildings can't be enchanted.
+- Bad luck protection: after 8 enchants in a row below Epic, the next one is Epic or better (the window counts down).
+- Enchanting a card that already has a rune asks you to keep the new one or the old one.
+- Like card levels, enchant powers count against bots and in the Campaign. In duels against players the rune glows but cards play at their printed numbers (`Enchants.InDuels`).
+- What you see: a glowing rim and a rune gem on the card (hand, Deck Shelf, the window), a slow aura in the rune's colour under the creature on the table (ring, light, rising motes), a rune circle when it lands, and painted effects when Thorns, Leech, Phoenix or a spell rune fires.
+- Code: `src/shared/Enchants.luau` (runes, odds, colours: change numbers here), `EnchantFx.luau` (the look, on top of LayerFx), `EnchantUI.luau` (the window), `EconomyManager.enchantCard/chooseEnchant` (the save), hooks in `MatchEngine`, `MatchScreen`, `ParkBuilder` (`buildShrine`) and `ParkClient`. Tests: `tests/enchant_tests.luau`, `mock_roblox/enchantharness.luau`.
+
+## Painted effects: four layers per picture
+Hits, slashes, spells, summons, knock-outs, heals, wards, the pack slash, card reveals and Pack Brawl's blows are now painted effects. Each one is a picture drawn as four layers (a soft **glow**, the dark **rim**, the bright **middle** and the white-hot **core**) that the game stacks and moves a little apart in time: the core snaps out first, the rim arrives last and lingers. The pictures are white, so each card family fights in its own colours (Snack orange, Weather blue, Spooky purple, Critter green, Junk rust, Robo steel) and pack reveals use the rarity's colour.
+
+![The effects in Roblox Studio](vfx/studio_check.jpg)
+
+- The 13 pictures are drawn by `vfx/draw_layers.py` and are already uploaded to Roblox (ids in `src/shared/VfxAssets.luau`). How to change or add one: [vfx/README.md](vfx/README.md).
+- The effects themselves (which layers, timing, size) are the `Recipes` in `src/shared/LayerFx.luau`.
+- With Graphics set to Low in Settings the loose flying bits are left out.
+- **Tested:** `luaurun mock_roblox/fxharness.luau mock_roblox` plays every effect in the simulated Studio, in the world and on the screen. The layers were also looked at in real Roblox Studio (the picture above), but a whole match with them has not been played in real Studio yet.
 
 ## Cleaner menus: one window at a time
 - **Focus mode:** when a window opens (the Shop, your collection, the Party, the daily reward, the tournament bracket, the in-match settings and help), whatever would crowd it slides out of the way (the title, the profile card, the station panel, the floating station signs, the DEV tab), the room behind dims with a soft vignette and blur, and the window springs in. Closing it brings everything back. This lives in `src/shared/UIKit.luau` (`UIKit.Focus.watch(window, { hide = {...}, dim = 0.4, blur = 8 })`), and the list of windows is near the end of `DeckWarsClient.client.luau` ("Focus"). Blur is skipped on Low graphics.

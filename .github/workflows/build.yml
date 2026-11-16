@@ -43,7 +43,7 @@ jobs:
         run: cargo build --release --locked --manifest-path tools/luaurun/Cargo.toml
 
       - name: Check that every script compiles
-        run: tools/luaurun/target/release/luaurun --check src/shared/*.luau src/server/*.luau src/client/*.luau src/packbrawl/*.luau src/pullserver/*.luau src/pullclient/*.luau src/econ/*.luau src/devcontrols/*.luau src/plaza/*.luau tests/*.luau bal/*.luau mock_roblox/*.luau
+        run: tools/luaurun/target/release/luaurun --check src/shared/*.luau src/server/*.luau src/client/*.luau src/packbrawl/*.luau src/pullserver/*.luau src/pullclient/*.luau src/econ/*.luau src/devcontrols/*.luau src/park/*.luau src/first/*.luau tests/*.luau bal/*.luau mock_roblox/*.luau
 
       - name: Rules tests (two rows per lane, Shift, overkill, Ranged, plus 1v1 and 2v2 bot games)
         run: tools/luaurun/target/release/luaurun tests/lane_tests.luau src/shared
@@ -60,8 +60,11 @@ jobs:
       - name: Campaign tests (every stage, opponents' decks, rules, stars, unlocks, rewards, drops, chests, the Challenge)
         run: tools/luaurun/target/release/luaurun tests/campaign_tests.luau src/shared src/server
 
-      - name: Plaza tests (booth cards, likes once a day, best pulls and titles, banners, the booth ring)
-        run: tools/luaurun/target/release/luaurun tests/plaza_tests.luau src/shared mock_roblox
+      - name: Park tests (your cards on show, likes once a day, best pulls and titles, banners, the Top Collector, the real-time sky)
+        run: tools/luaurun/target/release/luaurun tests/park_tests.luau src/shared mock_roblox
+
+      - name: Card level and trade tests (fusing, selling, storage, what a level gives, the Trading Post's rules)
+        run: tools/luaurun/target/release/luaurun tests/levels_trade_tests.luau src/shared
 
       - name: The game in the simulated Studio (join, daily reward, Shop, dev panel, a full bot match, a Campaign stage, the Plaza, rewards, autosave)
         run: |
@@ -70,6 +73,17 @@ jobs:
 
       - name: The room's props answering the mouse in the simulated Studio (hover, click, back in place)
         run: tools/luaurun/target/release/luaurun mock_roblox/roomharness.luau mock_roblox
+
+      - name: Enchant tests (the runes, the odds and bad luck protection, every power in a match, duels, the save, bot games)
+        run: tools/luaurun/target/release/luaurun tests/enchant_tests.luau src/shared src/econ src/packbrawl
+
+      - name: Enchants in the simulated Studio (the crystal in the Park, the enchant window and its roll, card rims, auras)
+        run: |
+          tools/luaurun/target/release/luaurun mock_roblox/enchantharness.luau mock_roblox | tee enchantharness.log
+          grep -q "MOCK RESULT: 0 errors, 0 warnings" enchantharness.log
+
+      - name: The layered effects in the simulated Studio (every recipe, in the world and on the screen)
+        run: tools/luaurun/target/release/luaurun mock_roblox/fxharness.luau mock_roblox
 
       - name: Pack Brawl in the simulated Studio (every tier, skip, fast-forward, 10-pull)
         run: |

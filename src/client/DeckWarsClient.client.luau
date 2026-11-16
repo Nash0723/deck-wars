@@ -27,6 +27,7 @@ local LobbyScreen = require(Shared:WaitForChild("LobbyScreen"))
 local PartyScreen = require(Shared:WaitForChild("PartyScreen"))
 local Backdrops = require(Shared:WaitForChild("Backdrops"))
 local Progression = require(Shared:WaitForChild("Progression"))
+local CardLevels = require(Shared:WaitForChild("CardLevels"))
 local UIKit = require(Shared:WaitForChild("UIKit")) -- drawn icons, the level badge and Focus (one window at a time)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -67,9 +68,19 @@ end
 
 -- Shared state, declared up here so every function below can use it.
 local mode = "title" -- "title", "menu", "match", "pack" (a pack opening, which moves the camera itself), "preview" (trying a match background on)
--- or "plaza" (walking around the Plaza as your avatar: Roblox's own camera and controls, see PlazaClient)
+-- or "park" (walking around the Park as your avatar: Roblox's own camera and controls, see ParkClient)
 local clock = 0 -- seconds since the script started (advanced every frame)
 local currentStation = nil -- the station whose panel is open
+-- While a station's screen is open, its own props in the room stay hoverable and clickable (the
+-- rest of the room stays still, and nothing there switches screens): station -> the RoomLife scopes
+-- that stay live. The Deck Shelf is left out on purpose: nothing moves while you sort your cards.
+local LIVE_PROPS = {
+	TrophyWall = { TrophyWall = true }, -- the trophies, pennants and certificate
+	PackParty = { PackParty = true, PackShelf = true }, -- the balloons, speakers, disco ball and floor, the jars
+	DuelTable = { DuelTable = true }, -- the chairs
+	ShopCounter = { ShopCounter = true }, -- Pickles, the register, the candy jar...
+	Radio = { Radio = true }, -- the radio (Settings)
+}
 
 ---------------------------------------------------------------------------
 -- Camera: glides between spots, can shake, and sways a little during matches
@@ -88,10 +99,11 @@ local CAMS = {
 	ShopCounter = { Vector3.new(9, 8.5, 9), Vector3.new(16, 5.2, 17.5) },
 	TrophyWall = { Vector3.new(11, 9, 0), Vector3.new(23.5, 8, 0) },
 	Radio = { Vector3.new(-13, 6.2, -13), Vector3.new(-17.2, 3.6, -18.2) },
-	-- the painting over the fireplace is the Campaign map; the front door leads out to the Plaza
+	-- the painting over the fireplace is the Campaign map; the front door leads out to the Park
 	-- (both a little to the side, so the station panel on the right doesn't cover them)
 	Campaign = { Vector3.new(2.2, 10.6, -13.8), Vector3.new(2.2, 10.9, -23) },
-	PlazaDoor = { Vector3.new(-10.5, 7.2, 12.5), Vector3.new(-12, 6.2, 23.7) },
+	-- (low and a little to the side, so your avatar leaning by the door shows head to toe, left of the panel)
+	ParkDoor = { Vector3.new(-6.0, 5.2, 11.5), Vector3.new(-11.8, 5.0, 23.7) },
 	-- the title screen: a slow push across the room behind the logo
 	TitleFrom = { Vector3.new(-15, 12.5, 19), Vector3.new(0, 4.5, 0), 60 },
 	TitleTo = { Vector3.new(-5, 8.5, 13), Vector3.new(0, 4.6, -1), 55 },
@@ -306,9 +318,9 @@ end
 local depthOfField = game:GetService("Lighting"):FindFirstChildOfClass("DepthOfFieldEffect")
 
 local function updateCamera(dt)
-	-- During a pack opening the opening owns the camera (see PackParty), and in the Plaza Roblox's
+	-- During a pack opening the opening owns the camera (see PackParty), and in the Park Roblox's
 	-- own camera follows your avatar, so leave it alone.
-	if mode == "pack" or mode == "plaza" then
+	if mode == "pack" or mode == "park" then
 		return
 	end
 	if cam.duration > 0 then
@@ -351,13 +363,13 @@ local function updateCamera(dt)
 end
 
 -- Keep the camera ours even after the character respawns, and stop walking around
--- (except in the Plaza, where you walk around with Roblox's own camera and controls).
+-- (except in the Park, where you walk around with Roblox's own camera and controls).
 local function lockPlayer()
-	if mode == "plaza" then
+	if mode == "park" then
 		return
 	end
 	task.defer(function()
-		if mode ~= "plaza" then
+		if mode ~= "park" then
 			camera.CameraType = Enum.CameraType.Scriptable
 		end
 	end)
@@ -371,7 +383,7 @@ if player.Character then
 	lockPlayer()
 end
 camera:GetPropertyChangedSignal("CameraType"):Connect(function()
-	if camera.CameraType ~= Enum.CameraType.Scriptable and mode ~= "plaza" then
+	if camera.CameraType ~= Enum.CameraType.Scriptable and mode ~= "park" then
 		camera.CameraType = Enum.CameraType.Scriptable
 	end
 end)
@@ -387,6 +399,8 @@ gui.IgnoreGuiInset = true
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.DisplayOrder = 5
 gui.Parent = player:WaitForChild("PlayerGui")
+-- Every menu in warm wood, cream and honey (the screens were built on a cool purple chrome).
+require(Shared:WaitForChild("CozyTheme")).attach(player:WaitForChild("PlayerGui"))
 
 local function make(className, props, parent)
 	local inst = Instance.new(className)
@@ -457,13 +471,13 @@ local function panel(parent, size, pos, anchor)
 		Size = size,
 		Position = pos,
 		AnchorPoint = anchor or Vector2.new(0, 0),
-		BackgroundColor3 = Color3.fromRGB(30, 26, 44),
+		BackgroundColor3 = Color3.fromRGB(48, 33, 24),
 		BackgroundTransparency = 0.04,
 	}, parent)
 	corner(f, 14)
-	-- cartoon look: a thick dark outline and a soft purple-to-navy shade
+	-- cartoon look: a thick dark outline and a soft warm shade, like polished wood
 	make("UIStroke", { Thickness = 3, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
-	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(170, 168, 200)) }, f)
+	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 248, 236), Color3.fromRGB(196, 170, 140)) }, f)
 	return f
 end
 
@@ -680,7 +694,9 @@ end
 -- calm = true: no shine sweeping across it and no glowing border.
 -- calm = "compact": calm, and only the cost, name, picture and attack / health (the cards in your
 -- hand in a match; hovering one shows the full card).
-local function makeCard(parent, cardId, size, costOverride, calm)
+-- level: shows the card's level pips on its bottom edge (nil: no pips). boosted: the level's
+-- bonus counts here (a match against bots), so the attack / health shown include it, in gold.
+local function makeCard(parent, cardId, size, costOverride, calm, level, boosted)
 	local compact = calm == "compact"
 	local def = CardData.get(cardId)
 	local hidden = def.rarity == "Secret" and costOverride == "hidden"
@@ -690,6 +706,7 @@ local function makeCard(parent, cardId, size, costOverride, calm)
 		Size = size or UDim2.fromOffset(120, 168),
 		BackgroundColor3 = famColor:Lerp(WHITE, 0.55),
 	}, parent)
+	card:SetAttribute("KeepColors", true) -- (the cozy menu colors leave cards alone)
 	corner(card, 10)
 	local stroke = make("UIStroke", { Thickness = 4, Color = rgb(CardData.RarityColors[def.rarity]) }, card)
 	local rank = ({ Epic = 1, Mythic = 2, Legendary = 3, Secret = 4 })[def.rarity]
@@ -713,6 +730,11 @@ local function makeCard(parent, cardId, size, costOverride, calm)
 		label(card, "???", { TextColor3 = Color3.fromRGB(60, 50, 80), Size = UDim2.fromScale(1, 0.4), Position = UDim2.fromScale(0, 0.3) })
 		return card
 	end
+	if level then
+		UIKit.levelPips(card, level, CardLevels.maxLevel(cardId))
+	end
+	local lvBonus = (boosted and level and level > 1) and CardLevels.bonus(cardId, level) or { atk = 0, hp = 0, cost = 0 }
+	local LEVEL_GOLD = Color3.fromRGB(255, 226, 140)
 	local costCircle = make("Frame", { Name = "CostCircle", Size = UDim2.fromScale(0.3, 0.21), Position = UDim2.fromScale(-0.06, -0.05), BackgroundColor3 = Color3.fromRGB(40, 90, 200), ZIndex = 3 }, card)
 	corner(costCircle, 100)
 	make("UIAspectRatioConstraint", { AspectRatio = 1 }, costCircle)
@@ -748,8 +770,15 @@ local function makeCard(parent, cardId, size, costOverride, calm)
 				corner(b, 8)
 				make("UIPadding", { PaddingTop = UDim.new(0, 2), PaddingBottom = UDim.new(0, 2), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) }, b)
 			end
-			badge("⚔ " .. def.atk, Color3.fromRGB(190, 85, 60), 0.06, 0)
-			badge("❤ " .. def.hp, Color3.fromRGB(60, 150, 95), 0.94, 1)
+			badge("⚔ " .. (def.atk + lvBonus.atk), Color3.fromRGB(190, 85, 60), 0.06, 0)
+			badge("❤ " .. (def.hp + lvBonus.hp), Color3.fromRGB(60, 150, 95), 0.94, 1)
+			if lvBonus.atk > 0 or lvBonus.hp > 0 then
+				for _, b in ipairs(card:GetChildren()) do
+					if b.Name == "Stat" then
+						b.TextColor3 = LEVEL_GOLD
+					end
+				end
+			end
 		else
 			label(card, def.type, { Name = "Kind", Size = UDim2.fromScale(0.9, 0.11), Position = UDim2.fromScale(0.05, 0.83), Font = BODY_FONT, TextColor3 = Color3.fromRGB(60, 50, 70) })
 		end
@@ -807,11 +836,13 @@ local function makeCard(parent, cardId, size, costOverride, calm)
 		cardLife.shines[sweep] = { period = ({ 5.0, 3.8, 3.0, 2.4 })[rank], phase = math.random() * 4 }
 	end
 	if def.atk ~= nil then
-		local stats = def.type == "Building" and ("❤ " .. def.hp) or ("⚔ " .. def.atk .. "   ❤ " .. def.hp)
+		local atk, hp = def.atk + lvBonus.atk, def.hp + lvBonus.hp
+		local stats = def.type == "Building" and ("❤ " .. hp) or ("⚔ " .. atk .. "   ❤ " .. hp)
 		label(card, stats, {
-			Size = UDim2.fromScale(0.9, 0.11),
-			Position = UDim2.fromScale(0.05, 0.87),
-			TextColor3 = Color3.fromRGB(30, 25, 40),
+			Name = "Stats",
+			Size = UDim2.fromScale(0.9, level and 0.09 or 0.11),
+			Position = UDim2.fromScale(0.05, 0.865),
+			TextColor3 = (lvBonus.atk > 0 or lvBonus.hp > 0) and Color3.fromRGB(150, 96, 20) or Color3.fromRGB(30, 25, 40),
 		})
 	end
 	return card
@@ -819,6 +850,14 @@ end
 
 -- All the on-screen panels, buttons and labels live in this table.
 local ui = {}
+-- The props that stay live right now ({ [scope] = true } for the open station, see LIVE_PROPS), or
+-- nil. Not while a window or a match world is up.
+function ui.liveScope()
+	if currentStation and LIVE_PROPS[currentStation] and not Backdrops.current() and not UIKit.Focus.anyOpen(ui.stationPanel) then
+		return LIVE_PROPS[currentStation]
+	end
+	return nil
+end
 
 ---------------------------------------------------------------------------
 -- Menu room UI
@@ -835,20 +874,25 @@ ui.menuTitle = label(ui.menuUI, "DECK WARS", {
 })
 make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 238, 170), Color3.fromRGB(255, 156, 40)) }, ui.menuTitle)
 make("UIStroke", { Thickness = 3, Color = INK }, ui.menuTitle)
-label(ui.menuUI, "Click a part of the room or a button below.  A / D or ← / → look around, S goes back", {
+-- (the room keeps its screen clear: the logo lives on the loading and title screens, so the
+-- room's own title is an empty placeholder that the Focus code can still slide about)
+ui.menuTitle.Text = ""
+ui.menuTitle.Size = UDim2.fromOffset(0, 0)
+-- a one-line hint just above the dock; it fades away by itself a few seconds after you arrive
+label(ui.menuUI, "Click anything in the room   ·   A / D look around   ·   S goes back", {
 	Name = "MenuHint",
-	Size = UDim2.fromOffset(620, 18),
-	Position = UDim2.fromOffset(28, 112),
+	Size = UDim2.fromOffset(520, 18),
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -130),
 	Font = BODY_FONT,
 	TextScaled = false,
 	TextSize = 14,
-	TextColor3 = Color3.fromRGB(225, 220, 240),
-	TextStrokeTransparency = 0.5,
-	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(240, 228, 210),
+	TextStrokeTransparency = 0.55,
 })
 -- You: your level and XP, your Gems and Coins, your win streak and today's first-win bonus. The
 -- server keeps the real numbers and shows them as attributes on your Player (Level, XP, Gems...).
-ui.profile = panel(ui.menuUI, UDim2.fromOffset(356, 72), UDim2.fromOffset(24, 136))
+ui.profile = panel(ui.menuUI, UDim2.fromOffset(356, 72), UDim2.fromOffset(24, 62))
 ui.profile.Name = "Profile"
 UIKit.rim(ui.profile)
 -- the round level badge (UIKit draws it, with the number centered both ways)
@@ -859,7 +903,7 @@ corner(ui.xpBack, 4)
 make("UIStroke", { Thickness = 1, Color = Color3.fromRGB(80, 70, 120), Transparency = 0.3 }, ui.xpBack)
 ui.xpFill = make("Frame", { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1) }, ui.xpBack)
 corner(ui.xpFill, 4)
-make("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(120, 190, 255), Color3.fromRGB(170, 130, 255)) }, ui.xpFill)
+make("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 214, 110), Color3.fromRGB(255, 150, 80)) }, ui.xpFill) -- honey
 ui.profileExtra = label(ui.profile, "", { Name = "Extra", Size = UDim2.new(1, -184, 0, 16), Position = UDim2.fromOffset(72, 46), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = Color3.fromRGB(255, 204, 136), TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
 -- Gems (open packs) and Coins (shop items), stacked on the right of the card, each with its icon
 -- (Roblox has no 🪙 to draw, so the coin is drawn by UIKit).
@@ -907,8 +951,14 @@ do
 	refreshProfile()
 end
 
-ui.navBar = make("Frame", { Size = UDim2.new(1, 0, 0, 64), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -72), BackgroundTransparency = 1 }, ui.menuUI)
-make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 8) }, ui.navBar)
+-- The dock: one slim glass pill at the bottom of the screen. Round icon buttons (the name pops up
+-- over the one you point at) around a big gold PLAY in the middle. Settings is the ⚙ up top.
+ui.navBar = make("Frame", { Name = "Dock", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 68), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -16), BackgroundColor3 = Color3.fromRGB(24, 17, 13), BackgroundTransparency = 0.28 }, ui.menuUI)
+corner(ui.navBar, 34)
+make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(214, 168, 98), Transparency = 0.45, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ui.navBar)
+make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 240, 220), Color3.fromRGB(150, 130, 120)) }, ui.navBar)
+make("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, ui.navBar)
+make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, ui.navBar)
 
 ui.STATION_SIZE = UDim2.fromOffset(400, 520)
 ui.STATION_POS = UDim2.new(1, -24, 0.5, 14)
@@ -918,6 +968,21 @@ ui.stationPanel.Name = "StationPanel"
 UIKit.rim(ui.stationPanel)
 -- (stations can ask for a taller panel by scale; it never grows past the screen's comfort zone)
 make("UISizeConstraint", { MaxSize = Vector2.new(620, 680), MinSize = Vector2.new(320, 360) }, ui.stationPanel)
+-- While a station's panel is open on the right, the dock glides left to make room for it.
+do
+	local function dodge()
+		local w = ui.navBar.AbsoluteSize.X
+		local shift = 0
+		if ui.stationPanel.Visible and w > 0 then
+			local pw = ui.stationPanel.AbsoluteSize.X
+			shift = ((pw > 0 and pw or 420) + 24) / 2
+		end
+		local ax = 0.5 + (w > 0 and shift / w or 0)
+		TweenService:Create(ui.navBar, TweenInfo.new(0.4, Enum.EasingStyle.Quint), { AnchorPoint = Vector2.new(ax, 1) }):Play()
+	end
+	ui.stationPanel:GetPropertyChangedSignal("Visible"):Connect(dodge)
+	ui.stationPanel:GetPropertyChangedSignal("AbsoluteSize"):Connect(dodge)
+end
 ui.stationTitle = headingStyle(label(ui.stationPanel, "", { Name = "StationTitle", Size = UDim2.new(1, -110, 0, 32), Position = UDim2.new(0.5, 0, 0, 12), AnchorPoint = Vector2.new(0.5, 0), TextScaled = false, TextSize = 26, TextColor3 = WHITE }))
 -- a thin gold line under the title
 do
@@ -983,6 +1048,7 @@ do
 		{ key = "shake", kind = "choice", name = "Screen shake" },
 		{ head = "Game" },
 		{ key = "speed", kind = "choice", name = "Table speed", tip = "How fast moves play out on the table." },
+		{ key = "matchLog", kind = "toggle", name = "Match log", tip = "Every play and hit in words, in the corner during matches." },
 		{ key = "packFights", kind = "choice", name = "Pack fights", tip = "Quick plays every pack opening fast-forwarded." },
 		{ head = "Graphics" },
 		{ key = "graphics", kind = "choice", name = "Quality", tip = "Low turns off shadows and glow for slower devices." },
@@ -1108,8 +1174,8 @@ do
 		ui.stationPanel.Size = ui.STATION_SIZE
 	end
 
-	-- Play the bot, or open a table for friends (1v1, 2v2, Cup), with one of your own decks or a
-	-- practice deck. See LobbyScreen.
+	-- Open a table for friends (1v1, 2v2, Cup), with one of your own decks or a practice deck.
+	-- (Bot matches are in the Campaign.) See LobbyScreen.
 	local function showDuelTablePanel()
 		clearBody()
 		ui.stationTitle.Text = "Duel Table"
@@ -1157,20 +1223,21 @@ do
 		ui.onMenuHover = PackParty.hoverAt
 	end
 
-	-- The Shop: the Shop window opens on the left; this panel shows your wallet, level and boosts.
+	-- The Shop: this panel shows your wallet, level and boosts; its "Open the Shop" button opens the
+	-- big Shop window (it doesn't open by itself, so there's one thing on screen at a time).
 	local function showShopPanel()
 		clearBody()
 		ui.stationTitle.Text = "Shop"
 		local ShopUI = require(Shared:WaitForChild("ShopUI"))
 		ShopUI.stationPanel(ui.stationBody)
-		ShopUI.open()
 	end
 
-	-- The Trophy Wall: your level, the daily reward, today's three quests, the first-win bonus and
+	-- Trophies (the wall of cups in the room): your level, the daily reward, today's three quests, the first-win bonus and
 	-- the achievements. Everything here comes from attributes the server keeps on your Player.
 	local function showTrophyPanel()
+		local dailyPrizeText = ui.dailyPrizeText
 		clearBody()
-		ui.stationTitle.Text = "Trophy Wall"
+		ui.stationTitle.Text = "Trophies"
 		local body = make("ScrollingFrame", { Name = "TrophyList", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ScrollBarThickness = 6 }, ui.stationBody)
 		make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, body)
 		-- The Trophy Road on top: trophies from every match, rewards and three match backgrounds.
@@ -1254,13 +1321,13 @@ do
 			local ready = player:GetAttribute("DailyReady") == true
 			local day = player:GetAttribute("DailyDay") or 1
 			if ready then
-				dText.Text = "Daily reward: day " .. day
-				dSub.Text = "Come back tomorrow for day " .. (day + 1) .. " (+" .. Progression.dailyReward(day + 1) .. " 💎)"
+				dText.Text = "Daily reward: day " .. Progression.dailyWeekDay(day) .. " of 7"
+				dSub.Text = "Today: " .. dailyPrizeText(day)
 				dButton.Text = "+" .. Progression.dailyReward(day) .. " 💎"
 				dButton.Visible = true
 			else
 				dText.Text = "✓ Daily reward claimed"
-				dSub.Text = "Day " .. (day + 1) .. " (+" .. Progression.dailyReward(day + 1) .. " 💎) in " .. untilReset()
+				dSub.Text = "Day " .. Progression.dailyWeekDay(day + 1) .. " (" .. dailyPrizeText(day + 1) .. ") in " .. untilReset()
 				dButton.Visible = false
 			end
 			local bits = {}
@@ -1324,6 +1391,17 @@ do
 		clearBody()
 		ui.stationTitle.Text = "Settings"
 		ui.buildSettings(ui.stationBody)
+		-- and at the bottom: take the room tour again
+		local list = ui.stationBody:FindFirstChild("SettingsList")
+		if list then
+			local again = button(list, "🧭  Take the room tour again", Color3.fromRGB(86, 62, 40), function()
+				ui.goBack()
+				task.delay(0.9, function()
+					ui.startTour()
+				end)
+			end, { Name = "TourAgain", Size = UDim2.new(1, -10, 0, 42), LayoutOrder = 9999, TextScaled = false, TextSize = 17 })
+			again.TextColor3 = Color3.fromRGB(255, 236, 200)
+		end
 	end
 
 	-- The Campaign map over the fireplace (see CampaignUI).
@@ -1334,11 +1412,11 @@ do
 		require(Shared:WaitForChild("CampaignUI")).show(ui.stationBody)
 	end
 
-	-- The front door: out to the Plaza, where everyone in the server walks around (see PlazaClient).
-	local function showPlazaPanel()
+	-- The front door: out to the Park, where everyone in the server walks around (see ParkClient).
+	local function showParkPanel()
 		clearBody()
-		ui.stationTitle.Text = "The Plaza"
-		require(Shared:WaitForChild("PlazaClient")).doorPanel(ui.stationBody)
+		ui.stationTitle.Text = "The Park"
+		require(Shared:WaitForChild("ParkClient")).doorPanel(ui.stationBody)
 	end
 
 	local STATIONS = {
@@ -1348,7 +1426,7 @@ do
 		{ key = "PackParty", name = "Pack Party", show = showPackPartyPanel },
 		{ key = "ShopCounter", name = "Shop", show = showShopPanel },
 		{ key = "TrophyWall", name = "Trophies", show = showTrophyPanel },
-		{ key = "PlazaDoor", name = "Plaza", show = showPlazaPanel },
+		{ key = "ParkDoor", name = "Park", show = showParkPanel },
 		{ key = "Radio", name = "Settings", show = showSettingsPanel },
 	}
 	local stationByKey = {}
@@ -1358,13 +1436,15 @@ do
 
 	-- The station the camera is at (nil = the overview) has its nav button lit up.
 	local navButtons = {}
-	local NAV_IDLE = Color3.fromRGB(34, 30, 52)
-	local NAV_HERE = Color3.fromRGB(86, 64, 28)
-	local NAV_ICONS = { DuelTable = "⚔", Campaign = "🗺", DeckShelf = "📚", PackParty = "🎁", ShopCounter = "🛒", TrophyWall = "🏆", PlazaDoor = "🏙", Radio = "⚙" }
+	local NAV_IDLE = Color3.fromRGB(62, 44, 32)
+	local NAV_HERE = Color3.fromRGB(150, 108, 44)
+	local NAV_ICONS = { DuelTable = "⚔", Campaign = "🗺", DeckShelf = "📚", PackParty = "🎁", ShopCounter = "🛒", TrophyWall = "🏆", ParkDoor = "🌳", Radio = "⚙" }
 	local function markNav()
 		for key, b in pairs(navButtons) do
 			local here = key == currentStation
-			b.BackgroundColor3 = here and NAV_HERE or NAV_IDLE
+			if not b:GetAttribute("KeepColor") then
+				b.BackgroundColor3 = here and NAV_HERE or NAV_IDLE
+			end
 			local accent = b:FindFirstChild("Accent")
 			if accent then
 				TweenService:Create(accent, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = here and UDim2.new(0.8, 0, 0, 4) or UDim2.new(0, 0, 0, 4) }):Play()
@@ -1404,25 +1484,69 @@ do
 		moveCamera("Overview")
 	end
 	ui.goBack = goBack
-	-- a drawn ✕ in the panel's corner goes back to the room, like Back and S
+	-- a drawn ✕ in the panel's corner goes back to the room, like S or Backspace
 	UIKit.closeButton(ui.stationPanel, goBack, { Name = "CloseStation", Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -12, 0, 12), AnchorPoint = Vector2.new(1, 0), ZIndex = 5 })
 
-	for i, s in ipairs(STATIONS) do
-		local b = button(ui.navBar, s.name, NAV_IDLE, function()
-			selectStation(s.key)
-		end, { Name = "Nav" .. s.key, LayoutOrder = i, Size = UDim2.fromOffset(128, 52), TextScaled = false, TextSize = 18 })
-		navButtons[s.key] = b
-		b.TextColor3 = Color3.fromRGB(245, 236, 215)
-		b:FindFirstChildOfClass("UIPadding").PaddingLeft = UDim.new(0, 34)
-		b:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(130, 100, 48)
-		label(b, NAV_ICONS[s.key] or "", { Name = "Icon", Size = UDim2.new(0, 24, 1, 0), Position = UDim2.fromOffset(-28, 0), TextScaled = false, TextSize = 22 })
-		local accent = make("Frame", { Name = "Accent", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, -13, 1, 4), Size = UDim2.new(0, 0, 0, 4), BackgroundColor3 = Color3.fromRGB(255, 214, 102), BorderSizePixel = 0 }, b)
-		corner(accent, 2)
+	-- (dock order: PLAY in the middle; Settings has no dock button, it's the ⚙ up top)
+	local DOCK = { Campaign = 1, DeckShelf = 2, PackParty = 3, DuelTable = 4, ShopCounter = 5, TrophyWall = 6, ParkDoor = 7 }
+	for _, s in ipairs(STATIONS) do
+		local order = DOCK[s.key]
+		if order then
+			local play = s.key == "DuelTable"
+			local b = make("TextButton", {
+				Name = "Nav" .. s.key,
+				LayoutOrder = order,
+				Size = play and UDim2.fromOffset(150, 52) or UDim2.fromOffset(50, 50),
+				BackgroundColor3 = play and Color3.new(1, 1, 1) or NAV_IDLE,
+				AutoButtonColor = false,
+				Text = play and "⚔  PLAY" or (NAV_ICONS[s.key] or "?"),
+				Font = FONT,
+				TextScaled = false,
+				TextSize = play and 24 or 24,
+				TextColor3 = play and INK or WHITE,
+			}, ui.navBar)
+			corner(b, play and 26 or 25)
+			if play then
+				b:SetAttribute("KeepColor", true)
+				make("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 222, 120), Color3.fromRGB(242, 146, 52)) }, b)
+				make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(110, 60, 20), ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, b)
+				-- a slow shine sweeps across PLAY
+				-- (a soft band, not a rotated bar: Roblox doesn't clip rotated frames)
+				local shine = make("Frame", { Name = "Shine", Size = UDim2.new(0, 40, 1, 0), Position = UDim2.new(0, -44, 0, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0, BorderSizePixel = 0, ZIndex = 2 }, b)
+				make("UIGradient", { Rotation = 0, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.55), NumberSequenceKeypoint.new(1, 1) }) }, shine)
+				b.ClipsDescendants = true
+				task.spawn(function()
+					while b.Parent do
+						shine.Position = UDim2.new(0, -44, 0, 0)
+						TweenService:Create(shine, TweenInfo.new(0.9, Enum.EasingStyle.Sine), { Position = UDim2.new(1, 4, 0, 0) }):Play()
+						task.wait(4.5)
+					end
+				end)
+			else
+				make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(200, 156, 90), Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, b)
+				-- the name, popping up over the button while you point at it
+				local tip = label(b, s.name, { Name = "Tip", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 0, -12), Size = UDim2.fromOffset(110, 26), Font = UIKit.BOLD_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(255, 240, 214), BackgroundColor3 = Color3.fromRGB(24, 17, 13), BackgroundTransparency = 0.15, Visible = false, ZIndex = 6 })
+				corner(tip, 13)
+				b.MouseEnter:Connect(function()
+					tip.Visible = true
+				end)
+				b.MouseLeave:Connect(function()
+					tip.Visible = false
+				end)
+				local accent = make("Frame", { Name = "Accent", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 3), Size = UDim2.new(0, 0, 0, 4), BackgroundColor3 = Color3.fromRGB(255, 214, 102), BorderSizePixel = 0 }, b)
+				corner(accent, 2)
+			end
+			b.Activated:Connect(function()
+				selectStation(s.key)
+			end)
+			Juice.button(b, { grow = play and 1.06 or 1.12 })
+			navButtons[s.key] = b
+		end
 	end
 	ui.navButtons = navButtons
-	-- A little "!" on the Trophy Wall when there's something to collect.
+	-- A little "!" on Trophies when there's something to collect.
 	do
-		local badge = label(navButtons.TrophyWall, "!", { Name = "Badge", Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, 4, 0, -8), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.fromRGB(230, 70, 80), BackgroundTransparency = 0, Visible = false, ZIndex = 5, TextScaled = false, TextSize = 18 })
+		local badge = label(navButtons.TrophyWall, "!", { Name = "Badge", Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, 4, 0, -6), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.fromRGB(230, 70, 80), BackgroundTransparency = 0, Visible = false, ZIndex = 5, TextScaled = false, TextSize = 18 })
 		corner(badge, 12)
 		make("UIStroke", { Thickness = 2, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, badge)
 		local function refreshBadge()
@@ -1441,16 +1565,17 @@ do
 		end)
 		refreshBadge()
 	end
-	button(ui.navBar, "Back", Color3.fromRGB(110, 60, 70), goBack, { Name = "NavBack", LayoutOrder = 99, Size = UDim2.fromOffset(96, 52), TextScaled = false, TextSize = 18 })
 	-- Eight stations: on a narrow screen the whole bar shrinks to fit instead of running off the edges.
 	do
 		local scale = make("UIScale", { Name = "Fit" }, ui.navBar)
 		local function fit()
-			local want = #STATIONS * (128 + 8) + 96 + 24
-			local have = ui.navBar.AbsoluteSize.X / math.max(scale.Scale, 0.01)
-			scale.Scale = math.clamp(have / want, 0.55, 1)
+			local want = ui.navBar.AbsoluteSize.X / math.max(scale.Scale, 0.01) + 24
+			local have = ui.menuUI.AbsoluteSize.X
+			if want > 24 and have > 0 then
+				scale.Scale = math.clamp(have / want, 0.6, 1)
+			end
 		end
-		ui.navBar:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		ui.menuUI:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 		task.defer(fit)
 	end
 
@@ -1459,19 +1584,33 @@ do
 	local PREV = { [Enum.KeyCode.A] = true, [Enum.KeyCode.Left] = true, [Enum.KeyCode.DPadLeft] = true, [Enum.KeyCode.ButtonL1] = true }
 	local NEXT = { [Enum.KeyCode.D] = true, [Enum.KeyCode.Right] = true, [Enum.KeyCode.DPadRight] = true, [Enum.KeyCode.ButtonR1] = true }
 	local BACK = { [Enum.KeyCode.S] = true, [Enum.KeyCode.Down] = true, [Enum.KeyCode.Backspace] = true, [Enum.KeyCode.ButtonB] = true }
+	-- (the order is read off the screen, left to right, so it always matches the bar you see)
 	local function stepStation(dir)
+		local order = {}
+		for _, s in ipairs(STATIONS) do
+			local b = navButtons[s.key]
+			if b and b.Visible then
+				table.insert(order, { key = s.key, x = b.AbsolutePosition.X })
+			end
+		end
+		if #order == 0 then
+			return
+		end
+		table.sort(order, function(a, b)
+			return a.x < b.x
+		end)
 		local index = nil
-		for i, s in ipairs(STATIONS) do
-			if s.key == currentStation then
+		for i, o in ipairs(order) do
+			if o.key == currentStation then
 				index = i
 			end
 		end
 		if not index then
-			index = dir > 0 and 1 or #STATIONS
+			index = dir > 0 and 1 or #order
 		else
-			index = (index - 1 + dir) % #STATIONS + 1
+			index = (index - 1 + dir) % #order + 1
 		end
-		selectStation(STATIONS[index].key)
+		selectStation(order[index].key)
 	end
 	UserInputService.InputBegan:Connect(function(input)
 		-- (not "processed by GUI": a focused button must not eat the keys; text boxes still do)
@@ -1549,55 +1688,84 @@ local function chime(pitch)
 	end)
 end
 
-ui.dailyPopup = panel(ui.menuUI, UDim2.fromOffset(560, 250), UDim2.fromScale(0.5, 0.45), Vector2.new(0.5, 0.5))
+-- "+50 💎 + Small Luck Potion": what a streak day pays, in words.
+function ui.dailyPrizeText(streakDay)
+	local prize = Progression.dailyPrize(streakDay)
+	local text = "+" .. prize.gems .. " 💎"
+	local potion = prize.potion and ShopCatalog.PotionById and ShopCatalog.PotionById[prize.potion]
+	if potion then
+		text = text .. " + " .. potion.name
+	end
+	return text
+end
+
+ui.dailyPopup = panel(ui.menuUI, UDim2.fromOffset(600, 300), UDim2.fromScale(0.5, 0.45), Vector2.new(0.5, 0.5))
 ui.dailyPopup.Name = "DailyPopup"
 ui.dailyPopup.Visible = false
 ui.dailyPopup.ZIndex = 45
 UIKit.rim(ui.dailyPopup)
 headingStyle(label(ui.dailyPopup, "🎁 Daily reward", { Size = UDim2.new(1, -24, 0, 34), Position = UDim2.fromOffset(12, 14), TextScaled = false, TextSize = 28, TextColor3 = WHITE }))
-label(ui.dailyPopup, "Come back every day: the rewards grow, and day 7 is the big one.", { Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 52), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(205, 200, 225) })
-ui.dailyTiles = make("Frame", { Name = "Days", Size = UDim2.new(1, -24, 0, 78), Position = UDim2.fromOffset(12, 80), BackgroundTransparency = 1 }, ui.dailyPopup)
+ui.dailySub = label(ui.dailyPopup, "", { Name = "Sub", Size = UDim2.new(1, -24, 0, 18), Position = UDim2.fromOffset(12, 52), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(225, 210, 190) })
+ui.dailyTiles = make("Frame", { Name = "Days", Size = UDim2.new(1, -24, 0, 112), Position = UDim2.fromOffset(12, 82), BackgroundTransparency = 1 }, ui.dailyPopup)
 make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6) }, ui.dailyTiles)
 ui.dailyClaim = button(ui.dailyPopup, "Claim", Color3.fromRGB(60, 170, 90), function()
 	MenuAction:FireServer("ClaimDaily")
 end, { Name = "ClaimDaily", Size = UDim2.fromOffset(220, 50), Position = UDim2.new(0.5, -6, 1, -14), AnchorPoint = Vector2.new(1, 1) })
-button(ui.dailyPopup, "Later", Color3.fromRGB(80, 74, 104), function()
+button(ui.dailyPopup, "Later", Color3.fromRGB(104, 78, 60), function()
 	UIKit.close(ui.dailyPopup)
 end, { Name = "DailyLater", Size = UDim2.fromOffset(120, 50), Position = UDim2.new(0.5, 6, 1, -14), AnchorPoint = Vector2.new(0, 1) })
 
+-- The week's seven days as tiles: Gems on each, a Luck Potion badge on day 2 and day 7, today
+-- lit up and the days already claimed this week ticked.
 local function showDailyPopup()
 	local day = player:GetAttribute("DailyDay") or 1
-	local n = #Progression.DailyRewards
-	local today = ((day - 1) % n) + 1
+	local n = #Progression.DailyWeek
+	local today = Progression.dailyWeekDay(day)
+	local week = Progression.dailyWeek(day)
+	ui.dailySub.Text = (week > 1 and ("Week " .. week .. " · ") or "") .. "Come back every day. Day 2 brings a Small Luck Potion, day 7 a Big one."
 	for _, c in ipairs(ui.dailyTiles:GetChildren()) do
 		if not c:IsA("UIListLayout") then
 			c:Destroy()
 		end
 	end
 	for i = 1, n do
-		local past, now = i < today, i == today
-		local tile = make("Frame", { Name = "Day" .. i, Size = UDim2.fromOffset(68, 76), BackgroundColor3 = now and Color3.fromRGB(80, 66, 140) or Color3.fromRGB(44, 38, 64), LayoutOrder = i }, ui.dailyTiles)
+		local prize = Progression.DailyWeek[i]
+		local past, now, big = i < today, i == today, i == n
+		local tile = make("Frame", { Name = "Day" .. i, Size = UDim2.fromOffset(big and 92 or 72, 110), BackgroundColor3 = now and Color3.fromRGB(122, 82, 44) or (big and Color3.fromRGB(84, 56, 34) or Color3.fromRGB(62, 44, 32)), LayoutOrder = i }, ui.dailyTiles)
 		corner(tile, 10)
 		if now then
-			make("UIStroke", { Thickness = 2, Color = Color3.fromRGB(255, 210, 100) }, tile)
+			make("UIStroke", { Thickness = 2.5, Color = Color3.fromRGB(255, 210, 100) }, tile)
+		elseif big then
+			make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(220, 170, 90), Transparency = 0.3 }, tile)
 		end
-		label(tile, past and "✓" or ("Day " .. i), { Size = UDim2.new(1, -8, 0, 24), Position = UDim2.fromOffset(4, 6), TextColor3 = past and Color3.fromRGB(140, 230, 150) or Color3.fromRGB(235, 230, 245) })
-		label(tile, "+" .. Progression.DailyRewards[i] .. " 💎", { Size = UDim2.new(1, -8, 0, 22), Position = UDim2.fromOffset(4, 42), Font = BODY_FONT, TextColor3 = past and Color3.fromRGB(150, 145, 170) or Color3.fromRGB(130, 220, 255) })
+		label(tile, past and "✓" or ("Day " .. i), { Size = UDim2.new(1, -8, 0, 24), Position = UDim2.fromOffset(4, 6), TextColor3 = past and Color3.fromRGB(140, 230, 150) or Color3.fromRGB(250, 238, 220) })
+		label(tile, "+" .. prize.gems .. " 💎", { Size = UDim2.new(1, -8, 0, 22), Position = UDim2.fromOffset(4, 38), Font = BODY_FONT, TextColor3 = past and Color3.fromRGB(170, 155, 140) or Color3.fromRGB(130, 220, 255) })
+		local potion = prize.potion and ShopCatalog.PotionById and ShopCatalog.PotionById[prize.potion]
+		if potion then
+			-- a little green badge: 🍀 and how many lucky pulls
+			local badge = make("Frame", { Name = "Potion", Size = UDim2.new(1, -10, 0, 30), Position = UDim2.new(0, 5, 1, -36), BackgroundColor3 = past and Color3.fromRGB(70, 84, 62) or Color3.fromRGB(64, 150, 86) }, tile)
+			corner(badge, 8)
+			label(badge, "🍀 x" .. potion.charges, { Size = UDim2.fromScale(1, 1), Font = UIKit.BOLD_FONT, TextScaled = false, TextSize = 15, TextColor3 = Color3.fromRGB(240, 255, 236) })
+		end
 	end
-	ui.dailyClaim.Text = "Claim +" .. Progression.dailyReward(day) .. " 💎"
+	local prize = Progression.dailyPrize(day)
+	ui.dailyClaim.Text = "Claim +" .. prize.gems .. " 💎" .. (prize.potion and " + 🍀" or "")
 	ui.dailyPopup.Visible = true
 end
 
--- Shown once a visit, in the room, when today's reward is ready.
+-- Shown once a visit, in the room, when today's reward is ready. (If you were whisked off before it
+-- came up, out to the Park or into a match, it waits for you to be back in the room.)
 do
-	local shown = false
+	local shown, waiting = false, false
 	local function check()
-		if shown or mode ~= "menu" or player:GetAttribute("DailyReady") ~= true or player:GetAttribute("ProgressLoaded") ~= true then
+		if shown or waiting or ui.touring or mode ~= "menu" or player:GetAttribute("DailyReady") ~= true or player:GetAttribute("ProgressLoaded") ~= true then
 			return
 		end
-		shown = true
+		waiting = true
 		task.delay(1.5, function()
-			if mode == "menu" and player:GetAttribute("DailyReady") == true then
+			waiting = false
+			if not shown and mode == "menu" and player:GetAttribute("DailyReady") == true then
+				shown = true
 				showDailyPopup()
 			end
 		end)
@@ -1621,8 +1789,13 @@ Remotes:WaitForChild("LobbyEvent").OnClientEvent:Connect(function(payload)
 	if payload.what == "daily" then
 		ui.dailyPopup.Visible = false
 		local coins = (tonumber(payload.coins) or 0) > 0 and ("  +" .. tostring(payload.coins) .. " Coins") or ""
-		LobbyScreen.toast("🎁 Daily reward: +" .. tostring(payload.gems) .. " 💎" .. coins .. " (day " .. tostring(payload.day) .. ")")
+		local potion = payload.potion and ("  +🍀 " .. tostring(payload.potion) .. " (" .. tostring(payload.charges) .. " lucky pulls)") or ""
+		local weekDay = Progression.dailyWeekDay(tonumber(payload.day) or 1)
+		LobbyScreen.toast("🎁 Day " .. weekDay .. ": +" .. tostring(payload.gems) .. " 💎" .. coins .. potion)
 		chime(1)
+		if payload.potion then
+			Juice.confetti(gui, 0.5, 0.35, weekDay == #Progression.DailyWeek and 60 or 30)
+		end
 	elseif payload.what == "achievement" then
 		local def = Progression.AchievementById[tostring(payload.id)]
 		LobbyScreen.toast("🏆 " .. (def and def.name or "Achievement") .. ": +" .. tostring(payload.gems) .. " 💎")
@@ -1683,13 +1856,13 @@ end
 ---------------------------------------------------------------------------
 
 -- The signs over the stations in the room: small, soft labels in title case (they used to be big
--- outlined capitals that ran off the edges of the screen). The Trophy Wall holds the quests and achievements.
+-- outlined capitals that ran off the edges of the screen). Trophies holds the quests and achievements.
 do
-	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Trophy Wall", ["PLAZA"] = "Plaza", ["CAMPAIGN"] = "Campaign" }
-	-- (the server's HubRoom script makes the Campaign and Plaza stations out of the painting and
+	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Trophies", ["TROPHIES"] = "Trophies", ["PARK"] = "Park", ["CAMPAIGN"] = "Campaign" }
+	-- (the server's HubRoom script makes the Campaign and Park stations out of the painting and
 	-- the front door; wait a moment for them so their signs get the same look)
 	stations:WaitForChild("Campaign", 5)
-	stations:WaitForChild("PlazaDoor", 5)
+	stations:WaitForChild("ParkDoor", 5)
 	for _, d in ipairs(stations:GetDescendants()) do
 		if d:IsA("BillboardGui") and d.Name == "Sign" then
 			local text = d:FindFirstChildWhichIsA("TextLabel")
@@ -1700,13 +1873,21 @@ do
 				text.Text = NAMES[text.Text] or text.Text
 				text.Font = FONT
 				text.TextScaled = true
-				text.TextColor3 = main and Color3.fromRGB(255, 226, 140) or Color3.fromRGB(245, 240, 255)
+				text.TextColor3 = main and Color3.fromRGB(255, 226, 140) or Color3.fromRGB(250, 238, 218)
 				text.TextStrokeTransparency = 1
-				text.BackgroundColor3 = Color3.fromRGB(28, 24, 40)
+				text.BackgroundColor3 = Color3.fromRGB(44, 30, 22)
 				text.BackgroundTransparency = 0.3
 				corner(text, 10)
 				make("UIPadding", { PaddingTop = UDim.new(0.14, 0), PaddingBottom = UDim.new(0.14, 0), PaddingLeft = UDim.new(0.06, 0), PaddingRight = UDim.new(0.06, 0) }, text)
-				make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(110, 96, 150), Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, text)
+				local stroke = make("UIStroke", { Thickness = 1.5, Color = Color3.fromRGB(176, 132, 84), Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, text)
+				local owner = d
+				while owner and owner.Parent ~= stations do
+					owner = owner.Parent
+				end
+				ui.signs = ui.signs or {}
+				table.insert(ui.signs, { text = text, stroke = stroke, station = owner, lit = 0 })
+				-- (hidden until you point at the station in the room; not on the title screen either)
+				text.TextTransparency, text.BackgroundTransparency, stroke.Transparency = 1, 1, 1
 			end
 		end
 	end
@@ -1731,6 +1912,371 @@ local function hideCharacter(hidden)
 			d.LocalTransparencyModifier = hidden and 1 or 0
 		end
 	end
+end
+
+-- Your avatar in the room: a little decoration by the front door. It leans back against the wall
+-- just right of the door, hands in its pockets, one ankle crossed over the other, and it's alive:
+-- it breathes, looks around now and then (at you, at the door, across the room, down at its
+-- shoes) and taps its foot once in a while. It stands half again as big as usual so it fits the
+-- room's big door. Client only (nobody else sees it), and only while you're in the room: it lets
+-- go (and shrinks back) the moment you walk out into the Park, and poses again when you're back.
+-- The pose is worked out from the avatar's own joints, so any R15 body (or a classic R6 one)
+-- stands right against the wall with its feet on the floor. Both kinds of avatar joints work:
+-- the classic Motor6Ds and the newer AnimationConstraints (Roblox's upgraded avatar joints).
+local leanPose = {}
+do
+	local WALL_Z = 23.7 -- the room side of the south wall (its wainscot)
+	local RAIL = { y0 = 4.8, y1 = 5.4, z = 23.5 } -- the chair rail sticks out a little further
+	local SPOT_X = -7.4 -- just right of the door frame (which ends at x = -10.5), under the poster
+	local FLOOR_Y = 0
+	local SCALE = 1.5 -- (the room is built big: the door is twice as tall as an avatar)
+	local YAW = math.rad(-8) -- turned a touch toward the door's camera (the head turns the rest)
+	local TILT = math.rad(9) -- leaning back into the wall
+
+	-- where the head looks now and then (degrees: + turns toward the door, + pitch looks up)
+	local LOOKS = {
+		{ yaw = -4, pitch = 2, hold = { 3, 6 } }, -- at you
+		{ yaw = 50, pitch = 0, hold = { 1.6, 3 } }, -- over at the door
+		{ yaw = -32, pitch = 4, hold = { 1.6, 3 } }, -- across the room
+		{ yaw = -6, pitch = -16, hold = { 1.2, 2.2 } }, -- down at its shoes
+		{ yaw = 12, pitch = 14, hold = { 1.2, 2 } }, -- up at the lights
+	}
+
+	local S = nil -- { char, root, hum, animate, scale, joints = { [name] = J }, turns = { [J] = CFrame }, target, life }
+
+	-- One joint, whichever kind it is: part0/part1, the joint's frame in each (c0/c1), and how
+	-- to turn it (a Motor6D's C0 is turned; an AnimationConstraint's Transform is set each frame).
+	local function wrap(j)
+		if j:IsA("Motor6D") then
+			return { inst = j, kind = "motor", part0 = j.Part0, part1 = j.Part1, c0 = j.C0, c1 = j.C1 }
+		elseif j:IsA("AnimationConstraint") and j.Attachment0 and j.Attachment1 then
+			return { inst = j, kind = "anim", part0 = j.Attachment0.Parent, part1 = j.Attachment1.Parent, c0 = j.Attachment0.CFrame, c1 = j.Attachment1.CFrame }
+		end
+		return nil
+	end
+
+	local function apply(J, r)
+		if J.kind == "motor" then
+			J.inst.C0 = J.c0 * r
+		else
+			J.inst.Transform = r
+		end
+	end
+
+	local function setTurn(J, r)
+		S.turns[J] = r
+		apply(J, r)
+	end
+
+	-- the rotation that turns direction `from` onto direction `to` (the shortest way round)
+	local function aim(from, to)
+		from, to = from.Unit, to.Unit
+		local d = math.clamp(from:Dot(to), -1, 1)
+		if d > 0.99999 then
+			return CFrame.new()
+		end
+		local axis = from:Cross(to)
+		axis = axis.Magnitude > 1e-5 and axis.Unit or Vector3.xAxis
+		return CFrame.fromAxisAngle(axis, math.acos(d))
+	end
+
+	-- Turns a joint so its limb's length (the limb part's own down axis) points along `dir` (in
+	-- the parent part's space, as posed so far: `parentRot`). Returns the limb's rotation relative
+	-- to that space, for the next joint down the chain. (The limb's own axis, not the line to the
+	-- next joint: an R15 shoulder sits at the arm's inner top corner, so that line is slanted.)
+	local function point(J, dir, parentRot)
+		local dirInParent = parentRot and (parentRot:Inverse() * dir) or dir
+		local dirInJoint = J.c0.Rotation:Inverse() * dirInParent
+		local bone = J.c1.Rotation:Inverse() * Vector3.new(0, -1, 0)
+		local r = aim(bone, dirInJoint)
+		setTurn(J, r)
+		return (parentRot or CFrame.new()) * J.c0.Rotation * r * J.c1.Rotation:Inverse()
+	end
+
+	-- Where every body part sits relative to the root, with the joints as posed.
+	local function bodyFrames(char, root)
+		local rel = { [root] = CFrame.new() }
+		local links = {}
+		for _, d in ipairs(char:GetDescendants()) do
+			if d:IsA("Motor6D") or d:IsA("Weld") then
+				if d.Part0 and d.Part1 then
+					table.insert(links, { d.Part0, d.Part1, d.C0, d.C1 })
+				end
+			elseif (d:IsA("AnimationConstraint") or d:IsA("RigidConstraint")) and d.Attachment0 and d.Attachment1 then
+				local turn = CFrame.new()
+				for J, r in pairs(S.turns) do
+					if J.inst == d then
+						turn = r
+					end
+				end
+				table.insert(links, { d.Attachment0.Parent, d.Attachment1.Parent, d.Attachment0.CFrame * turn, d.Attachment1.CFrame })
+			end
+		end
+		for _ = 1, 12 do -- (a few passes: the joints aren't in any particular order)
+			local added = false
+			for _, l in ipairs(links) do
+				local p0, p1, c0, c1 = l[1], l[2], l[3], l[4]
+				if rel[p0] and not rel[p1] then
+					rel[p1] = rel[p0] * c0 * c1:Inverse()
+					added = true
+				elseif rel[p1] and not rel[p0] then
+					-- (hats and hair hang the other way round: Part0 is the accessory's handle)
+					rel[p0] = rel[p1] * c1 * c0:Inverse()
+					added = true
+				end
+			end
+			if not added then
+				break
+			end
+		end
+		return rel
+	end
+
+	local function corners(cf, size)
+		local h = size / 2
+		local out = {}
+		for _, x in ipairs({ -1, 1 }) do
+			for _, y in ipairs({ -1, 1 }) do
+				for _, z in ipairs({ -1, 1 }) do
+					table.insert(out, cf * Vector3.new(h.X * x, h.Y * y, h.Z * z))
+				end
+			end
+		end
+		return out
+	end
+
+	local function wallAt(y)
+		if y >= RAIL.y0 and y <= RAIL.y1 then
+			return RAIL.z
+		end
+		return WALL_Z
+	end
+
+	local function pose(char)
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not (hum and root) then
+			return false
+		end
+		local need = hum.RigType == Enum.HumanoidRigType.R15 and { "RightShoulder", "LeftShoulder", "RightHip", "LeftHip", "Neck" } or { "Right Shoulder", "Left Shoulder", "Right Hip", "Left Hip", "Neck" }
+		for _, n in ipairs(need) do
+			local found = false
+			for _, d in ipairs(char:GetDescendants()) do
+				if d.Name == n and (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) then
+					found = true
+					break
+				end
+			end
+			if not found then
+				return false -- (still loading)
+			end
+		end
+		-- half again as big (before the joints are read: scaling moves their attachments)
+		local scale = 1
+		pcall(function()
+			scale = char:GetScale()
+			char:ScaleTo(scale * SCALE)
+		end)
+		local joints = {}
+		for _, d in ipairs(char:GetDescendants()) do
+			if d:IsA("Motor6D") or d:IsA("AnimationConstraint") then
+				local J = wrap(d)
+				if J and J.part0 and J.part1 then
+					joints[d.Name] = J
+				end
+			end
+		end
+		local r15 = hum.RigType == Enum.HumanoidRigType.R15
+		S = { char = char, root = root, hum = hum, joints = joints, turns = {}, scale = scale }
+		-- the avatar's own animations stop while it poses
+		local animate = char:FindFirstChild("Animate")
+		if animate and animate:IsA("LocalScript") then
+			S.animate = animate
+			animate.Enabled = false
+		end
+		local animator = hum:FindFirstChildOfClass("Animator")
+		if animator then
+			for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+				track:Stop(0)
+			end
+		end
+		for _, J in pairs(joints) do
+			setTurn(J, CFrame.new())
+		end
+
+		local j = joints
+		if r15 then
+			-- hands in the pockets: upper arms down and a touch back, forearms forward to the hips
+			for _, side in ipairs({ { "Right", 1 }, { "Left", -1 } }) do
+				local sh, el = j[side[1] .. "Shoulder"], j[side[1] .. "Elbow"]
+				local upperRot = point(sh, Vector3.new(0.04 * side[2], -0.99, 0.1))
+				if el then
+					point(el, Vector3.new(-0.45 * side[2], -0.84, -0.3), upperRot) -- (hands to the front pockets)
+				end
+			end
+			-- the right ankle crosses over the left, resting on its toes
+			local hip, knee, ankle = j.RightHip, j.RightKnee, j.RightAnkle
+			local legRot = point(hip, Vector3.new(-0.4, -0.88, -0.22))
+			if knee then
+				point(knee, Vector3.new(-0.4, -0.88, -0.22), legRot)
+			end
+			if ankle then
+				setTurn(ankle, CFrame.Angles(math.rad(-34), 0, 0)) -- toes down, resting on the floor
+			end
+			-- the head stays upright (the body leans, the head doesn't) and looks around (see life)
+			setTurn(j.Neck, CFrame.Angles(-TILT, math.rad(-4), math.rad(4)))
+		else
+			-- (a classic body has no elbows: arms hang a touch forward, hands at the hips)
+			point(j["Right Shoulder"], Vector3.new(-0.12, -0.97, -0.2))
+			point(j["Left Shoulder"], Vector3.new(0.12, -0.97, -0.2))
+			point(j["Right Hip"], Vector3.new(-0.22, -0.96, -0.17)) -- (no ankle to rest on: a smaller cross)
+		end
+
+		-- Stand it against the wall: the left (standing) foot on the floor, and its back (torso and
+		-- arms) against the wall. (The head and hair are left out: they're upright and a little
+		-- forward, and the chair rail sticks out at head height.)
+		local rot = CFrame.Angles(0, YAW, 0) * CFrame.Angles(TILT, 0, 0)
+		local rel = bodyFrames(char, root)
+		local foot = char:FindFirstChild(r15 and "LeftFoot" or "Left Leg")
+		local lowest = math.huge
+		if foot and rel[foot] then
+			for _, p in ipairs(corners(rot * rel[foot], foot.Size)) do
+				lowest = math.min(lowest, p.Y)
+			end
+		else
+			lowest = -(hum.HipHeight + root.Size.Y / 2)
+		end
+		local y = FLOOR_Y - lowest
+		local headPart = char:FindFirstChild("Head")
+		local z = math.huge
+		for part, cf in pairs(rel) do
+			if part:IsA("BasePart") and part ~= root and part ~= headPart and part.Parent == char and part.Transparency < 1 then
+				for _, p in ipairs(corners(rot * cf, part.Size)) do
+					z = math.min(z, wallAt(y + p.Y) - 0.03 - p.Z)
+				end
+			end
+		end
+		if z == math.huge then
+			z = WALL_Z - 1.4
+		end
+		S.target = CFrame.new(SPOT_X, y, z) * rot
+		root.Anchored = true
+		root.CFrame = S.target
+		S.life = { r15 = r15, yaw = -4, pitch = 2, look = LOOKS[1], nextLook = os.clock() + 3, tapAt = os.clock() + 6, last = os.clock() }
+		return true
+	end
+
+	-- The little bits of life, on top of the pose: breathing, looking around, a foot tap.
+	local function life()
+		local L = S.life
+		if not (L and L.r15) then
+			return
+		end
+		local now = os.clock()
+		local dt = math.clamp(now - L.last, 0, 0.1)
+		L.last = now
+		if now >= L.nextLook then
+			-- every other look is back at you
+			local pick = L.look ~= LOOKS[1] and LOOKS[1] or LOOKS[math.random(2, #LOOKS)]
+			L.look = pick
+			L.nextLook = now + pick.hold[1] + math.random() * (pick.hold[2] - pick.hold[1])
+		end
+		local k = 1 - math.exp(-dt * 4.5) -- (soft: the head eases there and settles)
+		L.yaw += (L.look.yaw - L.yaw) * k
+		L.pitch += (L.look.pitch - L.pitch) * k
+		local j = S.joints
+		if j.Neck then
+			S.turns[j.Neck] = CFrame.Angles(-TILT + math.rad(L.pitch), math.rad(L.yaw), math.rad(4 - L.yaw * 0.05))
+		end
+		-- breathing: the chest rises and falls, slowly
+		if j.Waist then
+			S.turns[j.Waist] = CFrame.Angles(math.rad(1.3) * math.sin(now * 1.45), 0, 0)
+		end
+		-- now and then the crossed foot taps twice
+		if j.RightAnkle then
+			local u = now - L.tapAt
+			local tap = 0
+			if u >= 0 and u <= 0.8 then
+				tap = math.abs(math.sin(u / 0.8 * math.pi * 2)) * 14
+			elseif u > 0.8 then
+				L.tapAt = now + 7 + math.random() * 8
+			end
+			S.turns[j.RightAnkle] = CFrame.Angles(math.rad(-34 + tap), 0, 0)
+		end
+	end
+
+	local function release()
+		if not S then
+			return
+		end
+		for J in pairs(S.turns) do
+			if J.inst.Parent then
+				if J.kind == "motor" then
+					J.inst.C0 = J.c0
+				else
+					J.inst.Transform = CFrame.new()
+				end
+			end
+		end
+		-- back to its own size before it's let go
+		if S.char.Parent and S.scale then
+			local scale = S.scale
+			pcall(function()
+				S.char:ScaleTo(scale)
+			end)
+		end
+		if S.root.Parent then
+			S.root.Anchored = false
+		end
+		if S.animate and S.animate.Parent then
+			S.animate.Enabled = true
+		end
+		S = nil
+	end
+
+	-- hold the pose: the root where it belongs (the server may move it), the joints as posed
+	-- (the Animator writes joints during its own step, so this runs again just before physics)
+	local function hold()
+		if not S then
+			return
+		end
+		if S.root.CFrame ~= S.target then
+			S.root.CFrame = S.target
+		end
+		life()
+		for J, r in pairs(S.turns) do
+			apply(J, r)
+			if J.kind == "motor" and J.inst.Transform ~= CFrame.identity then
+				J.inst.Transform = CFrame.identity
+			end
+		end
+	end
+	RunService.PreSimulation:Connect(hold)
+
+	local nextTry = 0
+	-- every frame: posed while `on`, let go otherwise
+	function leanPose.update(on)
+		local char = player.Character
+		if not on or not char then
+			release()
+			return
+		end
+		if S and S.char ~= char then
+			S = nil -- (a new character: the old one's joints went with it)
+		end
+		if not S then
+			if clock < nextTry then
+				return
+			end
+			nextTry = clock + 0.5
+			if not pose(char) then
+				release()
+			end
+			return
+		end
+		hold()
+	end
+	leanPose.release = release
 end
 
 -- Where the camera sits in a match. A 2v2 table has 8 lanes a side, so the camera pulls back and
@@ -2029,10 +2575,10 @@ MatchScreen.init({
 	onEnterMatch = function(payload)
 		ui.cancelBackdropPreview()
 		ui.idleTable.setVisible(false) -- (the match board rises in its place)
-		-- Pulled into a match from the Plaza (a party or a Cup): back inside first.
-		local PlazaClient = require(Shared:WaitForChild("PlazaClient"))
-		if PlazaClient.isInside() then
-			PlazaClient.leave(true)
+		-- Pulled into a match from the Park (a party or a Cup): back inside first.
+		local ParkClient = require(Shared:WaitForChild("ParkClient"))
+		if ParkClient.isInside() then
+			ParkClient.leave(true)
 		end
 		require(Shared:WaitForChild("CampaignUI")).hide()
 		-- The world around the table: a Campaign stage brings its own; otherwise the one you wear
@@ -2098,23 +2644,33 @@ MatchScreen.init({
 		currentStation = nil
 		selectStation(lastMode == "Campaign" and "Campaign" or "DuelTable")
 		LobbyScreen.onMenu()
+		if ui.checkDaily then
+			ui.checkDaily() -- (today's reward, if a match came up before it could)
+		end
 	end,
 })
 
 
--- The Campaign map (the painting over the fireplace) and the Plaza (out the front door).
+-- The Campaign map (the painting over the fireplace) and the Park (out the front door).
 require(Shared:WaitForChild("CampaignUI")).init({
 	myDecks = ui.myDecks,
 	prefs = prefs,
 	toast = LobbyScreen.toast,
 	panel = ui.stationPanel,
 })
-require(Shared:WaitForChild("PlazaClient")).init({
+require(Shared:WaitForChild("ParkClient")).init({
 	getMode = function()
 		return mode
 	end,
 	setMode = function(m)
 		mode = m
+		if m == "park" then
+			-- your avatar lets go of its pose by the door right away, before the server walks it
+			-- out (a pose still holding it in place would undo that move)
+			leanPose.release()
+		elseif m == "menu" and ui.checkDaily then
+			ui.checkDaily() -- (today's reward, if it was still waiting)
+		end
 	end,
 	gui = gui,
 	topGui = ui.topGui,
@@ -2136,7 +2692,9 @@ require(Shared:WaitForChild("PlazaClient")).init({
 		currentStation = nil
 		ui.stationPanel.Visible = false
 		for _, b in pairs(ui.navButtons or {}) do
-			b.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+			if not b:GetAttribute("KeepColor") then
+				b.BackgroundColor3 = Color3.fromRGB(62, 44, 32)
+			end
 		end
 		require(Shared:WaitForChild("CampaignUI")).hide()
 		highlight.Enabled = false
@@ -2194,15 +2752,17 @@ do
 	local body = make("Frame", { Size = UDim2.new(1, -24, 1, -116), Position = UDim2.fromOffset(12, 54), BackgroundTransparency = 1 }, ui.matchSettings)
 	ui.buildSettings(body)
 
-	-- Two more lines in the ⚙ menu: the action camera on / off, and the full settings window.
+	-- The ⚙ menu keeps three lines: How to play, All settings (speed, sound, the action camera and
+	-- the match log are in there) and Leave match.
 	ui.leaveButton.LayoutOrder = 9
 	ui.camButton = button(ui.menuPanel, "", Color3.fromRGB(70, 66, 100), function()
 		Settings.set("actionCam", not actionCam.on) -- (applied below, under "Applying settings")
-	end, { Name = "ActionCamButton", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 5 })
-	button(ui.menuPanel, "⚙ All settings", Color3.fromRGB(70, 66, 100), function()
+	end, { Name = "ActionCamButton", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 5, Visible = false })
+	local allSettings = button(ui.menuPanel, "⚙ All settings", Color3.fromRGB(70, 66, 100), function()
 		ui.menuPanel.Visible = false
 		ui.matchSettings.Visible = true
-	end, { Name = "SettingsButton", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 6 })
+	end, { Name = "SettingsButton", Size = UDim2.new(1, 0, 0, 42), LayoutOrder = 2, TextScaled = false, TextSize = 19 })
+	allSettings.Font = ui.helpButton and ui.helpButton.Font or allSettings.Font
 
 	-- The 💬 emote button (emotes come from the Shop); bubbles pop up over the heroes.
 	require(Shared:WaitForChild("ShopUI")).mountEmotes(ui.matchUI, function()
@@ -2223,7 +2783,7 @@ do
 	Focus.setup()
 	local hint = ui.menuUI:FindFirstChild("MenuHint")
 	local titleSlide = Focus.slide(ui.menuTitle, UDim2.fromOffset(0, -170))
-	local hintSlide = hint and Focus.slide(hint, UDim2.fromOffset(0, -170))
+	local hintSlide = hint and Focus.slide(hint, UDim2.fromOffset(0, 170))
 	Focus.chrome("title", {
 		hide = function()
 			titleSlide.hide()
@@ -2242,7 +2802,7 @@ do
 	Focus.chrome("nav", Focus.slide(ui.navBar, UDim2.fromOffset(0, 130)))
 	-- the station panel only moves (other scripts check its Visible)
 	Focus.chrome("station", Focus.anchorSlide(ui.stationPanel, Vector2.new(1.2, 0)))
-	-- the floating signs over the stations (they're also off during matches and the Plaza)
+	-- the floating signs over the stations (they're also off during matches and the Park)
 	Focus.chrome("signs", {
 		hide = function()
 			setStationSigns(false)
@@ -2301,6 +2861,8 @@ do
 	local function apply(key, value)
 		if key == "speed" then
 			MatchScreen.setBasePace(Settings.Pace[value] or 1)
+		elseif key == "matchLog" then
+			MatchScreen.setLog(value)
 		elseif key == "actionCam" then
 			actionCam.on = value
 			if not value and actionCam.release then
@@ -2410,6 +2972,22 @@ UserInputService.InputBegan:Connect(function(input, processedByGui)
 		if ui.onMenuClick and ui.onMenuClick(pos) then
 			return -- (a pack on the Pack Shelf took the click)
 		end
+		-- While a screen is open (Pack Party, the Deck Shelf, any window), clicks that miss it don't
+		-- reach the room: you switch screens with the buttons at the bottom, never by accident.
+		-- The open station's own props still answer clicks (the trophies, the balloons: LIVE_PROPS).
+		if currentStation ~= nil or Backdrops.current() ~= nil or UIKit.Focus.anyOpen() then
+			if ui.roomLife and ui.liveScope() then
+				ui.roomLife.click(pos, true) -- (only that station's props answer: RoomLife.setOnly)
+			end
+			-- on the Park tab, clicking the (ajar) door itself walks you out to the Park
+			if currentStation == "ParkDoor" and not Backdrops.current() and not UIKit.Focus.anyOpen(ui.stationPanel) then
+				local hit = stationAt(pos, true)
+				if hit and hit.Name == "ParkDoor" then
+					require(Shared:WaitForChild("ParkClient")).enter()
+				end
+			end
+			return
+		end
 		if ui.roomLife and not Backdrops.current() then
 			ui.roomLife.click(pos, true) -- the prop you clicked answers (and its station still opens)
 		end
@@ -2434,6 +3012,33 @@ do
 	local RoomLife = require(Shared:WaitForChild("RoomLife"))
 	RoomLife.attach(room)
 	ui.roomLife = RoomLife
+	-- the Pack Shelf answers the mouse from the room too (its packs peek out), so it's set up now
+	local PackShelf = require(ReplicatedStorage:WaitForChild("PackBrawl"):WaitForChild("PackShelf"))
+	PackShelf.attach()
+	local ParkDoor = require(Shared:WaitForChild("ParkClient")) -- (the front door's hover)
+	-- The hover outline goes round a whole station, and two stations reach up to the ceiling: the
+	-- Duel Table's hanging lamps, and Pack Party's disco ball, party lights and string lights. On
+	-- your screen those ceiling pieces move into their own folder, so hovering a station outlines
+	-- just the station (everything that animates them already holds on to the parts; each keeps a
+	-- "CeilingOf" attribute naming its station, which Backdrops uses for the lamps' light).
+	do
+		local CEILING = {
+			DuelTable = { TableLamp = true, TableLampCord = true, TableLampRim = true, TableLampShade = true, TableLampTop = true },
+			PackParty = { DiscoBall = true, DiscoString = true, LightWire = true, PartyLight1 = true, PartyLight2 = true, PartyLight3 = true, StringLight = true },
+		}
+		local ceiling = room:FindFirstChild("Ceiling") or Instance.new("Folder")
+		ceiling.Name = "Ceiling"
+		ceiling.Parent = room
+		for stationName, names in pairs(CEILING) do
+			local st = stations:FindFirstChild(stationName)
+			for _, d in ipairs(st and st:GetDescendants() or {}) do
+				if d:IsA("BasePart") and names[d.Name] and not (d.Parent and d.Parent:IsA("BasePart")) then
+					d:SetAttribute("CeilingOf", stationName)
+					d.Parent = ceiling
+				end
+			end
+		end
+	end
 	local ambience = { tiles = {}, strings = {}, partyLights = {}, nextColor = 0, discoAngle = 0, tileColors = {} }
 	do
 		local fire = room:FindFirstChild("FireLight", true)
@@ -2441,6 +3046,80 @@ do
 		ambience.fireBase = ambience.firePoint and ambience.firePoint.Brightness or 3
 		ambience.disco = room:FindFirstChild("DiscoBall", true)
 		ambience.discoBase = ambience.disco and ambience.disco.CFrame
+		ambience.mirrors = {}
+		ambience.twinkles = {}
+		-- The disco ball: a real mirror ball instead of the old sparkle cloud. Rings of little
+		-- mirror tiles on a dark ball, a soft glow inside, and a few narrow beams that turn with
+		-- it, so slow spots of light drift round the walls and the floor.
+		local ball = ambience.disco
+		if ball and not ball:FindFirstChild("MirrorTiles") then
+			for _, d in ipairs(ball:GetChildren()) do
+				if d:IsA("Sparkles") or d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke") then
+					d:Destroy()
+				end
+			end
+			ball.Material = Enum.Material.SmoothPlastic
+			ball.Color = Color3.fromRGB(58, 56, 62)
+			ball.Reflectance = 0
+			local r = ball.Size.X / 2
+			local holder = Instance.new("Model")
+			holder.Name = "MirrorTiles"
+			local tile = 0.44
+			for ringIndex = -3, 3 do
+				local lat = ringIndex * math.rad(22.5)
+				local n = math.max(5, math.floor(2 * math.pi * r * math.cos(lat) / (tile + 0.04)))
+				for k = 0, n - 1 do
+					local lon = (k + (ringIndex % 2) * 0.5) / n * math.pi * 2
+					local mirror = Instance.new("Part")
+					mirror.Name = "Mirror"
+					mirror.Anchored = false
+					mirror.Massless = true
+					mirror.CanCollide = false
+					mirror.CanTouch = false
+					mirror.CanQuery = false
+					mirror.CastShadow = false
+					mirror.Material = Enum.Material.SmoothPlastic
+					mirror.Reflectance = 0.5
+					local shade = 214 + math.random(-12, 14)
+					mirror.Color = Color3.fromRGB(shade, shade, math.min(255, shade + 8))
+					mirror.Size = Vector3.new(tile * math.max(0.75, math.min(1, math.cos(lat) * 1.15)), tile, 0.07)
+					mirror.CFrame = ball.CFrame * CFrame.Angles(0, lon, 0) * CFrame.Angles(lat, 0, 0) * CFrame.new(0, 0, -(r + 0.01))
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = ball
+					weld.Part1 = mirror
+					weld.Parent = mirror
+					mirror.Parent = holder
+					table.insert(ambience.mirrors, { part = mirror, color = mirror.Color })
+				end
+			end
+			holder.Parent = ball.Parent
+			local glow = Instance.new("PointLight")
+			glow.Name = "MirrorGlow"
+			glow.Color = Color3.fromRGB(255, 236, 205)
+			glow.Brightness = 0.7
+			glow.Range = 9
+			glow.Shadows = false
+			glow.Parent = ball
+			-- narrow beams from the sides (they turn with the ball) and one down onto the dance floor
+			local beams = {
+				{ Enum.NormalId.Front, Color3.fromRGB(255, 232, 196) },
+				{ Enum.NormalId.Back, Color3.fromRGB(255, 214, 190) },
+				{ Enum.NormalId.Left, Color3.fromRGB(236, 230, 255) },
+				{ Enum.NormalId.Right, Color3.fromRGB(255, 226, 170) },
+				{ Enum.NormalId.Bottom, Color3.fromRGB(255, 244, 225) },
+			}
+			for _, b in ipairs(beams) do
+				local spot = Instance.new("SpotLight")
+				spot.Name = "MirrorBeam"
+				spot.Face = b[1]
+				spot.Color = b[2]
+				spot.Angle = b[1] == Enum.NormalId.Bottom and 24 or 11
+				spot.Brightness = b[1] == Enum.NormalId.Bottom and 0.9 or 1.6
+				spot.Range = 40
+				spot.Shadows = false
+				spot.Parent = ball
+			end
+		end
 		for _, d in ipairs(room:GetDescendants()) do
 			if d:IsA("BasePart") then
 				if d.Name == "DiscoTile" then
@@ -2462,7 +3141,25 @@ do
 		end
 		if a.disco then
 			a.discoAngle = (a.discoAngle + dt * 0.3 * RoomLife.discoBoost()) % (math.pi * 2)
-			a.disco.CFrame = a.discoBase * CFrame.Angles(0, a.discoAngle, 0)
+			a.disco.CFrame = a.discoBase * CFrame.Angles(0, a.discoAngle, 0) -- (the mirror tiles are welded on)
+			-- now and then a mirror catches the light: a quick soft glint
+			if #a.mirrors > 0 then
+				for m, untilT in pairs(a.twinkles) do
+					if clock >= untilT then
+						a.twinkles[m] = nil
+						m.part.Material = Enum.Material.SmoothPlastic
+						m.part.Color = m.color
+					end
+				end
+				if math.random() < dt * 5 then
+					local m = a.mirrors[math.random(1, #a.mirrors)]
+					if not a.twinkles[m] then
+						a.twinkles[m] = clock + 0.12 + math.random() * 0.1
+						m.part.Material = Enum.Material.Neon
+						m.part.Color = Color3.fromRGB(255, 246, 228)
+					end
+				end
+			end
 		end
 		-- the dance floor lights up under the cursor (every frame while it does)
 		local busy = RoomLife.tilesBusy()
@@ -2486,7 +3183,8 @@ do
 				bulb.Transparency = ((chase + i) % 3 == 0) and 0.35 or 0
 			end
 			for i, pl in ipairs(a.partyLights) do
-				local c = Color3.fromHSV((clock * 0.025 + i / 3) % 1, 0.5, 1)
+				-- warm hues only (rose, peach, amber), drifting slowly
+				local c = Color3.fromHSV((0.97 + 0.1 * (0.5 + 0.5 * math.sin(clock * 0.15 + i * 2.1))) % 1, 0.42, 1)
 				pl.part.Color = c
 				if pl.light then
 					pl.light.Color = c
@@ -2500,15 +3198,43 @@ do
 		clock += dt
 		updateCamera(dt)
 		cardLife.update(dt)
+		leanPose.update(mode ~= "park") -- your avatar leans by the front door (except out in the Park)
 		if mode == "menu" then
 			local mouse = UserInputService:GetMouseLocation()
 			local station = stationAt(mouse)
 			local packHover = ui.onMenuHover and ui.onMenuHover(mouse)
-			-- the props in the room answer the mouse (not while a pack on the shelf has it)
-			local prop = RoomLife.update(dt, (not packHover and not Backdrops.current()) and mouse or nil, Backdrops.current() == nil)
-			ui.setPointer(prop ~= nil or station ~= nil or packHover == true)
-			if packHover then
-				highlight.Enabled = false -- (a pack on the shelf lifts up instead)
+			-- while a station's panel (or any window) is open, nothing in the room gets the hover outline
+			local uiOpen = currentStation ~= nil or Backdrops.current() ~= nil or UIKit.Focus.anyOpen()
+			-- ...except the open station's own props (the trophies, the balloons: LIVE_PROPS)
+			local liveScope = uiOpen and ui.liveScope() or nil
+			RoomLife.setOnly(liveScope)
+			-- the front door eases a crack open while you point at it (in the room, or on the Park tab)
+			local doorHover = station ~= nil and station.Name == "ParkDoor" and not Backdrops.current()
+				and (not uiOpen or (currentStation == "ParkDoor" and not UIKit.Focus.anyOpen(ui.stationPanel)))
+			ParkDoor.hoverDoor(doorHover)
+			-- the chairs slide out while the Duel Table has the mouse (or its panel is open), and the
+			-- packs peek out of the Pack Shelf while the Pack Party corner has it
+			RoomLife.setFocus(currentStation or (not uiOpen and station and station.Name) or nil)
+			PackShelf.roomHover(not uiOpen and station ~= nil and station.Name == "PackParty")
+			-- the props in the room answer the mouse (not while a pack on the shelf has it, and not
+			-- while a screen is open: then the room stays still and only the screen reacts)
+			local prop = RoomLife.update(dt, (not packHover and (not uiOpen or liveScope ~= nil)) and mouse or nil, Backdrops.current() == nil)
+			ui.setPointer(packHover == true or doorHover or (prop ~= nil and (not uiOpen or liveScope ~= nil)) or (not uiOpen and station ~= nil))
+			-- the room's signs stay out of sight; the station you point at (or the one the room
+			-- tour is showing) has its sign fade in
+			local pointed = (not uiOpen and not packHover) and station or nil
+			if ui.touring and ui.tourKey then
+				pointed = stations:FindFirstChild(ui.tourKey)
+			end
+			for _, sg in ipairs(ui.signs or {}) do
+				local want = (sg.station ~= nil and sg.station == pointed) and 1 or 0
+				sg.lit += (want - sg.lit) * math.min(1, dt * 10)
+				sg.text.TextTransparency = 1 - sg.lit
+				sg.text.BackgroundTransparency = 1 - 0.85 * sg.lit
+				sg.stroke.Transparency = 1 - 0.65 * sg.lit
+			end
+			if packHover or uiOpen then
+				highlight.Enabled = false -- (a pack on the shelf lifts up instead; an open panel has the focus)
 			elseif station then
 				highlight.Adornee = station
 				highlight.Enabled = true
@@ -2520,6 +3246,8 @@ do
 			end
 		elseif mode ~= "match" then
 			highlight.Enabled = false
+			PackShelf.roomHover(false)
+			ParkDoor.hoverDoor(false)
 			RoomLife.update(dt, nil, false)
 			ui.setPointer(false)
 		elseif mode == "match" then
@@ -2544,6 +3272,12 @@ end
 -- in from low over the table up to the overview, and the menu pops in piece by piece.
 do
 	local TitleScreen = require(Shared:WaitForChild("TitleScreen"))
+	-- the loading screen (ReplicatedFirst.LoadingScreen) covers the start while everything loads;
+	-- the title begins once it's done, so it plays smoothly
+	local waited = os.clock()
+	while player:GetAttribute("Loaded") ~= true and os.clock() - waited < 45 do
+		task.wait(0.1)
+	end
 	mode = "title"
 	ui.menuUI.Visible = false
 	ui.topBar.Visible = false
@@ -2557,21 +3291,93 @@ do
 			task.wait(0.5)
 			ui.menuUI.Visible = true
 			ui.topBar.Visible = true
-			Juice.popIn(ui.menuTitle, 0.1, { twist = -6, sound = false })
 			Juice.popIn(ui.profile, 0.2, { twist = 0, sound = false })
 			local hint = ui.menuUI:FindFirstChild("MenuHint")
 			if hint then
 				hint.TextTransparency = 1
 				TweenService:Create(hint, TweenInfo.new(0.6), { TextTransparency = 0 }):Play()
+				task.delay(9, function()
+					TweenService:Create(hint, TweenInfo.new(1.5), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+				end)
 			end
 			for _, b in ipairs(ui.navBar:GetChildren()) do
 				if b:IsA("GuiButton") then
 					Juice.popIn(b, 0.35 + b.LayoutOrder % 20 * 0.06, { twist = 0, pitch = 0.9 + (b.LayoutOrder % 20) * 0.05 })
 				end
 			end
-			if ui.checkDaily then
+			-- The first time you play: a short tour of the room. (The daily reward waits until it's
+			-- over; your saved settings, which say whether you've seen it, arrive with your progress.)
+			ui.touring = prefs.get("SeenTour") ~= true
+			task.spawn(function()
+				local waited = os.clock()
+				while player:GetAttribute("ProgressLoaded") ~= true and os.clock() - waited < 6 do
+					task.wait(0.2)
+				end
+				task.wait(1.4)
+				if prefs.get("SeenTour") == true or mode ~= "menu" or currentStation ~= nil then
+					ui.touring = false
+					if ui.checkDaily then
+						ui.checkDaily()
+					end
+					return
+				end
+				ui.startTour()
+			end)
+			if not ui.touring and ui.checkDaily then
 				ui.checkDaily()
 			end
+		end,
+	})
+end
+
+-- The room tour (RoomTour): the camera visits each station while a card explains it, and a gold
+-- ring pulses round that station's button in the dock. Also from Settings > Room tour.
+function ui.startTour()
+	local RoomTour = require(Shared:WaitForChild("RoomTour"))
+	if RoomTour.running() or mode ~= "menu" then
+		return
+	end
+	ui.touring = true
+	local hint = ui.menuUI:FindFirstChild("MenuHint")
+	if hint then
+		hint.TextTransparency = 1
+		hint.TextStrokeTransparency = 1
+	end
+	RoomTour.start({
+		parent = ui.menuUI,
+		focus = function(key)
+			ui.tourKey = key
+			moveCamera(key, false, 1.1)
+		end,
+		dockButton = function(key)
+			return ui.navButtons and ui.navButtons[key]
+		end,
+		busy = function()
+			return mode ~= "menu" or currentStation ~= nil or UIKit.Focus.anyOpen()
+		end,
+		sound = function(name, pitch, volume)
+			Juice.sound(name, pitch, volume)
+		end,
+		onFinish = function(startCampaign)
+			ui.touring = false
+			prefs.set("SeenTour", true)
+			if mode == "menu" and currentStation == nil then
+				if startCampaign then
+					selectStation("Campaign")
+				else
+					moveCamera("Overview")
+				end
+			end
+			-- the daily reward comes up once you're back in the room (not over the Campaign map)
+			task.spawn(function()
+				task.wait(0.8)
+				while mode == "menu" and currentStation ~= nil do
+					task.wait(0.5)
+				end
+				if ui.checkDaily then
+					ui.checkDaily()
+				end
+			end)
 		end,
 	})
 end

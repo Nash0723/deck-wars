@@ -231,7 +231,7 @@ local function actionButton(parent, c, s, props)
 		local need = stop and stop.at or 0
 		local b = pill(parent, "🏆 " .. math.min(trophies(), need) .. " / " .. need, TROPHY:Lerp(TILE, 0.55), function()
 			local ShopUI = require(here:WaitForChild("ShopUI"))
-			ShopUI.toast("🏆 " .. c.name .. " is on the Trophy Road at " .. need .. " trophies. Win matches to get there, then claim it at the Trophy Wall.", "info", { time = 5 })
+			ShopUI.toast("🏆 " .. c.name .. " is on the Trophy Road at " .. need .. " trophies. Win matches to get there, then claim it in Trophies.", "info", { time = 5 })
 		end, props)
 		return b
 	end

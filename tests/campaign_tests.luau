@@ -281,7 +281,11 @@ local total = 0
 for act = 1, 6 do
 	total += Campaign.stage("Ice:" .. act .. ":N").firstGems
 end
-check(total == 335, "a world's Normal first clears pay 335 Gems (got " .. total .. ")")
+local wanted = 0
+for act = 1, 6 do
+	wanted += Campaign.FirstClearGems[act]
+end
+check(total == wanted and total == 670, "a world's Normal first clears pay 670 Gems (got " .. total .. ")")
 -- the Challenge
 local hour = Campaign.challengeHour(now)
 local ch = Campaign.stage("Challenge:" .. hour)

@@ -15,7 +15,7 @@ local SocialService = game:GetService("SocialService")
 local UIKit = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("UIKit"))
 
 local INVITE_SHOW_SECONDS = 55 -- an invite leaves the screen a little before the server closes it (60 s)
-local PURPLE = Color3.fromRGB(120, 80, 170)
+local PURPLE = Color3.fromRGB(168, 80, 92) -- (a warm berry now, to match the cozy menus)
 local GOLD = Color3.fromRGB(255, 220, 90)
 local DIM = Color3.fromRGB(190, 185, 210)
 
@@ -277,7 +277,7 @@ function PartyScreen.init(ctx)
 		ZIndex = 70,
 	}, ctx.gui)
 	corner(ui.invitePopup, 14)
-	make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(190, 140, 255) }, ui.invitePopup)
+	make("UIStroke", { Thickness = 3, Color = Color3.fromRGB(255, 200, 110) }, ui.invitePopup)
 	ui.inviteText = label(ui.invitePopup, "", { Name = "InviteText", Size = UDim2.new(1, -24, 0, 54), Position = UDim2.fromOffset(12, 8), TextWrapped = true })
 
 	local function answer(accept)

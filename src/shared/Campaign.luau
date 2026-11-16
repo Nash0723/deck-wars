@@ -162,7 +162,7 @@ Campaign.HardTurnBonus = 1
 Campaign.StarText = { "Win", "Win with half your hit points left", "Win within %d of your turns" }
 
 -- First clear, in Gems, by act (Hard pays HardGems times as much, rounded).
-Campaign.FirstClearGems = { 30, 35, 45, 55, 70, 100 }
+Campaign.FirstClearGems = { 60, 70, 90, 110, 140, 200 }
 Campaign.HardGems = 1.5
 -- The card a first clear gives, by act: a card of that rarity from the opponents' family.
 -- On Hard every act gives one step rarer, and the boss gives its own Legendary.
@@ -174,9 +174,9 @@ Campaign.BossLegendaryChance = 0.02 -- a Normal boss replay can drop the boss's 
 Campaign.DropsPerDay = 10 -- most replay drops a player gets in a day (UTC)
 -- Star chests per world: stars from Normal and Hard together.
 Campaign.Chests = {
-	{ stars = 6, gems = 50 },
-	{ stars = 12, gems = 100, rarity = "Epic" },
-	{ stars = 18, gems = 150, title = true },
+	{ stars = 6, gems = 100 },
+	{ stars = 12, gems = 200, rarity = "Epic" },
+	{ stars = 18, gems = 300, title = true },
 }
 
 -- The hourly Challenge.
@@ -184,7 +184,7 @@ Campaign.Challenge = {
 	unlockAfter = "Den:6:N", -- open once this stage is cleared
 	difficulty = "Hard",
 	tier = "full",
-	gems = 60,
+	gems = 120,
 	cardOdds = { { "Rare", 70 }, { "Epic", 25 }, { "Mythic", 5 } },
 	turnLimit = 9,
 }

@@ -18,7 +18,7 @@ local ProfileStore = require(serverModules:WaitForChild("ProfileStore"))
 local ShopCatalog = require(ReplicatedStorage:WaitForChild("DeckWars"):WaitForChild("ShopCatalog"))
 
 local remotes = ReplicatedStorage:WaitForChild("EconomyRemotes")
-local ShopAction = remotes:WaitForChild("ShopAction") -- client -> server: Snapshot, Buy, Equip, BuyGems, Emote
+local ShopAction = remotes:WaitForChild("ShopAction") -- client -> server: Snapshot, Buy, Equip, BuyGems, BuyPotion, Emote
 local EconomyEvent = remotes:WaitForChild("EconomyEvent") -- server -> client: snapshot, result, daily, reward, notice, emote, dev
 local DevAction = remotes:WaitForChild("DevAction") -- client -> server, developers only
 
@@ -230,6 +230,18 @@ ShopAction.OnServerEvent:Connect(function(player, what, kind, id)
 		else
 			MarketplaceService:PromptProductPurchase(player, b.productId)
 		end
+	elseif what == "BuyPotion" and type(kind) == "string" then
+		local p = ShopCatalog.PotionById[kind]
+		if not p then
+			return
+		end
+		if p.productId == 0 then
+			reply(player, false, "This Luck Potion isn't on sale yet.", "potion", kind)
+		elseif restricted[player] then
+			reply(player, false, "Luck Potions aren't available where you live, because they change the odds of random packs.", "potion", kind)
+		else
+			MarketplaceService:PromptProductPurchase(player, p.productId)
+		end
 	elseif what == "Emote" and type(kind) == "string" then
 		local c = ShopCatalog.CosmeticById[kind]
 		if c and c.kind == "emote" and EconomyManager.ownsCosmetic(player, kind) then
@@ -240,9 +252,19 @@ ShopAction.OnServerEvent:Connect(function(player, what, kind, id)
 end)
 
 MarketplaceService.ProcessReceipt = function(receipt)
-	return EconomyManager.processReceipt(receipt, function(userId)
+	local decision = EconomyManager.processReceipt(receipt, function(userId)
 		return Players:GetPlayerByUserId(userId)
 	end, Enum.ProductPurchaseDecision)
+	if decision == Enum.ProductPurchaseDecision.PurchaseGranted then
+		-- a little thank-you for a Luck Potion (the Shop's numbers update from the snapshot)
+		local player = Players:GetPlayerByUserId(receipt.PlayerId)
+		for _, p in ipairs(ShopCatalog.LuckPotions) do
+			if player and p.productId ~= 0 and p.productId == receipt.ProductId then
+				EconomyEvent:FireClient(player, "notice", "🍀 " .. p.name .. ": +" .. p.charges .. " lucky pulls! Open packs at the Pack Party.")
+			end
+		end
+	end
+	return decision
 end
 
 ---------------------------------------------------------------------------
