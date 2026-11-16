@@ -47,6 +47,9 @@ end
 local Park = req("Park")
 -- (the Blender-made models and the painted ground: see ParkKit)
 local Kit = script and require(script.Parent:WaitForChild("ParkKit")) or require("ParkKit")
+-- (the props made of parts in gen_park.py: the Enchanting Crystal, the altar's marble and gold, the
+-- lanterns, the bird bath, the bins, the topiaries, the cat, the campfire's logs and stones)
+local Props = script and require(script.Parent:WaitForChild("ParkPropData")) or require("ParkPropData")
 
 local ParkBuilder = {}
 
@@ -158,6 +161,49 @@ local function merge(a, b)
 	return out
 end
 local LEAVES = merge(NO_TOUCH, {})
+
+-- A prop made in gen_park.py (see ParkPropData), standing at cf (relative to the Park's middle) and
+-- scaled by `scale`. Its parts go into `parent`, or into a Model named for their group inside it.
+-- Returns the groups (Models by name) and the parts by name (the first part of each name).
+local PROP_SHAPE = { S = Enum.PartType.Ball, C = Enum.PartType.Cylinder }
+local function propFrom(parent, id, cf, scale)
+	scale = scale or 1
+	local groups, named = {}, {}
+	for _, d in ipairs(Props[id]) do
+		local into = parent
+		if d[1] ~= "" then
+			into = groups[d[1]]
+			if not into then
+				into = make("Model", { Name = d[1] }, parent)
+				groups[d[1]] = into
+			end
+		end
+		local p = Instance.new(d[2] == "W" and "WedgePart" or "Part")
+		if PROP_SHAPE[d[2]] then
+			p.Shape = PROP_SHAPE[d[2]]
+		end
+		p.Name = d[3]
+		p.Anchored = true
+		p.Size = Vector3.new(d[4], d[5], d[6]) * scale
+		p.CFrame = CFrame.new(O) * cf * CFrame.new(d[7] * scale, d[8] * scale, d[9] * scale) * CFrame.Angles(math.rad(d[10]), math.rad(d[11]), math.rad(d[12]))
+		p.Color = Color3.fromRGB(d[13], d[14], d[15])
+		p.Material = Enum.Material[d[16]]
+		p.Transparency = d[17]
+		p.Reflectance = d[18]
+		p.CanCollide = d[19]
+		p.CanQuery = d[19]
+		p.CanTouch = false
+		p.CastShadow = d[16] ~= "Neon" and d[17] < 0.5
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		if d[2] == "E" then
+			make("SpecialMesh", { MeshType = Enum.MeshType.Sphere }, p)
+		end
+		p.Parent = into
+		named[d[3]] = named[d[3]] or p
+	end
+	return groups, named
+end
 
 ---------------------------------------------------------------------------
 -- Colors
@@ -579,32 +625,24 @@ local function roseArch(parent, name, at, facing, halfWidth, postHeight, rise, r
 	return m, tops
 end
 
--- A stone bird bath.
+-- A stone bird bath: a stepped foot, a baluster stem, a rimmed bowl of water, a robin on the rim.
 local function birdBath(parent, at)
 	local m = make("Model", { Name = "BirdBath" }, parent)
-	local c = CFrame.new(at)
-	cylinder(m, "Foot", 2, 0.4, c * CFrame.new(0, 0.2, 0), STONE, Enum.Material.Slate)
-	cylinder(m, "Pillar", 0.8, 2.6, c * CFrame.new(0, 1.7, 0), STONE:Lerp(rgb(255, 255, 255), 0.1), Enum.Material.Slate)
-	cylinder(m, "Bowl", 3, 0.5, c * CFrame.new(0, 3.2, 0), STONE:Lerp(rgb(255, 255, 255), 0.15), Enum.Material.Slate)
-	cylinder(m, "BathWater", 2.5, 0.05, c * CFrame.new(0, 3.47, 0), rgb(90, 140, 150), Enum.Material.SmoothPlastic, { Reflectance = 0.4, CanCollide = false })
+	propFrom(m, "birdbath", CFrame.new(at))
 	return m
 end
 
--- A dark green litter bin.
+-- A slatted dark green litter bin with iron hoops and a domed lid.
 local function bin(parent, at)
 	local m = make("Model", { Name = "Bin" }, parent)
-	cylinder(m, "Bin", 1.3, 2.3, CFrame.new(at + Vector3.new(0, 1.15, 0)), rgb(42, 72, 54), Enum.Material.Metal)
-	cylinder(m, "Lid", 1.5, 0.22, CFrame.new(at + Vector3.new(0, 2.4, 0)), rgb(34, 58, 44), Enum.Material.Metal)
+	propFrom(m, "bin", CFrame.new(at))
 	return m
 end
 
--- A clipped box topiary (two balls) in a stone planter.
+-- A clipped box topiary (two leafy balls on a trunk) in a stone planter.
 local function topiary(parent, at)
 	local m = make("Model", { Name = "Topiary" }, parent)
-	part(m, "Planter", Vector3.new(2, 1.4, 2), CFrame.new(at + Vector3.new(0, 0.7, 0)), STONE:Lerp(rgb(255, 255, 255), 0.2), Enum.Material.Slate)
-	part(m, "PlanterRim", Vector3.new(2.3, 0.25, 2.3), CFrame.new(at + Vector3.new(0, 1.45, 0)), STONE:Lerp(rgb(255, 255, 255), 0.3), Enum.Material.Slate)
-	ball(m, "Box", 2.5, CFrame.new(at + Vector3.new(0, 2.7, 0)), rgb(56, 104, 52), Enum.Material.Grass, NO_TOUCH)
-	ball(m, "Box", 1.5, CFrame.new(at + Vector3.new(0, 4.3, 0)), rgb(62, 112, 56), Enum.Material.Grass, NO_TOUCH)
+	propFrom(m, "topiary", CFrame.new(at))
 	return m
 end
 
@@ -628,14 +666,13 @@ local function seat(parent, cf)
 	return s
 end
 
--- A small glass lantern with a candle in it, standing at `at`.
+-- A small iron lantern with a candle in it, standing at `at`: glass sides (the part named
+-- "Lantern", lit after dark), corner posts, a stepped cap and a ring on top.
 local function lantern(parent, at, size)
 	size = size or 1
 	local m = make("Model", { Name = "SmallLantern" }, parent)
-	part(m, "LanternBase", Vector3.new(0.7, 0.12, 0.7) * size, CFrame.new(at + Vector3.new(0, 0.06 * size, 0)), IRON, Enum.Material.Metal, NO_TOUCH)
-	local glass = part(m, "Lantern", Vector3.new(0.55, 0.75, 0.55) * size, CFrame.new(at + Vector3.new(0, 0.5 * size, 0)), rgb(255, 232, 186), Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.25 }))
-	part(m, "LanternCap", Vector3.new(0.75, 0.14, 0.75) * size, CFrame.new(at + Vector3.new(0, 0.94 * size, 0)), IRON, Enum.Material.Metal, NO_TOUCH)
-	ball(m, "LanternRing", 0.24 * size, CFrame.new(at + Vector3.new(0, 1.1 * size, 0)), IRON, Enum.Material.Metal, NO_TOUCH)
+	local _, named = propFrom(m, "lantern", CFrame.new(at), size)
+	local glass = named.Lantern
 	light(glass, rgb(255, 190, 110), 10 * size, 0.3)
 	return m, glass
 end
@@ -660,23 +697,10 @@ local function stringLights(parent, a, b, sag)
 	return m
 end
 
--- A ginger cat, curled up asleep (on a bench, in the sun).
+-- A ginger cat, curled up asleep (on a bench, in the sun): its head on its paws, its tail round them.
 local function sleepingCat(parent, cf)
 	local m = make("Model", { Name = "Cat" }, parent)
-	local fur, dark = rgb(232, 150, 70), rgb(196, 112, 50)
-	egg(m, "Body", Vector3.new(1.3, 0.6, 1.0), cf * CFrame.new(0, 0.3, 0), fur)
-	egg(m, "Head", Vector3.new(0.62, 0.52, 0.58), cf * CFrame.new(-0.52, 0.42, -0.3), fur)
-	for _, x in ipairs({ -0.16, 0.16 }) do
-		part(m, "Ear", Vector3.new(0.16, 0.2, 0.08), cf * CFrame.new(-0.52 + x, 0.72, -0.3) * CFrame.Angles(0, 0, x > 0 and -0.3 or 0.3), dark, Enum.Material.SmoothPlastic, NO_TOUCH)
-	end
-	egg(m, "Muzzle", Vector3.new(0.3, 0.2, 0.2), cf * CFrame.new(-0.58, 0.34, -0.55), rgb(250, 230, 210))
-	for k = 0, 3 do
-		local a = math.rad(200 - k * 50)
-		egg(m, "Tail", Vector3.new(0.26, 0.24, 0.42), cf * CFrame.new(math.cos(a) * 0.62, 0.22, math.sin(a) * 0.52) * CFrame.Angles(0, -a, 0), k % 2 == 0 and fur or dark)
-	end
-	for _, x in ipairs({ -0.1, 0.1 }) do
-		part(m, "Stripe", Vector3.new(0.9, 0.04, 0.12), cf * CFrame.new(0.15 + x * 2, 0.6, 0) * CFrame.Angles(0, 0, 0.1), dark, Enum.Material.SmoothPlastic, NO_TOUCH)
-	end
+	propFrom(m, "cat", cf)
 	return m
 end
 
@@ -1458,11 +1482,8 @@ local function buildPark(root, pathPoints)
 	local picnic = make("Model", { Name = "Picnic" }, park)
 	local _, b1 = blanket(picnic, BLANKET1, 0.35, rgb(196, 54, 54), rgb(246, 238, 222))
 	local basket = b1 * CFrame.new(1.6, 0.55, -1)
-	part(picnic, "Basket", Vector3.new(1.6, 0.9, 1.1), basket, rgb(170, 128, 76), Enum.Material.Fabric)
-	part(picnic, "BasketLid", Vector3.new(1.7, 0.12, 1.2), basket * CFrame.new(0, 0.5, 0), rgb(150, 110, 64), Enum.Material.Fabric)
-	local handleTop = (basket * CFrame.new(0, 1.1, 0)).Position
-	beam(picnic, "Handle", (basket * CFrame.new(-0.6, 0.55, 0)).Position, handleTop, 0.12, rgb(130, 94, 54), Enum.Material.Wood)
-	beam(picnic, "Handle", handleTop, (basket * CFrame.new(0.6, 0.55, 0)).Position, 0.12, rgb(130, 94, 54), Enum.Material.Wood)
+	-- (a wicker basket with woven bands, a check cloth peeking out and a bent handle: gen_park.py)
+	propFrom(picnic, "basket", basket * CFrame.new(0, -0.45, 0))
 	part(picnic, "Book", Vector3.new(0.9, 0.18, 1.2), b1 * CFrame.new(-1.4, 0.14, 0.8) * CFrame.Angles(0, 0.4, 0), rgb(60, 90, 140), Enum.Material.SmoothPlastic, { CanCollide = false })
 	ball(picnic, "Apple", 0.45, b1 * CFrame.new(-0.2, 0.3, -1.3), rgb(200, 40, 40), Enum.Material.SmoothPlastic, NO_TOUCH)
 	ball(picnic, "Apple", 0.45, b1 * CFrame.new(0.3, 0.3, -1.6), rgb(150, 200, 70), Enum.Material.SmoothPlastic, NO_TOUCH)
@@ -1631,13 +1652,10 @@ local function buildGazebo(root)
 	-- the Duel Table in the middle
 	local kiosk = make("Model", { Name = "DuelKiosk" }, root)
 	cylinder(kiosk, "Kiosk", 14.5, 0.1, c * CFrame.new(0, floorTop + 0.02, 0), rgb(160, 120, 84), Enum.Material.WoodPlanks)
-	local table_ = part(kiosk, "Table", Vector3.new(6.4, 0.5, 4.2), c * CFrame.new(0, floorTop + 3, 0), rgb(46, 110, 70), Enum.Material.Fabric)
-	part(kiosk, "TableRim", Vector3.new(6.8, 0.35, 4.6), c * CFrame.new(0, floorTop + 2.6, 0), rgb(110, 78, 54), Enum.Material.Wood)
-	part(kiosk, "Leg", Vector3.new(1, 2.5, 1), c * CFrame.new(0, floorTop + 1.25, 0), WHITE_IRON, Enum.Material.Metal)
-	for _, x in ipairs({ -4.4, 4.4 }) do
-		cylinder(kiosk, "Stool", 1.8, 0.4, c * CFrame.new(x, floorTop + 1.9, 0), rgb(150, 112, 78), Enum.Material.Wood)
-		cylinder(kiosk, "StoolLeg", 0.5, 1.7, c * CFrame.new(x, floorTop + 0.85, 0), WHITE_IRON, Enum.Material.Metal)
-	end
+	-- (green felt in a wooden rim with cards and a deck on it, a white iron pedestal on curled feet,
+	-- two stools with red cushions: gen_park.py)
+	local _, kiosked = propFrom(kiosk, "dueltable", c * CFrame.new(0, floorTop, 0))
+	local table_ = kiosked.Table
 	Kit.dress(m, "Gazebo", c)
 	-- the sign over the way in, facing the pond
 	local sign = part(kiosk, "Sign", Vector3.new(6, 1.5, 0.3), CFrame.lookAt(GAZEBO + Vector3.new(-9, postTop + 1.2, 0), Vector3.new(-100, postTop + 1.2, 0)), rgb(44, 70, 52), Enum.Material.Wood)
@@ -1658,19 +1676,10 @@ end
 
 local function buildCampfire(root)
 	local m = make("Model", { Name = "Campfire" }, root)
-	local rng = Random.new(4242)
 	local c = CAMPFIRE
 	cylinder(m, "Dirt", 11, 0.2, CFrame.new(c + Vector3.new(0, 0, 0)), rgb(126, 108, 84), Enum.Material.Ground) -- (a worn patch round the fire)
-	for k = 1, 11 do
-		local a = k / 11 * TAU
-		local d = rng:NextNumber(0.8, 1.1)
-		local grey = rng:NextNumber(110, 150)
-		ball(m, "FireStone", d, CFrame.new(c + polar(a, 1.9) + Vector3.new(0, 0.05, 0)), rgb(grey, grey - 6, grey - 12), Enum.Material.Slate)
-	end
-	for k = 1, 3 do
-		local log = part(m, "FireLog", Vector3.new(2.6, 0.45, 0.45), CFrame.new(c + Vector3.new(0, 0.42, 0)) * CFrame.Angles(0, k / 3 * math.pi, 0) * CFrame.Angles(0, 0, math.rad(12)), rgb(84, 56, 36), Enum.Material.Wood, NO_TOUCH)
-		log.Shape = Enum.PartType.Cylinder
-	end
+	-- a ring of mossy stones round a bed of ash, a tepee of logs charred at the top (gen_park.py)
+	propFrom(m, "firepit", CFrame.new(c))
 	local embers = ball(m, "Embers", 1.4, CFrame.new(c + Vector3.new(0, -0.3, 0)), rgb(255, 118, 40), Enum.Material.Neon, NO_TOUCH)
 	make("Fire", { Size = 3.6, Heat = 7, Color = rgb(255, 136, 48), SecondaryColor = rgb(255, 214, 110) }, embers)
 	make("Smoke", { Size = 1.2, Opacity = 0.03, RiseVelocity = 3, Color = rgb(210, 210, 210) }, embers)
@@ -1680,10 +1689,9 @@ local function buildCampfire(root)
 		local a = k / 4 * TAU + math.pi / 4
 		local at = c + polar(a, 5.6)
 		local cf = CFrame.lookAt(at, Vector3.new(c.X, 0, c.Z))
-		local log = part(m, "LogSeat", Vector3.new(4.4, 1.2, 1.2), cf * CFrame.new(0, 0.5, 0), rgb(120, 86, 58), Enum.Material.Wood)
-		log.Shape = Enum.PartType.Cylinder
+		-- (a log with ringed ends, a branch stub, moss and two little mushrooms: gen_park.py)
+		propFrom(m, "logseat", cf * CFrame.Angles(0, (k % 2) * math.pi, 0))
 		for _, x in ipairs({ -1, 1 }) do
-			cylinder(m, "LogEnd", 1.05, 0.06, cf * CFrame.new(x * 2.2, 0.5, 0) * CFrame.Angles(0, 0, math.pi / 2), rgb(196, 160, 112), Enum.Material.Wood, NO_TOUCH)
 			seat(m, cf * CFrame.new(x * 1.05, 1.15, 0))
 		end
 		if k % 2 == 0 then
@@ -1731,7 +1739,7 @@ local function buildCozy(root, pathPoints)
 				if Vector3.new(p.X, 0, p.Z).Magnitude > 40 then
 					local side = Vector3.new(-(q - p).Z, 0, (q - p).X).Unit * ((k % 4 == 1) and 6.6 or -6.6)
 					local at = p + side
-					cylinder(m, "Bollard", 0.5, 1.8, CFrame.new(at + Vector3.new(0, 0.9, 0)), IRON, Enum.Material.Metal)
+					propFrom(make("Model", { Name = "Bollard" }, m), "bollard", CFrame.new(at))
 					lantern(m, at + Vector3.new(0, 1.8, 0), 0.85)
 				end
 			end
@@ -1775,7 +1783,7 @@ local function buildCozy(root, pathPoints)
 	for i, deg in ipairs(ALCOVES) do
 		local cf = CFrame.lookAt(polar(math.rad(deg), 118), Vector3.new(0, 0, 0))
 		local post = (cf * CFrame.new(3.1, 0, 2.4)).Position
-		cylinder(m, "LanternPost", 0.25, 3.2, CFrame.new(post + Vector3.new(0, 1.6, 0)), IRON, Enum.Material.Metal)
+		propFrom(make("Model", { Name = "LanternPost" }, m), "lanternpost", CFrame.new(post))
 		lantern(m, post + Vector3.new(0, 3.2, 0), 1)
 		if i % 3 == 1 then
 			local bench = cf * CFrame.new(0, 0, 2)
@@ -1812,11 +1820,10 @@ end
 
 local function buildAltar(root)
 	local m = make("Model", { Name = "Altar" }, root)
-	local dais = cylinder(m, "Dais", 18, 1.2, CFrame.new(0, 0.6, 0), rgb(232, 220, 200), Enum.Material.Marble)
-	cylinder(m, "Step", 13, 1.2, CFrame.new(0, 1.8, 0), rgb(214, 200, 178), Enum.Material.Marble)
-	cylinder(m, "Top", 8, 0.8, CFrame.new(0, 2.8, 0), rgb(245, 236, 220), Enum.Material.Marble)
-	cylinder(m, "Glow", 6.4, 0.2, CFrame.new(0, 3.25, 0), rgb(255, 210, 120), Enum.Material.Neon)
-	cylinder(m, "Pedestal", 2.4, 3, CFrame.new(0, 4.8, 0), rgb(150, 142, 150), Enum.Material.Marble)
+	-- marble dais and steps with gold bands, a glowing ring with a gold star, a reeded pedestal whose
+	-- gold claws cradle the pack, and crystal clusters on the step (made in gen_park.py)
+	local _, named = propFrom(m, "altar", CFrame.new())
+	local dais = named.Dais
 	-- the big pack floating over it (the client spins and bobs it)
 	local pack = part(m, "FloatingPack", Vector3.new(3.4, 4.8, 0.6), CFrame.new(0, 9.2, 0), rgb(96, 78, 132), Enum.Material.SmoothPlastic)
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
@@ -1830,11 +1837,11 @@ local function buildAltar(root)
 	-- the pillar of light for big pulls (invisible until then)
 	local pillar = cylinder(m, "LightPillar", 7, 160, CFrame.new(0, 80, 0), rgb(255, 230, 150), Enum.Material.Neon, { Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false })
 	pillar:SetAttribute("Rarity", "")
-	-- four crystals around the top step
-	for i = 1, 4 do
-		local a = i * math.pi / 2 + math.pi / 4
-		local c = part(m, "Crystal", Vector3.new(0.9, 3, 0.9), CFrame.Angles(0, a, 0) * CFrame.new(0, 4.1, 5) * CFrame.Angles(math.rad(12), 0, math.rad(45)), rgb(196, 186, 226), Enum.Material.Glass, { Transparency = 0.35 })
-		light(c, rgb(214, 200, 255), 8, 0.5)
+	-- a soft light in the big crystal of each cluster on the step
+	for _, c in ipairs(m:GetChildren()) do
+		if c.Name == "Crystal" and c:IsA("BasePart") then
+			light(c, rgb(214, 200, 255), 8, 0.5)
+		end
 	end
 	prompt(dais, "OpenPacks", "Open packs", "Pull Altar", 16)
 	-- (built round the middle, then moved in front of the Hall of Pulls: the island in the middle
@@ -1849,50 +1856,64 @@ local function buildAltar(root)
 end
 
 ---------------------------------------------------------------------------
--- The Enchanting Crystal: in the middle of the park, on the island. A big crystal floats over a
--- round slate floor with a ring of runes, broken shards drift round it and lie cracked on the
--- ground about it. The client turns and bobs the crystal, circles the floating shards and runs the
--- colours of the enchant rarities through the runes and the crystal's heart.
+-- The Enchanting Crystal: in the middle of the park, on the island. A big purple-pink crystal with
+-- gold bands, a crown of little crystals and two gold rings round it floats over a round plum stone
+-- floor: a glowing magic circle on the step, a ring of runes, crystal clusters growing out of the
+-- rim. Broken shards drift round it and lie cracked on the ground about it. The client turns and
+-- bobs the crystal, circles the floating shards, runs pinks and violets through the crystal's heart
+-- and the colours of the enchant rarities round the runes. (The stone, the magic circle and the
+-- crystal are made in gen_park.py.)
 ---------------------------------------------------------------------------
 
-local SHRINE_SLATE = rgb(74, 78, 98)
-local SHRINE_GLASS = rgb(196, 226, 255)
-local SHRINE_CORE = rgb(150, 210, 255)
+local SHRINE_CORE = rgb(255, 150, 236)
+local SHARD_GLASS = { rgb(255, 160, 228), rgb(200, 150, 255), rgb(236, 200, 255) }
 
--- A long crystal shard: a glass block with a pointed tip (a turned cube) on top.
-local function shard(parent, name, cf, w, h, color, props)
+-- A crystal shard: a long glass body turned edge-on with a point at the top (and, if `ends`, a
+-- smaller one at the bottom: a shard that broke off clean).
+local function shard(parent, name, cf, w, h, color, props, ends)
 	local m = make("Model", { Name = name }, parent)
-	local body = part(m, "Body", Vector3.new(w, h, w * 0.8), cf, color or SHRINE_GLASS, Enum.Material.Glass, merge({ Transparency = 0.3 }, props or {}))
-	local tip = part(m, "Tip", Vector3.new(w * 0.72, w * 0.72, w * 0.72), cf * CFrame.new(0, h / 2, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35.26)), color or SHRINE_GLASS, Enum.Material.Glass, merge({ Transparency = 0.3 }, props or {}))
+	local glass = merge({ Transparency = 0.2, Reflectance = 0.1 }, props or {})
+	local body = part(m, "Body", Vector3.new(w, h, w * 0.8), cf * CFrame.Angles(0, math.rad(45), 0), color, Enum.Material.Glass, glass)
+	part(m, "Tip", Vector3.new(w * 0.72, w * 0.72, w * 0.72), cf * CFrame.new(0, h / 2, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35.26)), color, Enum.Material.Glass, glass)
+	if ends then
+		part(m, "Tip", Vector3.new(w * 0.56, w * 0.56, w * 0.56), cf * CFrame.new(0, -h / 2, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35.26)), color, Enum.Material.Glass, glass)
+	end
 	m.PrimaryPart = body
-	return m, body, tip
+	return m, body
 end
 
 local function buildShrine(root)
 	local m = make("Model", { Name = "EnchantShrine" }, root)
-	local base = cylinder(m, "Base", 16, 0.8, CFrame.new(0, 0.4, 0), SHRINE_SLATE, Enum.Material.Slate)
-	cylinder(m, "Seal", 9, 0.12, CFrame.new(0, 0.86, 0), rgb(52, 54, 72), Enum.Material.Slate)
-	cylinder(m, "Heart", 2.4, 0.14, CFrame.new(0, 0.9, 0), SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
-	-- the ring of runes: little glowing marks in a circle (the client colours them)
+	local groups, named = propFrom(m, "shrine", CFrame.new())
+	local base = named.Base
+	-- the ring of runes in the dark channel round the floor: dashes and diamonds (the client runs the
+	-- enchant rarities' colours round them)
 	local runes = make("Model", { Name = "Runes" }, m)
 	for i = 1, 24 do
 		local a = (i - 1) / 24 * TAU
-		local p = polar(a, 6.1) + Vector3.new(0, 0.86, 0)
+		local p = polar(a, 6.1) + Vector3.new(0, 0.9, 0)
 		local long = i % 2 == 0
-		part(runes, "Rune", Vector3.new(long and 0.9 or 0.45, 0.1, 0.32), CFrame.new(p) * CFrame.Angles(0, a + math.pi / 2, 0), SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
+		local size = long and Vector3.new(0.9, 0.12, 0.3) or Vector3.new(0.38, 0.12, 0.38)
+		part(runes, "Rune", size, CFrame.new(p) * CFrame.Angles(0, a + math.pi / 2 + (long and 0 or math.pi / 4), 0), SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
 	end
-	-- the crystal: a heart of light inside two turned glass bodies with points at both ends
-	local crystal = make("Model", { Name = "Crystal" }, m)
-	local mid = CFrame.new(0, 8.4, 0)
-	local core = part(crystal, "Core", Vector3.new(1.3, 5.6, 1.3), mid, SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
-	for k, turn in ipairs({ 0, 45 }) do
-		part(crystal, "Shell", Vector3.new(2.7, 6.2, 2.7), mid * CFrame.Angles(0, math.rad(turn), 0), SHRINE_GLASS, Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.42 + k * 0.08 }))
-	end
-	for _, y in ipairs({ 1, -1 }) do
-		part(crystal, "Tip", Vector3.new(2.25, 2.25, 2.25), mid * CFrame.new(0, y * 3.1, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35.26)), SHRINE_GLASS, Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.38 }))
-	end
+	-- the crystal: a glowing heart (Core) inside the glass (Shell, Tip), the bands, the crown and the
+	-- rings all float and turn together round the Core
+	local crystal = groups.Crystal
+	local core = named.Core
 	crystal.PrimaryPart = core
 	light(core, SHRINE_CORE, 24, 1.6)
+	make("ParticleEmitter", {
+		Name = "Sparkles",
+		Rate = 5,
+		Lifetime = NumberRange.new(2, 3.5),
+		Speed = NumberRange.new(0.5, 1.2),
+		SpreadAngle = Vector2.new(180, 180),
+		Acceleration = Vector3.new(0, 0.5, 0),
+		Size = NumberSequence.new(0.22, 0),
+		Transparency = NumberSequence.new(0.15, 1),
+		LightEmission = 1,
+		Color = ColorSequence.new(rgb(255, 196, 240), rgb(206, 170, 255)),
+	}, core)
 	-- broken shards floating round it (the client circles them slowly)
 	local orbit = make("Model", { Name = "Orbit" }, m)
 	local rng = Random.new(77)
@@ -1901,7 +1922,7 @@ local function buildShrine(root)
 		local r = 3.8 + rng:NextNumber() * 1.2
 		local y = 6.4 + rng:NextNumber() * 4
 		local cf = CFrame.new(polar(a, r) + Vector3.new(0, y, 0)) * CFrame.Angles(rng:NextNumber() * 0.8 - 0.4, a, rng:NextNumber() * 0.9 - 0.45)
-		local s = shard(orbit, "Shard", cf, 0.42 + rng:NextNumber() * 0.25, 1.1 + rng:NextNumber() * 1.1, nil, NO_TOUCH)
+		local s = shard(orbit, "Shard", cf, 0.42 + rng:NextNumber() * 0.25, 1.1 + rng:NextNumber() * 1.1, SHARD_GLASS[i % 3 + 1], NO_TOUCH, true)
 		s:SetAttribute("Angle", a)
 		s:SetAttribute("Radius", r)
 		s:SetAttribute("Height", y)
@@ -1917,14 +1938,19 @@ local function buildShrine(root)
 	for i, sp in ipairs(spots) do
 		local a = math.rad(sp[1])
 		local p = polar(a, sp[2])
-		local ground = sp[2] < 8 and 0.9 or 0
+		local ground = sp[2] < 5.3 and 1.3 or (sp[2] < 8 and 0.85 or 0) -- (on the step, on the floor, on the island)
 		local cf = CFrame.new(p + Vector3.new(0, ground + sp[3] * 0.3, 0)) * CFrame.Angles(0, a, 0) * CFrame.Angles(math.rad(sp[5]), 0, math.rad(sp[5] * 0.4))
-		local _, body = shard(fallen, "Shard", cf, sp[4], sp[3], nil, { CanCollide = sp[3] > 2 })
+		local color = SHARD_GLASS[i % 3 + 1]
+		shard(fallen, "Shard", cf, sp[4], sp[3], color, { CanCollide = sp[3] > 2 })
+		if sp[3] > 2 then
+			-- a smaller one broken off beside the big ones
+			local cf2 = CFrame.new(p + polar(a + 1.6, sp[4] * 1.3) + Vector3.new(0, sp[3] * 0.15, 0)) * CFrame.Angles(0, a + 1, 0) * CFrame.Angles(math.rad(-sp[5] * 0.8), 0, math.rad(24))
+			shard(fallen, "Shard", cf2, sp[4] * 0.55, sp[3] * 0.45, SHARD_GLASS[(i + 1) % 3 + 1], NO_TOUCH)
+		end
 		if i % 3 == 1 then
 			-- a few still hold a little of the light
 			part(fallen, "Glint", Vector3.new(sp[4] * 0.3, sp[3] * 0.5, sp[4] * 0.3), cf, SHRINE_CORE, Enum.Material.Neon, NO_TOUCH)
 		end
-		body.Name = "Body"
 	end
 	prompt(base, "Enchant", "Enchant cards", "Enchanting Crystal", 18)
 	return m

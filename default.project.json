@@ -89,6 +89,9 @@
       "ParkKit": {
         "$path": "src/park/ParkKit.luau"
       },
+      "ParkPropData": {
+        "$path": "src/park/ParkPropData.luau"
+      },
       "HubRoom": {
         "$path": "src/server/HubRoom.server.luau"
       },
