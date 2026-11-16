@@ -1,6 +1,11 @@
-# Weather family models (soft puffy clouds, ice, lightning, fog)
+# Weather family: puffy clouds, ice, fog and lightning.
+# Palette: sky blue (main), cloud white and storm slate (secondary), bolt yellow (accent).
+# Soft smooth plastic, ice and glass; neon only inside bolts and the Stormlord's eyes.
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, PUPIL, shade, ell_front, cyl_front, front_of
+import random
+import numpy as np
+from modelkit import rot, Rx, Ry, Rz, shade, I3, WHITE, frame_normal
+from stylekit import SModel, PAL, V, norm, on_ell_R, INK, GOLD
 
 MODELS = []
 
@@ -10,311 +15,553 @@ def model(fn):
     return fn
 
 
-def cloud(m, cx, cy, cz, scale, color, mat="SmoothPlastic", tr=0, name="Cloud", shaded=True):
-    """A puffy cloud: big main puffs, lighter puffs on top and darker ones underneath for volume."""
-    puffs = [(0, 0, 0, 1.3), (-0.7, -0.15, 0.05, 0.95), (0.7, -0.15, 0.05, 0.95), (-0.35, 0.35, 0.15, 0.9),
-             (0.35, 0.4, 0.15, 0.85), (0, -0.25, -0.25, 1.0), (-1.15, -0.3, 0.1, 0.65), (1.15, -0.3, 0.1, 0.65)]
+P = PAL["Weather"]
+SKY = P["main"]
+CLOUD = P["second"]
+BOLT = P["accent"]
+SLATE = P["slate"]
+RAIN = (110, 180, 250)
+BLUSH = (255, 160, 182)
+
+
+def cloud(m, c, size, color, seed=1, name="Cloud", core="Body", under=None, light=None, front=True, mat="SmoothPlastic"):
+    """A puffy cartoon cloud: a core, big puffs (the biggest on top in the middle), lighter
+    highlight puffs and a flatter, darker underside. Returns the core's (center, size), the
+    surface the face goes on."""
+    c = V(*c)
+    W, H, D = size
+    cs = (W * 0.82, H * 0.8, D * 0.84)
+    m.ell(core, cs, c, color, mat)
+    lt = light or shade(color, 1.18)
+    dk = under or shade(color, 0.82)
+    rnd = random.Random(seed)
+    puffs = [(0, 0.38, 0.08, 1.0), (-0.47, 0.22, 0.1, 0.84), (0.48, 0.2, 0.05, 0.82),
+             (-0.8, -0.12, 0.05, 0.66), (0.81, -0.1, 0.08, 0.64), (0.0, 0.1, 0.56, 0.86)]
+    if front:
+        puffs += [(-0.62, -0.3, -0.42, 0.56), (0.63, -0.32, -0.4, 0.54)]
     for (x, y, z, d) in puffs:
-        m.ball(name, d * scale, (cx + x * scale, cy + y * scale, cz + z * scale), color, mat=mat, tr=tr)
-    if shaded:
-        light = shade(color, 1.25)
-        dark = shade(color, 0.8)
-        for (x, y, z, d) in [(-0.15, 0.62, 0.1, 0.55), (0.5, 0.55, 0.3, 0.45), (-0.6, 0.3, 0.3, 0.45)]:
-            m.ball(name, d * scale, (cx + x * scale, cy + y * scale, cz + z * scale), light, mat=mat, tr=tr)
-        for (x, y, z, d) in [(-0.5, -0.45, 0.1, 0.7), (0.45, -0.45, 0.1, 0.7), (0, -0.5, 0.35, 0.75)]:
-            m.ball(name, d * scale, (cx + x * scale, cy + y * scale, cz + z * scale), dark, mat=mat, tr=tr)
+        j = 1 + rnd.uniform(-0.06, 0.06)
+        m.ball(name, d * H * j, c + V(x * W / 2, y * H / 2, z * D / 2), color, mat)
+    for (x, y, z, d) in [(-0.16, 0.72, -0.1, 0.5), (0.32, 0.64, 0.12, 0.42), (-0.56, 0.46, 0.05, 0.4)]:
+        m.ball(name, d * H, c + V(x * W / 2, y * H / 2, z * D / 2), lt, mat)
+    m.ell(name, (W * 0.94, H * 0.38, D * 0.88), c + V(0, -H * 0.3, 0), dk, mat)
+    return c, cs
 
 
-def bolt(m, name, top, h, w, color=(255, 230, 60), glow=None):
-    """A zigzag lightning bolt hanging down from top (three blocks and a point)."""
-    x, y, z = top
-    a = m.blk(name, (w, h * 0.4, w * 0.5), (x, y - h * 0.18, z), color, mat="Neon", R=rot(z=-25))
-    m.blk(name, (w, h * 0.38, w * 0.5), (x - h * 0.1, y - h * 0.5, z), color, mat="Neon", R=rot(z=25))
-    m.wedge(name, (w * 0.5, h * 0.3, w * 1.1), (x - h * 0.02, y - h * 0.82, z), color, mat="Neon", R=rot(z=180, y=90))
-    if glow:
-        m.blk(name + "Glow", (w * 1.8, h * 0.42, w * 0.3), (x, y - h * 0.18, z + w * 0.3), glow, mat="Neon", R=rot(z=-25), tr=0.6)
-    return a
+def face_cheeks(m, c, cs, sep, y, d, color=BLUSH):
+    for s in (-1, 1):
+        p, n = on_ell_R(c, cs, I3, V(s * sep, y, -1))
+        m.ell("Cheek", (d, d * 0.58, d * 0.3), p + n * 0.01, color, R=frame_normal(n))
 
 
-def drop(m, name, pos, d, color=(90, 170, 255), tr=0.2):
-    """A teardrop: a round bottom and a pointed top."""
-    x, y, z = pos
-    m.ball(name, d, (x, y, z), color, mat="Glass", tr=tr, refl=0.35)
-    m.ell(name, (d * 0.55, d * 1.1, d * 0.55), (x, y + d * 0.45, z), color, mat="Glass", tr=tr, refl=0.35)
-
-
+# ------------------------------------------------------------------------------------------------
 @model
 def drizzle_sprite():
-    m = Model("drizzle_sprite")
-    c = (235, 240, 250)
-    cloud(m, 0, 1.75, 0, 0.85, c)
-    m.eyes(1.75, -0.95, 0.42, 0.3, lid=c, iris=(80, 150, 230), lash=2, z_back=0.03)
-    m.grin(1.5, -0.98, 0.24, open_=True, curve=0.25)
-    m.cheeks(1.58, -0.92, 0.8, 0.2)
-    # a little rainbow arching behind
-    for k, col in enumerate([(240, 80, 80), (250, 170, 60), (250, 230, 80), (110, 210, 110), (90, 160, 240)]):
-        r = 1.15 - k * 0.09
-        for j in range(7):
-            a1, a2 = math.pi * j / 7, math.pi * (j + 1) / 7
-            m.rod("Rainbow", (math.cos(a1) * r, 1.6 + math.sin(a1) * r, 0.6), (math.cos(a2) * r, 1.6 + math.sin(a2) * r, 0.6), 0.1, col, mat="Neon", tr=0.25)
-    # teardrops falling into a rippling puddle
-    for (x, y, z, d) in [(-0.6, 0.95, -0.1, 0.17), (-0.15, 0.6, 0.15, 0.15), (0.3, 0.85, -0.2, 0.17), (0.7, 0.45, 0.1, 0.14), (-0.4, 0.3, -0.25, 0.14), (0.1, 0.22, 0.2, 0.13)]:
-        drop(m, "Drop", (x, y, z), d)
-    m.cyl("Puddle", 0.04, 1.4, (0, 0.02, 0), (90, 170, 255), mat="Glass", tr=0.3, refl=0.4)
-    m.ring("Ripple", (0.1, 0.05, 0.2), 0.3, 0.03, (190, 225, 255), normal="y", segments=10, tr=0.2)
-    m.ring("Ripple", (-0.35, 0.05, -0.2), 0.2, 0.03, (190, 225, 255), normal="y", segments=8, tr=0.2)
-    # little umbrella hat with panels, ribs, a tip and a curled handle
-    m.cyl("Pole", 0.5, 0.06, (0.1, 2.75, 0), (80, 80, 90))
-    m.ell("Umbrella", (1.05, 0.38, 1.05), (0.1, 3.0, 0), (255, 220, 60))
-    for k in range(4):
-        a = k * math.pi / 2 + math.pi / 4
-        m.ell("UmbrellaPanel", (0.5, 0.39, 0.22), (0.1 + math.cos(a) * 0.22, 3.0, math.sin(a) * 0.22), (255, 140, 160), R=rot(y=-math.degrees(a)))
-    for k in range(8):
-        a = k * math.pi / 4
-        m.ball("UmbrellaTip", 0.07, (0.1 + math.cos(a) * 0.52, 2.95, math.sin(a) * 0.52), (240, 240, 245))
-    m.ball("UmbrellaTip", 0.1, (0.1, 3.2, 0), (240, 240, 245))
+    """Common. A plump little rain cloud under a rainbow, holding up a tiny yellow umbrella, with rain
+    falling into a puddle. Mood: cheerful."""
+    m = SModel("drizzle_sprite")
+    c, cs = cloud(m, (0, 1.72, 0), (2.0, 1.36, 1.4), CLOUD, seed=2, under=(198, 220, 246))
+    # face: big happy eyes, an open grin, rosy cheeks
+    m.eyes_on(c, cs, I3, 21, 12, 0.38, 0.46, CLOUD, "cheerful", iris=SKY, lash=2)
+    p, n = on_ell_R(c, cs, I3, V(0, -0.3, -1))
+    m.mouth(p, n, 0.4, "eager", skin=CLOUD)
+    face_cheeks(m, c, cs, 0.62, -0.18, 0.26)
+    # stubby puff arms: one waves, one holds the umbrella up
+    for s in (-1, 1):
+        sh = c + V(s * 0.9, -0.12, -0.1)
+        hand = c + V(s * 1.18, 0.16 if s > 0 else 0.36, -0.42)
+        m.seg("Arm", sh, hand, 0.16, CLOUD, bulge=0.4)
+        m.ball("Hand", 0.3, hand, CLOUD)
+    # the tiny umbrella: a domed yellow canopy with white tips and ribs, a pole and a hooked handle
+    hand = c + V(1.18, 0.16, -0.42)
+    top = V(1.0, 3.05, -0.45)
+    u = norm(top - hand)
+    ax = norm(np.cross(u, [0, 0, 1.0]))
+    Fu = np.column_stack([ax, u, np.cross(ax, u)])
+    m.seg("UmbrellaPole", hand - u * 0.16, top, 0.045, (90, 92, 110), shape="C")
+    m.ell("Umbrella", (1.18, 0.66, 1.18), top - u * 0.14, BOLT, R=Fu)
+    m.ell("Umbrella", (1.1, 0.36, 1.1), top - u * 0.3, shade(BOLT, 0.8), R=Fu)
+    for k in range(6):
+        a = 2 * math.pi * k / 6
+        rim = top - u * 0.36 + Fu[:, 0] * math.cos(a) * 0.56 + Fu[:, 2] * math.sin(a) * 0.56
+        m.ball("UmbrellaTip", 0.09, rim, WHITE)
+        if k % 2 == 0:
+            m.seg("UmbrellaRib", top + u * 0.19, rim + u * 0.08, 0.032, WHITE, bulge=0.5)
+    m.ball("UmbrellaTip", 0.12, top + u * 0.21, WHITE)
+    hook0 = hand - u * 0.16
+    m.seg("UmbrellaHook", hook0, hook0 - u * 0.12 + V(0.12, -0.05, 0), 0.05, (90, 92, 110), bulge=0.5)
+    # the rainbow arching behind it
+    for k, col in enumerate([(244, 92, 92), (255, 168, 64), BOLT, (110, 206, 120), SKY]):
+        r = 1.24 - k * 0.11
+        cc = V(0, 1.86, 0.5)
+        for j in range(5):
+            a1, a2 = math.radians(8 + 164 * j / 5), math.radians(8 + 164 * (j + 1) / 5)
+            m.seg("Rainbow", cc + V(math.cos(a1) * r, math.sin(a1) * r, 0), cc + V(math.cos(a2) * r, math.sin(a2) * r, 0), 0.062, col, ext=0.03)
+    # raindrops into a puddle
+    for (x, y, z, d) in [(-0.62, 0.84, -0.1, 0.17), (-0.12, 0.55, 0.18, 0.15), (0.34, 0.86, -0.22, 0.17),
+                         (0.72, 0.42, 0.1, 0.14), (-0.42, 0.3, -0.28, 0.14)]:
+        m.drop("Drop", (x, y, z), d, RAIN)
+    m.cyl("Puddle", 0.05, 1.7, (0, 0.025, 0), RAIN, mat="Glass", tr=0.25, refl=0.4)
+    m.cyl("Puddle", 0.06, 0.6, (0.25, 0.03, -0.2), (200, 228, 255), mat="Glass", tr=0.2, refl=0.4)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def grumpy_cloud():
-    m = Model("grumpy_cloud")
-    c = (120, 125, 140)
-    cloud(m, 0, 2.0, 0, 1.05, c)
-    m.eyes(2.05, -1.18, 0.55, 0.36, lid=c, look=(0, -0.04), iris=(240, 200, 60), z_back=0.03)
+    """Common. A storm cloud with one heavy unibrow, a deep frown, folded arms, a small bolt and rain.
+    Mood: grumpy."""
+    m = SModel("grumpy_cloud")
+    dark = (124, 136, 170)
+    c, cs = cloud(m, (0, 2.0, 0), (2.85, 1.7, 1.8), dark, seed=7, under=(84, 94, 126), light=(162, 174, 202), front=False)
+    ink = (30, 32, 46)
+    eyes = m.eyes_on(c, cs, I3, 19, 10, 0.5, 0.48, dark, "grumpy", iris=BOLT, inward=0.05, lash_color=ink)
+    # one heavy unibrow across both eyes, dipping in the middle
+    mid = (eyes[0] + eyes[1]) / 2 + V(0, 0.27, 0)
+    for e in eyes:
+        sd = 1 if e[0] > 0 else -1
+        end = e + V(sd * 0.3, 0.42, 0)
+        pm, nm_ = on_ell_R(c, cs, I3, mid - c)
+        pe, ne = on_ell_R(c, cs, I3, end - c)
+        m.seg("Brow", pm + nm_ * 0.1, pe + ne * 0.1, 0.13, ink, r2=0.09, ext=0.12)
+    p, n = on_ell_R(c, cs, I3, V(0, -0.3, -1))
+    m.mouth(p + n * 0.02, n, 0.56, "grumpy", color=ink, d=0.08)
+    # arms folded under the frown (each hand stays on its own side)
     for s in (-1, 1):
-        m.brow(s * 0.28, 2.34, -1.2, 0.42, (40, 40, 50), s, tilt=22, d=0.12, arch=0.0)
-    m.grin(1.6, -1.25, 0.55, color=(40, 40, 50), curve=-0.25, bend=0.05)
-    m.ell("PuffCheek", (0.4, 0.3, 0.25), (-0.62, 1.7, -1.05), shade(c, 1.1))
-    m.ell("PuffCheek", (0.4, 0.3, 0.25), (0.62, 1.7, -1.05), shade(c, 1.1))
-    # a little steam cloud huffing from the side
-    for (x, y, d) in [(1.5, 2.6, 0.3), (1.75, 2.8, 0.22), (1.92, 3.0, 0.15)]:
-        m.ball("Huff", d, (x, y, -0.3), (210, 215, 225), tr=0.3)
-    b = bolt(m, "Bolt", (0.3, 1.35, -0.3), 1.2, 0.25, glow=(255, 250, 200))
-    m.light(b, (255, 230, 120), 1.2, 6)
-    for (x, y, z) in [(-1.0, 0.9, -0.2), (0.9, 1.1, 0.4), (-0.4, 0.2, 0.6)]:
-        m.ball("Spark", 0.1, (x * 0.4 + 0.3, y * 0.6, -0.3 + z * 0.3), (255, 250, 180), mat="Neon")
-    for (x, y, z) in [(-0.7, 1.0, 0.2), (-0.4, 0.6, -0.1), (0.8, 0.8, 0.1), (-0.95, 0.55, 0.4)]:
-        drop(m, "Drop", (x, y, z), 0.15, (120, 170, 230))
+        sh = c + V(s * 1.18, -0.3, -0.15)
+        el = c + V(s * 1.05, -0.78, -0.7)
+        hand = c + V(s * 0.32, -0.72, -0.98)
+        m.seg("UpperArm", sh, el, 0.21, dark, bulge=0.45)
+        m.seg("Forearm", el, hand, 0.19, dark, bulge=0.5)
+        m.ball("Hand", 0.34, hand, shade(dark, 1.06))
+    # a little bolt zapping down and rain
+    b = m.bolt("Bolt", (0.75, 1.26, -0.25), 0.95, w=0.2, color=BOLT)
+    m.light(b, (255, 232, 130), 1.2, 6)
+    for (x, y, z) in [(-0.7, 0.95, -0.1), (-0.3, 0.55, 0.25), (0.0, 1.0, 0.35), (-0.95, 0.45, 0.2)]:
+        m.drop("Drop", (x, y, z), 0.15, RAIN)
+    # an angry huff of steam
+    for (x, y, d) in [(1.5, 2.85, 0.34), (1.78, 3.08, 0.26), (1.96, 3.3, 0.18)]:
+        m.ball("Huff", d, (x, y, -0.25), (220, 226, 236), tr=0.3)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def hailstone_hopper():
-    m = Model("hailstone_hopper")
-    ice = (180, 225, 250)
-    deep = (120, 180, 230)
-    frost = (235, 248, 255)
-    m.ell("Body", (1.8, 1.4, 1.9), (0, 1.15, 0.1), ice, mat="Ice", refl=0.25)
-    m.ell("Head", (1.5, 1.1, 1.2), (0, 1.75, -0.55), ice, mat="Ice", refl=0.25)
-    # frosty spots and faceted ice chips
-    m.scatter("Frost", (0, 1.15, 0.1), (1.8, 1.4, 1.9), 10, [frost, deep], seed=6, d=0.22, shape="dot", ymin=0.0)
-    m.scatter("Chip", (0, 1.15, 0.1), (1.8, 1.4, 1.9), 6, [(220, 245, 255)], seed=16, d=0.14, shape="cube", ymin=0.2, mat="Glass")
-    # eye bumps on top of the head
+    """Rare. An ice frog: a squat icy body with big crystal spikes down its back, thick folded legs
+    with wide webbed feet, a knitted scarf and hailstones bouncing around. Mood: excited."""
+    m = SModel("hailstone_hopper")
+    ice = (150, 206, 245)
+    deep = (96, 156, 222)
+    frost = (232, 246, 255)
+    m.ell("Body", (1.95, 1.35, 1.95), (0, 1.02, 0.28), ice, "Ice", refl=0.15)
+    m.ell("Belly", (1.5, 1.05, 0.95), (0, 0.9, -0.35), frost, "Ice")
+    hc, hs = V(0, 1.58, -0.38), (2.05, 1.05, 1.45)
+    m.ell("Head", hs, hc, ice, "Ice", refl=0.15)
+    m.ell("Chin", (1.7, 0.5, 1.1), hc + V(0, -0.3, -0.12), frost, "Ice")
+    # big eyes on top bumps
     for s in (-1, 1):
-        m.ball("EyeBump", 0.62, (s * 0.37, 2.2, -0.82), ice, mat="Ice", refl=0.25)
-    m.eyes(2.27, -1.0, 0.75, 0.48, lid=ice, iris=(60, 120, 200), z_back=0.03)
-    m.grin(1.58, -1.12, 0.95, color=(60, 100, 150), curve=0.12, bend=0.12, d=0.08)
-    m.cheeks(1.7, -1.05, 1.0, 0.22, color=(200, 230, 255))
-    m.ell("Belly", (1.2, 0.9, 0.5), (0, 1.0, -0.6), frost, mat="Ice")
-    # icicles hanging under the chin
-    for k, x in enumerate((-0.35, -0.1, 0.15, 0.38)):
-        m.ell("Icicle", (0.1, 0.3 + 0.08 * (k % 2), 0.1), (x, 1.2, -1.0 + abs(x) * 0.3), (220, 245, 255), mat="Glass", tr=0.15)
-    # folded back legs and front feet with toes
+        bc = V(s * 0.5, 2.02, -0.62)
+        m.ball("EyeBump", 0.8, bc, ice, "Ice")
+        d = norm(V(s * 0.38, 0.3, -1))
+        m.eye(bc + d * 0.36, d, 0.5, 0.54, ice, "eager", iris=(40, 110, 210))
+    # a wide frog grin with the tongue poking out of one corner
+    p, n = on_ell_R(hc, hs, I3, V(0, -0.12, -1))
+    m.mouth(p + n * 0.02, n, 1.2, "cheerful", color=(36, 70, 128), curve=0.16, d=0.075, kind="smile")
+    m.seg("Tongue", p + V(0.36, -0.1, -0.02), p + V(0.5, -0.32, -0.12), 0.09, (244, 130, 160), bulge=0.7)
     for s in (-1, 1):
-        m.ell("Thigh", (0.6, 0.8, 1.3), (s * 0.85, 0.75, 0.45), deep, mat="Ice", R=rot(x=-25))
-        m.ell("BackFoot", (0.55, 0.2, 1.1), (s * 0.95, 0.12, -0.05), deep, mat="Ice")
-        m.ell("FrontFoot", (0.4, 0.2, 0.55), (s * 0.45, 0.12, -0.85), deep, mat="Ice")
-        m.rod("FrontLeg", (s * 0.45, 0.85, -0.6), (s * 0.45, 0.2, -0.85), 0.22, deep, mat="Ice")
+        q, nq = on_ell_R(hc, hs, I3, V(s * 0.12, 0.18, -1))
+        m.ell("Nostril", (0.07, 0.05, 0.05), q + nq * 0.01, deep, R=frame_normal(nq))
+        q, nq = on_ell_R(hc, hs, I3, V(s * 0.74, -0.05, -1))
+        m.ell("Cheek", (0.32, 0.18, 0.08), q + nq * 0.01, (196, 222, 255), R=frame_normal(nq))
+    # frost freckles
+    for (x, y, z, d) in [(0.4, 1.95, 0.25, 0.2), (-0.5, 1.88, 0.45, 0.16), (0.72, 1.4, 0.8, 0.18), (-0.78, 1.32, 0.75, 0.15)]:
+        m.ell("Freckle", (d, d * 0.6, d), (x, y, z), frost)
+    # folded back legs: thigh forward, shin back, wide webbed foot forward
+    for s in (-1, 1):
+        hip, knee, ankle = V(s * 0.78, 1.0, 0.7), V(s * 1.22, 0.78, 0.0), V(s * 1.05, 0.32, 0.78)
+        m.seg("Thigh", hip, knee, 0.38, ice, "Ice", bulge=0.45, ext=0.06)
+        m.ball("Knee", 0.5, knee, ice, "Ice")
+        m.seg("Shin", knee, ankle, 0.24, ice, "Ice", bulge=0.5)
+        m.ball("Ankle", 0.36, ankle, deep, "Ice")
+        m.ell("Foot", (0.62, 0.2, 1.05), (s * 1.12, 0.1, 0.28), deep, "Ice")
         for k in (-1, 0, 1):
-            m.ball("Toe", 0.16, (s * 0.45 + k * 0.14, 0.1, -1.1), frost, mat="Ice")
-            m.ball("Toe", 0.18, (s * 0.95 + k * 0.17, 0.1, -0.6), frost, mat="Ice")
-    # ice crystals on the back
-    for (x, y, z, a) in [(0, 2.05, 0.35, 0), (-0.45, 1.85, 0.6, -25), (0.45, 1.85, 0.6, 25), (0, 1.75, 0.9, 0), (-0.25, 1.95, 0.0, -12), (0.25, 1.95, 0.0, 12)]:
-        top = (x + math.sin(math.radians(a)) * 0.5, y + 0.45, z + 0.15)
-        m.rod("Crystal", (x, y - 0.2, z), top, 0.22, (220, 245, 255), mat="Glass", tr=0.15, refl=0.4, shape="B")
-        m.ell("Crystal", (0.14, 0.24, 0.14), top, (245, 252, 255), mat="Glass", tr=0.1)
+            m.ball("Toe", 0.24, (s * 1.12 + k * 0.2, 0.11, -0.22 - abs(k) * 0.04), frost, "Ice")
+        # front legs
+        sh, wr = V(s * 0.62, 1.0, -0.55), V(s * 0.78, 0.26, -0.92)
+        m.seg("FrontLeg", sh, wr, 0.2, ice, "Ice", bulge=0.42)
+        m.ell("FrontFoot", (0.46, 0.18, 0.5), (s * 0.8, 0.1, -1.0), deep, "Ice")
+        for k in (-1, 0, 1):
+            m.ball("Toe", 0.18, (s * 0.8 + k * 0.15, 0.09, -1.25), frost, "Ice")
+    # big crystal spikes along the head and back: the frog's silhouette
+    for (x, y, z, L, w, ax, az) in [(0, 2.0, -0.05, 0.95, 0.32, 0, -12), (-0.38, 1.9, 0.2, 0.72, 0.26, -26, -6),
+                                    (0.38, 1.9, 0.22, 0.75, 0.26, 26, -4), (0, 1.88, 0.5, 0.85, 0.3, 0, 10),
+                                    (-0.42, 1.62, 0.78, 0.6, 0.22, -30, 22), (0.42, 1.62, 0.8, 0.6, 0.22, 30, 24),
+                                    (0, 1.5, 1.02, 0.55, 0.22, 0, 40)]:
+        dirv = V(math.sin(math.radians(ax)), 1.0, math.sin(math.radians(az)))
+        m.crystal("Crystal", V(x, y, z), dirv, L, w, (214, 242, 255), mat="Glass", tr=0.08, refl=0.35, spin=ax)
+    # a knitted scarf (sky blue with a yellow stripe), its end blowing back
+    for k in range(5):
+        a1, a2 = math.radians(-150 + k * 30), math.radians(-120 + k * 30)
+        p1 = V(math.cos(a1) * 0.84, 1.16, math.sin(a1) * 0.64 + 0.1)
+        p2 = V(math.cos(a2) * 0.84, 1.16, math.sin(a2) * 0.64 + 0.1)
+        m.seg("Scarf", p1, p2, 0.15, SKY if k != 2 else BOLT, "Fabric", ext=0.05)
+    m.seg("Scarf", V(0.62, 1.2, -0.25), V(1.05, 1.0, 0.3), 0.13, SKY, "Fabric", r2=0.06)
+    m.seg("Scarf", V(1.05, 1.0, 0.3), V(1.15, 0.92, 0.62), 0.12, BOLT, "Fabric", r2=0.06)
     # hailstones bouncing around
-    for (x, z) in [(-1.3, -0.6), (1.4, 0.4), (1.2, -0.9), (-1.2, 0.8)]:
-        m.ball("Hail", 0.3, (x, 0.15, z), (240, 250, 255), mat="Ice")
-        m.ball("HailShine", 0.1, (x - 0.06, 0.24, z - 0.08), WHITE)
+    for (x, z, d) in [(-1.35, -0.75, 0.32), (1.45, -0.85, 0.28), (-1.45, 0.95, 0.26), (0.0, -1.35, 0.24)]:
+        m.ball("Hail", d, (x, d / 2, z), (236, 248, 255), "Ice")
+        m.ball("Hail", d * 0.35, (x - d * 0.18, d * 0.78, z - d * 0.18), WHITE)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def fog_bank():
-    m = Model("fog_bank")
-    fog = (225, 230, 240)
-    pink = (235, 200, 215)
-    body = m.ell("Body", (1.9, 1.6, 2.4), (0, 1.25, 0), fog, tr=0.25)
-    m.smoke(body, (235, 235, 245), 0.12, 0.3, 2.5)
-    m.ell("Core", (1.3, 1.1, 1.7), (0, 1.25, 0), (200, 205, 220), tr=0.1)
-    # swirls of mist inside
-    for k in range(3):
-        m.ring("Swirl", (0, 1.25 + (k - 1) * 0.25, 0.1), 0.6 - k * 0.1, 0.06, (245, 245, 252), normal="y", segments=10, tr=0.35, R=rot(x=10 * k, z=-8 * k))
-    m.cyl("Snout", 0.3, 0.62, (0, 1.2, -1.25), pink, axis="z")
-    m.ring("Snout", (0, 1.2, -1.41), 0.3, 0.05, shade(pink, 0.9), normal="z", segments=10)
+    """Rare. A piggy bank made of fog: a round cloud pig with swirls of mist, a snout, floppy ears, a
+    bowler hat, a coin slot with a gold coin, stubby legs, a curly tail and ground fog. Mood: smug."""
+    m = SModel("fog_bank")
+    fog = (214, 222, 240)
+    deep = (178, 188, 214)
+    snout = (234, 206, 224)
+    bc, bs = V(0, 1.32, 0.12), (2.3, 1.95, 2.6)
+    m.ell("Body", bs, bc, fog)
+    # a cloudy fringe of fog puffs round the back and sides, a darker belly
+    for (x, y, z, d) in [(-0.66, 1.92, 0.62, 0.86), (0.64, 1.95, 0.66, 0.82), (0.0, 2.06, 0.98, 0.86),
+                         (-0.95, 1.45, 0.9, 0.74), (0.96, 1.42, 0.92, 0.74), (-1.05, 1.15, 0.1, 0.62), (1.06, 1.12, 0.14, 0.62)]:
+        m.ball("Fog", d, (x, y, z), shade(fog, 1.06))
+    m.ell("Belly", (1.9, 0.7, 2.2), (0, 0.72, 0.12), deep)
+    # swirls of mist on the sides
     for s in (-1, 1):
-        m.ell("Nostril", (0.1, 0.16, 0.06), (s * 0.12, 1.2, -1.42), (120, 90, 110))
-        m.ell("Ear", (0.42, 0.52, 0.15), (s * 0.5, 2.05, -0.55), pink, R=rot(x=-20, z=s * -25))
-        m.ell("EarInner", (0.25, 0.32, 0.08), (s * 0.5, 2.03, -0.63), (215, 160, 185), R=rot(x=-20, z=s * -25))
-        for sz in (-1, 1):
-            m.cyl("Leg", 0.55, 0.4, (s * 0.55, 0.3, sz * 0.7), fog, tr=0.2)
-            m.cyl("Hoof", 0.14, 0.42, (s * 0.55, 0.07, sz * 0.7), pink)
-    m.eyes(1.62, -1.02, 0.65, 0.34, lid=fog, sleepy=True, iris=(120, 140, 200))
-    m.cheeks(1.32, -1.0, 1.15, 0.24)
-    m.grin(0.8, -1.08, 0.3, curve=0.2, color=(130, 110, 130), surface=ell_front((0, 1.25, 0), (1.9, 1.6, 2.4)))
-    # coin slot with a coin dropping in, and a cork stopper underneath
-    m.rbox("CoinSlot", (0.85, 0.08, 0.2), (0, 2.06, 0.1), (60, 60, 70), 0.04)
-    m.cyl("Coin", 0.08, 0.5, (0, 2.25, 0.1), (240, 200, 60), mat="Metal", axis="x", refl=0.3)
-    m.cyl("CoinRim", 0.09, 0.4, (0, 2.25, 0.1), (255, 220, 100), mat="Metal", axis="x")
-    m.cyl("Coin", 0.06, 0.32, (0.55, 0.1, -0.55), (240, 200, 60), mat="Metal")
-    m.cyl("Cork", 0.2, 0.36, (0, 0.5, 0.2), (190, 150, 100))
-    m.chain("Tail", [(0, 1.4, 1.2), (0.15, 1.6, 1.4), (-0.05, 1.75, 1.45), (0.1, 1.85, 1.35)], 0.1, pink, joints=False)
-    # fog wisps
-    for (x, y, z, d) in [(-1.2, 0.5, -0.5, 0.8), (1.2, 0.6, 0.3, 0.9), (0.9, 0.3, -1.0, 0.7), (-1.0, 0.35, 0.9, 0.75), (0.3, 0.25, 1.2, 0.6)]:
-        m.ball("Wisp", d, (x, y, z), (240, 240, 248), tr=0.55)
+        for k, (y, z, L) in enumerate([(1.55, 0.05, 1.0), (1.18, 0.35, 0.8)]):
+            p, n = on_ell_R(bc, bs, I3, V(s, (y - bc[1]) / 1.0, (z - bc[2]) / 1.3))
+            m.ell("Swirl", (L, 0.13, 0.06), p + n * 0.01, (244, 248, 255), R=frame_normal(n) @ Rz(-14 * s))
+    # snout and face
+    sc = V(0, 1.22, -1.12)
+    m.cyl("Snout", 0.42, 0.78, sc, snout, axis="z")
+    m.ell("Snout", (0.78, 0.78, 0.2), sc + V(0, 0, -0.2), shade(snout, 1.05))
+    for s in (-1, 1):
+        m.ell("Nostril", (0.13, 0.2, 0.08), sc + V(s * 0.16, 0, -0.29), (120, 84, 110))
+    m.eyes_on(bc, bs, I3, 25, 17, 0.38, 0.44, fog, "smug", iris=SKY, lash=2, brow=(120, 128, 160), brow_k=0.8)
+    p, n = on_ell_R(bc, bs, I3, V(0.1, -0.2, -1))
+    m.mouth(p + V(0, -0.06, -0.02), n, 0.4, "smug", color=(96, 80, 110), side_bias=1)
+    for s in (-1, 1):
+        p, n = on_ell_R(bc, bs, I3, V(s * 0.66, -0.1, -1))
+        m.ell("Cheek", (0.3, 0.17, 0.08), p + n * 0.01, (240, 182, 206), R=frame_normal(n))
+        # pointy pig ears with the tips folding forward
+        m.ear(V(s * 0.6, 2.02, -0.48), V(s * 0.92, 2.5, -0.82), 0.5, fog, inner=snout, depth=0.16,
+              curve=(s * 0.02, 0.04, -0.08), facing=(s * 0.35, 0.35, -1))
+    # a little bowler hat with a sky-blue band
+    hc = V(0, 2.32, -0.18)
+    m.ell("HatBrim", (1.0, 0.1, 0.9), hc, (52, 54, 70), R=rot(x=-8))
+    m.ell("Hat", (0.7, 0.62, 0.64), hc + V(0, 0.2, 0.02), (60, 62, 80), R=rot(x=-8))
+    m.cyl("HatBand", 0.12, 0.72, hc + V(0, 0.1, 0.01), SKY, axis="y", R=rot(x=-8))
+    # coin slot with a gold coin dropping in
+    m.blk("Slot", (0.6, 0.07, 0.13), (0, 2.27, 0.58), (52, 54, 70), R=rot(x=14))
+    m.cyl("Coin", 0.09, 0.64, (0, 2.5, 0.56), GOLD, axis="x", mat="Metal", refl=0.15)
+    m.cyl("Coin", 0.11, 0.42, (0, 2.5, 0.56), shade(GOLD, 1.12), axis="x", mat="Metal", refl=0.15)
+    # four stubby piggy-bank legs with hooves
+    for s in (-1, 1):
+        for z in (-0.55, 0.82):
+            m.seg("Leg", V(s * 0.68, 0.92, z), V(s * 0.7, 0.26, z - 0.03), 0.27, fog, bulge=0.4)
+            m.hoof((s * 0.7, z - 0.03), 0.22, (94, 102, 132), notch=True)
+    # curly tail
+    pts = [V(0, 1.55, 1.4), V(0.1, 1.72, 1.58), V(0.28, 1.68, 1.66), V(0.32, 1.5, 1.6), V(0.18, 1.42, 1.62)]
+    for k in range(4):
+        m.seg("Tail", pts[k], pts[k + 1], 0.08 - k * 0.008, snout, ext=0.03)
+    # ground fog curling round the feet, coins on the ground
+    for (x, z, w, d) in [(-1.1, -0.4, 1.2, 0.8), (1.15, 0.25, 1.1, 0.9), (-0.8, 1.1, 1.0, 0.7), (0.9, -1.0, 0.9, 0.6)]:
+        m.ell("Wisp", (w, 0.34, d), (x, 0.17, z), (236, 242, 252), tr=0.5)
+    for (x, z) in [(-0.45, -1.35), (0.55, -1.3)]:
+        m.cyl("Coin", 0.06, 0.36, (x, 0.03, z), GOLD, axis="y", mat="Metal", refl=0.15)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def lightning_llama():
-    m = Model("lightning_llama")
-    wool = (250, 245, 225)
-    face = (230, 215, 185)
-    m.ell("Body", (1.4, 1.3, 2.4), (0, 1.75, 0.25), wool, mat="Fabric")
-    m.scatter("Fluff", (0, 1.75, 0.25), (1.4, 1.3, 2.4), 12, [wool, shade(wool, 0.95)], seed=21, d=0.35, shape="dot", ymin=-0.2, mat="Fabric")
-    m.ell("Neck", (0.7, 1.6, 0.75), (0, 2.6, -0.75), wool, mat="Fabric", R=rot(x=12))
-    for k in range(3):
-        m.ball("Fluff", 0.4, (0, 2.2 + k * 0.4, -1.02 - k * 0.03), wool, mat="Fabric")
-    m.ell("Head", (0.8, 0.75, 1.15), (0, 3.45, -1.05), face)
-    m.ell("Muzzle", (0.6, 0.5, 0.5), (0, 3.3, -1.6), (240, 230, 210))
-    m.ell("Nose", (0.25, 0.12, 0.08), (0, 3.38, -1.84), (80, 60, 60))
-    m.grin(3.18, -1.82, 0.22, curve=0.3, color=(90, 60, 60))
-    m.eyes(3.6, -1.42, 0.55, 0.25, lid=face, iris=(120, 80, 40), lash=3, z_back=0.04)
+    """Epic. A storm-wool llama: a woolly neck and deep chest, a body of big wool clumps, thick legs
+    with woolly thighs, slate shins and big hooves, tall ears, a storm-cloud hairdo with a spark, a bolt
+    on its pom tail and a sky-blue saddle blanket with a yellow zigzag. Mood: proud, half-lidded."""
+    m = SModel("lightning_llama")
+    wool = (240, 244, 252)
+    wool_d = (212, 220, 240)
+    skin = (118, 130, 176)
+    skin_l = (172, 182, 216)
+    hoofc = (54, 58, 84)
+    blanket = SKY
+    bolt = BOLT
+
+    # body: chest, barrel and rump flow into each other, big wool clumps
+    m.ell("Body", (1.52, 1.36, 1.75), (0, 1.98, 0.22), wool, "Fabric")
+    m.ell("Chest", (1.42, 1.4, 1.2), (0, 2.02, -0.48), wool, "Fabric")
+    m.ell("Rump", (1.44, 1.36, 1.18), (0, 2.02, 0.88), wool, "Fabric")
+    m.ell("Belly", (1.24, 0.72, 1.9), (0, 1.5, 0.2), wool_d, "Fabric")
+    m.puffs("Wool", (0, 2.02, -0.48), (1.42, 1.4, 1.2), 5, 0.66, wool, seed=3, ymin=-0.3,
+            keep=lambda v: v[2] < -0.3, mat="Fabric", shade_k=0.05)
+    m.puffs("Wool", (0, 2.02, 0.88), (1.44, 1.36, 1.18), 5, 0.64, wool, seed=5, ymin=-0.25,
+            keep=lambda v: v[2] > 0.3, mat="Fabric", shade_k=0.05)
+
+    # saddle blanket: five cloth slats bent over the back, rolled hems, a zigzag stripe, tassels
+    arc = []
+    for k in range(5):
+        a = math.radians(-76 + k * 38)
+        arc.append((math.sin(a) * 0.8, 2.0 + math.cos(a) * 0.72))
+    hem = shade(blanket, 0.8)
+    zf, zb = -0.36, 0.8
+    for k in range(5):
+        a = math.radians(-76 + k * 38)
+        x, y = arc[k]
+        m.blk("Blanket", (0.56, 0.08, zb - zf), (x, y, (zf + zb) / 2), blanket, "Fabric", R=rot(z=-math.degrees(a)))
+    for z in (zf, zb):
+        for k in range(5):
+            a = math.radians(-76 + k * 38)
+            x, y = arc[k]
+            d = V(math.cos(a), -math.sin(a), 0) * 0.29
+            p = V(x, y, z)
+            m.seg("Hem", p - d, p + d, 0.06, hem, "Fabric", shape="C")
     for s in (-1, 1):
-        # banana-shaped ears
-        m.ell("Ear", (0.18, 0.58, 0.22), (s * 0.3, 4.02, -0.95), face, R=rot(z=s * -15))
-        m.ell("EarInner", (0.08, 0.38, 0.1), (s * 0.3, 4.02, -1.04), (210, 170, 150), R=rot(z=s * -15))
-        for sz in (-1, 1):
-            z = 0.25 + sz * 0.75
-            m.cyl("Leg", 1.2, 0.32, (s * 0.42, 0.6, z), face)
-            m.ball("Knee", 0.36, (s * 0.42, 0.68, z), shade(face, 0.95))
-            m.ell("Hoof", (0.38, 0.2, 0.42), (s * 0.42, 0.1, z - 0.05), (90, 80, 70))
-            m.blk("Hoof", (0.04, 0.18, 0.2), (s * 0.42, 0.1, z - 0.2), (50, 45, 40))
-    # woven saddle blanket with a zigzag and tassels
-    m.ell("Blanket", (1.5, 0.6, 1.2), (0, 2.3, 0.3), (210, 60, 70), mat="Fabric")
+        x, y = arc[0 if s < 0 else 4]
+        a = math.radians(-76 if s < 0 else 76)
+        low = V(x, y, 0) - V(math.cos(a), -math.sin(a), 0) * 0.28
+        m.seg("Hem", V(low[0], low[1], zf), V(low[0], low[1], zb), 0.065, hem, "Fabric", shape="C")
+        nrm = V(math.sin(a), math.cos(a), 0)
+        pts = [V(low[0], low[1], 0) + V(math.cos(a), -math.sin(a), 0) * (0.16 if k % 2 else 0.06) + nrm * 0.045
+               + V(0, 0, zf + 0.12 + k * 0.165) for k in range(8)]
+        m.chain("Zigzag", pts, 0.055, bolt, joints=False)
+        for z in (zf, zb):
+            m.ball("Tassel", 0.13, (low[0], low[1] - 0.04, z), bolt, "Fabric")
+            m.seg("Tassel", (low[0], low[1] - 0.06, z), (low[0] * 1.02, low[1] - 0.3, z), 0.06, bolt, "Fabric", bulge=0.7)
+
+    # neck: thick and woolly, leaning forward, with a fluffy bib and collar
+    m.seg("Neck", V(0, 2.2, -0.62), V(0, 3.62, -1.26), 0.44, wool, "Fabric", bulge=0.36, r2=0.42)
+    for (y, z, d) in [(2.42, -1.18, 0.66), (2.86, -1.3, 0.54), (3.22, -1.4, 0.44)]:
+        m.ball("Wool", d, (0, y, z), wool, "Fabric")
     for s in (-1, 1):
-        for k in range(4):
-            m.blk("Zigzag", (0.04, 0.12, 0.24), (s * 0.73, 2.1, -0.15 + k * 0.3), (255, 210, 50), R=rot(x=40 if k % 2 else -40))
-        for k in range(3):
-            m.ball("Tassel", 0.14, (s * 0.72, 1.85, -0.1 + k * 0.4), (60, 120, 210), mat="Fabric")
-    # fluffy wool tufts and a storm-cloud hairdo with a spark
-    for (x, y, z) in [(0, 2.45, 1.0), (0.3, 2.35, 1.25)]:
-        m.ball("Tuft", 0.55, (x, y, z), wool, mat="Fabric")
-    for (x, z, d) in [(0, -1.0, 0.55), (-0.25, -0.85, 0.42), (0.25, -0.85, 0.42), (0, -0.7, 0.45)]:
-        m.ball("Hair", d, (x, 3.9, z), (110, 115, 135))
-    m.ball("Hair", 0.3, (0.0, 3.85, -1.35), (140, 145, 165))
-    bolt(m, "Spark", (0.15, 3.75, -1.6), 0.45, 0.1)
-    # lightning bolt marks on both sides
+        m.ball("Wool", 0.56, (s * 0.34, 2.48, -1.0), wool, "Fabric")
+
+    # head
+    hc = V(0, 3.72, -1.4)
+    hs = (0.94, 0.84, 0.92)
+    m.ell("Head", hs, hc, skin)
+    mc = V(0, 3.4, -1.88)
+    ms = (0.6, 0.5, 0.62)
+    m.ell("Muzzle", ms, mc, skin_l)
+    m.ell("Nose", (0.34, 0.13, 0.17), mc + V(0, 0.19, -0.27), shade(skin, 0.62))
     for s in (-1, 1):
-        m.blk("Bolt", (0.06, 0.6, 0.18), (s * 0.71, 1.95, 0.05), (255, 220, 40), mat="Neon", R=rot(x=25))
-        m.blk("Bolt", (0.06, 0.5, 0.18), (s * 0.71, 1.55, 0.3), (255, 220, 40), mat="Neon", R=rot(x=-25))
-    m.ball("Tail", 0.45, (0, 2.0, 1.5), wool, mat="Fabric")
-    m.ball("TailTip", 0.3, (0, 1.82, 1.65), wool, mat="Fabric")
-    sp = m.ball("Spark", 0.2, (0, 4.25, -0.95), (255, 240, 120), mat="Neon")
-    m.sparkles(sp, (255, 240, 100))
-    m.light(sp, (255, 240, 150), 1, 6)
+        m.ell("Nostril", (0.08, 0.05, 0.06), mc + V(s * 0.11, 0.16, -0.31), INK)
+    p, n = on_ell_R(mc, ms, I3, V(0, -0.5, -1))
+    m.mouth(p + V(0, 0.03, 0), n, 0.26, "smug", color=(48, 40, 70), side_bias=1, d=0.032)
+    m.seg("Mouth", mc + V(0, 0.1, -0.31), mc + V(0, -0.02, -0.31), 0.02, (48, 40, 70))
+    m.eyes_on(hc, hs, I3, 26, 16, 0.32, 0.38, skin, "proud", iris=(96, 170, 245), lash=3,
+              brow=(52, 58, 86), brow_k=0.8)
+    for s in (-1, 1):
+        m.ear(hc + V(s * 0.26, 0.3, 0.1), hc + V(s * 0.5, 0.98, 0.2), 0.28, skin, inner=(210, 194, 240),
+              curve=(s * 0.1, 0, -0.04), facing=(s * 0.3, 0, -1))
+    # storm-cloud hairdo with a little lightning spark
+    hair = (176, 186, 214)
+    for (x, y, z, d) in [(0, 0.5, 0.0, 0.46), (-0.2, 0.44, 0.1, 0.38), (0.2, 0.46, 0.12, 0.38),
+                         (0, 0.56, 0.22, 0.36), (0.0, 0.42, -0.22, 0.32)]:
+        m.ball("Hair", d, hc + V(x, y, z), hair, "Fabric")
+    m.ball("Hair", 0.26, hc + V(0.04, 0.68, 0.06), shade(hair, 1.2), "Fabric")
+    sp = m.bolt("Spark", hc + V(0.1, 1.02, -0.06), 0.42, w=0.1, color=bolt, R=rot(z=-12))
+    m.light(sp, (255, 236, 140), 1.0, 6)
+
+    # legs: woolly thighs, slate shins, big hooves
+    for s in (-1, 1):
+        x = s * 0.42
+        for (zh, zk, za) in ((-0.55, -0.6, -0.55), (0.98, 1.08, 0.96)):
+            hip, knee, ankle = V(x, 1.72, zh), V(x * 1.02, 0.98, zk), V(x * 1.02, 0.4, za)
+            m.seg("Thigh", hip, knee, 0.34, wool, "Fabric", bulge=0.36, ext=0.08)
+            m.ball("Knee", 0.4, knee + V(0, 0.02, -0.03), wool, "Fabric")
+            m.seg("Shin", knee, ankle, 0.18, skin, bulge=0.45, ext=0.05)
+            m.hoof((ankle[0], ankle[2] - 0.03), 0.24, hoofc, sock=None)
+
+    # tail: a fluffy pom with a lightning bolt sticking out
+    m.ball("Tail", 0.6, (0, 2.38, 1.5), wool, "Fabric")
+    m.ball("TailTip", 0.44, (0, 2.64, 1.72), wool, "Fabric")
+    m.bolt("Tail", (0, 3.25, 1.86), 0.5, w=0.12, color=bolt, mat="SmoothPlastic", R=rot(y=90))
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def tornado_twins():
-    m = Model("tornado_twins")
-    for s, tint in ((-1, (175, 185, 205)), (1, (160, 175, 200))):
-        cx = s * 0.85
-        for k in range(6):
-            y = 0.3 + k * 0.55
-            d = 0.4 + k * 0.27
-            off = math.sin(k * 0.9 + s) * 0.12
-            m.cyl("Funnel", 0.6, d, (cx + off, y, 0), tint, tr=0.15 if k > 0 else 0)
-            # a slanted swirl band on every layer
-            m.ring("Swirl", (cx + off, y + 0.22, 0), d / 2 + 0.02, 0.05, (225, 230, 242), normal="y", segments=8 + k, R=rot(x=10, z=6 * s))
-        top = 0.3 + 5 * 0.55
-        m.cyl("Funnel", 0.1, 1.75, (cx + math.sin(5 * 0.9 + s) * 0.12, top + 0.33, 0), shade(tint, 0.85))
-        ex = cx + math.sin(4 * 0.9 + s) * 0.12
-        m.eyes(2.45, -0.88, 0.48, 0.32, lid=tint, x=ex, iris=(90, 120, 200) if s > 0 else (200, 90, 90), z_back=0.03)
-        if s < 0:
-            m.brow(ex - 0.24, 2.73, -0.86, 0.26, (70, 80, 100), -1, tilt=18)
-            m.brow(ex + 0.24, 2.73, -0.86, 0.26, (70, 80, 100), 1, tilt=18)
-        mx = cx + math.sin(3 * 0.9 + s) * 0.12
-        m.grin(2.12, -0.92, 0.3, x=mx, open_=(s > 0), curve=0.25 if s > 0 else -0.1, bend=0.04)
-    # holding hands
-    m.rod("Arm", (-0.45, 1.6, -0.2), (0.0, 1.35, -0.45), 0.14, (170, 180, 200))
-    m.rod("Arm", (0.45, 1.6, -0.2), (0.0, 1.35, -0.45), 0.14, (170, 180, 200))
-    m.ball("Hand", 0.22, (-0.05, 1.36, -0.46), (170, 180, 200))
-    m.ball("Hand", 0.22, (0.05, 1.34, -0.44), (170, 180, 200))
-    # debris spinning around: leaves, a plank, a sign and a tiny cow-spotted bucket
-    for (x, y, z, c) in [(-1.7, 2.6, 0.3, (90, 170, 70)), (1.75, 2.0, -0.4, (200, 150, 80)), (-1.5, 1.2, -0.6, (90, 170, 70)), (1.6, 3.0, 0.5, (220, 60, 60))]:
-        m.blk("Debris", (0.28, 0.06, 0.18), (x, y, z), c, R=rot(30, 50, 20))
-    m.blk("Plank", (0.7, 0.1, 0.18), (-1.75, 3.2, -0.2), (150, 105, 60), mat="Wood", R=rot(10, 30, 35))
-    m.cyl("Bucket", 0.3, 0.3, (1.85, 1.2, 0.3), (240, 240, 240), R=rot(z=40))
-    m.ell("BucketSpot", (0.12, 0.1, 0.05), (1.82, 1.22, 0.15), (30, 30, 30))
-    m.cyl("Dust", 0.08, 2.8, (0, 0.04, 0), (200, 190, 170), tr=0.4)
-    m.ring("Dust", (0, 0.1, 0), 1.45, 0.12, (210, 200, 180), normal="y", segments=14, tr=0.5)
+    """Mythic. Two twisting funnels on one dust base, each with its own giggling face, holding hands,
+    with streaks of wind, a road sign, a plank, a tin can and leaves caught in the spin and a spark
+    crackling between them. Mood: chaotic giggle."""
+    m = SModel("tornado_twins")
+    low, high = (110, 126, 166), (204, 216, 238)
+    swirl = (240, 245, 253)
+
+    def mix(t):
+        return tuple(int(low[i] + (high[i] - low[i]) * t) for i in range(3))
+
+    faces = {}
+    for s, phase in ((-1, 0.0), (1, 2.4)):
+        cx = s * 0.98
+
+        def at(k):
+            return cx + math.sin(k * 0.8 + phase) * 0.13, math.cos(k * 0.8 + phase) * 0.07
+
+        n = 9
+        for k in range(n):
+            t = k / (n - 1)
+            y = 0.36 + k * 0.34
+            r = 0.2 + t ** 1.1 * 0.92
+            ox, oz = at(k)
+            m.ell("Funnel", (2 * r, 0.62, 2 * r), (ox, y, oz), mix(t))
+        # a puffy, cloudy top
+        ox, oz = at(n)
+        top = V(ox, 3.2, oz)
+        m.ell("Funnel", (2.25, 0.62, 2.0), top, high)
+        for k in range(5):
+            a = 2 * math.pi * k / 5 + phase
+            m.ball("Funnel", 0.6, top + V(math.cos(a) * 0.82, 0.08, math.sin(a) * 0.72), shade(high, 1.04))
+        m.ell("Swirl", (1.0, 0.12, 0.9), top + V(0, 0.3, 0), swirl, tr=0.1)
+        # a smooth face piece on the upper funnel
+        ox, oz = at(6)
+        fc, fs = V(ox, 2.36, oz - 0.18), (1.72, 1.36, 1.86)
+        m.ell("Funnel", fs, fc, mix(0.72))
+        faces[s] = (fc, fs)
+        # streaks of wind wrapping round the funnel below the face
+        for k, (y, r) in enumerate([(0.95, 0.5), (1.45, 0.66)]):
+            ox, oz = at(2 + k * 2)
+            for j in range(3):
+                a1, a2 = math.radians(200 + j * 40 + phase * 30), math.radians(240 + j * 40 + phase * 30)
+                p1 = V(ox + math.cos(a1) * r, y + j * 0.07, oz + math.sin(a1) * r)
+                p2 = V(ox + math.cos(a2) * r, y + (j + 1) * 0.07, oz + math.sin(a2) * r)
+                m.seg("Swirl", p1, p2, 0.05, swirl, tr=0.1, ext=0.03)
+    # faces: one goofy (crossed eyes, tongue out), one wide-eyed and giggling
+    for s, mood, iris in ((-1, "goofy", (90, 130, 220)), (1, "eager", (222, 104, 120))):
+        fc, fs = faces[s]
+        m.eyes_on(fc, fs, I3, 23, 14, 0.42, 0.5, mix(0.72), mood, iris=iris, brow=(66, 76, 108), brow_k=0.8)
+        p, n = on_ell_R(fc, fs, I3, V(0, -0.34, -1))
+        m.mouth(p, n, 0.46, mood, skin=mix(0.72))
+        face_cheeks(m, fc, fs, 0.62, -0.2, 0.22)
+    # wind-wisp arms: the inner ones hold hands in the middle, the outer ones wave
+    wisp = (184, 198, 226)
+    for s in (-1, 1):
+        sh, hand = V(s * 0.5, 1.82, -0.25), V(s * 0.16, 1.5, -0.66)
+        m.seg("Arm", sh, hand, 0.13, wisp, bulge=0.45)
+        m.ball("Hand", 0.24, hand, wisp)
+        sh2, hand2 = V(s * 1.72, 2.2, 0.0), V(s * 2.02, 2.86, -0.32)
+        m.seg("Arm", sh2, hand2, 0.13, wisp, bulge=0.45)
+        m.ball("Hand", 0.24, hand2, wisp)
+    # the dust base they spin on
+    m.ell("Base", (3.3, 0.24, 1.9), (0, 0.12, 0), (176, 160, 138))
+    m.ell("Base", (2.6, 0.12, 1.5), (0, 0.22, 0), (196, 182, 160))
+    for (x, z, d) in [(-1.5, -0.4, 0.5), (1.55, 0.3, 0.46), (-0.2, 0.7, 0.42), (0.45, -0.75, 0.4), (-1.0, 0.75, 0.36)]:
+        m.ball("Dust", d, (x, d * 0.4, z), (200, 186, 164), tr=0.25)
+    # debris caught in the wind: a road sign, a plank, a tin can, leaves
+    sg = V(1.72, 3.62, 0.35)
+    m.seg("SignPole", sg + V(-0.35, -0.55, 0), sg, 0.05, (140, 144, 152), shape="C")
+    for k, (sz, col) in enumerate([(0.52, BOLT), (0.38, (40, 40, 46)), (0.3, BOLT)]):
+        m.blk("Sign", (sz, sz, 0.05 + k * 0.01), sg + V(0.02, 0.05, -0.006 * k), col, R=rot(y=20, z=45))
+    m.blk("Plank", (0.8, 0.12, 0.22), (-1.98, 3.2, -0.25), (156, 110, 66), "WoodPlanks", R=rot(10, 30, 35))
+    m.blk("Plank", (0.06, 0.13, 0.06), (-1.75, 3.27, -0.2), (90, 92, 100), "Metal", R=rot(10, 30, 35))
+    m.cyl("Can", 0.42, 0.28, (2.12, 1.25, -0.45), (200, 70, 60), "y", "Metal", R=rot(x=30, z=50))
+    m.cyl("Can", 0.06, 0.3, (2.12, 1.25, -0.45) + V(0.16, 0.12, 0.08), (200, 205, 212), "y", "Metal", R=rot(x=30, z=50))
+    for (x, y, z, a) in [(-1.75, 1.3, -0.65, 30), (1.85, 1.75, -0.5, -40), (-2.05, 2.45, 0.45, 60), (2.05, 1.05, 0.55, 15),
+                         (0.0, 3.25, -0.65, -20), (-0.6, 3.6, 0.3, 45)]:
+        m.ell("Leaf", (0.32, 0.05, 0.18), (x, y, z), (104, 178, 82), R=rot(a, a * 1.3, a * 0.6))
+        m.seg("Leaf", V(x, y, z) + V(-0.1, 0, 0), V(x, y, z) + V(0.12, 0.01, 0), 0.015, (70, 130, 60))
+    # a little spark crackling between the twins
+    b = m.bolt("Spark", (0.08, 3.1, -0.1), 0.62, w=0.14, color=BOLT)
+    m.light(b, (255, 236, 140), 1.0, 6)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def stormlord_nimbus():
-    m = Model("stormlord_nimbus")
-    c = (90, 95, 120)
-    cloud(m, 0, 3.0, 0.1, 1.55, c)
-    cloud(m, 0, 2.2, 0.3, 1.0, (75, 80, 105), shaded=False)
-    # fierce glowing eyes with heavy brows
+    """Legendary. A huge thundercloud lord: glowing eyes under heavy brows, a cloud beard, a gold crown
+    of lightning bolts on a velvet cap, a royal mantle with a gold trim, big cloud arms with a bolt
+    sceptre and a crackling orb, a gold medallion, bolts striking down and a curtain of rain.
+    Mood: imperious."""
+    m = SModel("stormlord_nimbus")
+    body = (86, 96, 132)
+    c, cs = cloud(m, (0, 3.08, 0.1), (3.9, 2.3, 2.6), body, seed=11, under=(56, 62, 90), light=(128, 140, 176))
+    imperious = dict(open=0.8, lid=16, brow=22, lift=0.05, mouth="flat", curve=0.0)
+    # face: glowing eyes under heavy brows, a puff nose, a cloud mustache and beard
+    m.eyes_on(c, cs, I3, 18, 14, 0.52, 0.42, body, imperious, glow=True, white=(255, 240, 150), pupil=(70, 50, 30),
+              pupil_k=0.38, brow=(34, 38, 56), brow_k=1.4, inward=0.04)
+    p, n = on_ell_R(c, cs, I3, V(0, -0.02, -1))
+    m.ball("Nose", 0.44, p + n * 0.06, shade(body, 1.12))
+    beard = (206, 214, 232)
     for s in (-1, 1):
-        e = m.ell("Eye", (0.52, 0.34, 0.25), (s * 0.45, 3.15, -1.7), (220, 240, 255), mat="Neon", R=rot(z=s * -12))
-        m.ell("EyeGlow", (0.75, 0.5, 0.15), (s * 0.45, 3.15, -1.66), (160, 200, 255), mat="Neon", tr=0.65, R=rot(z=s * -12))
-        m.brow(s * 0.45, 3.45, -1.72, 0.7, (40, 45, 60), s, tilt=22, d=0.18, arch=0.04)
-    m.light(e, (190, 220, 255), 1.0, 6)
-    m.grin(2.68, -1.8, 0.75, color=(30, 30, 45), curve=-0.12, d=0.12, bend=0.08, open_=True, teeth=4, tongue=(40, 40, 60))
-    # rain beard: strands of different lengths ending in drops
-    for k in range(9):
-        x = -0.8 + k * 0.2
-        ln = 0.8 + (0.45 if k % 2 == 0 else 0.1) - abs(x) * 0.3
-        m.blk("Beard", (0.09, ln, 0.09), (x, 2.3 - ln / 2, -1.45 + abs(x) * 0.15), (110, 170, 240), mat="Glass", tr=0.25)
-        drop(m, "Beard", (x, 2.3 - ln - 0.05, -1.45 + abs(x) * 0.15), 0.13, (130, 185, 250))
-    # crown of zigzag lightning on a glowing band
-    crown = None
+        p0, n0 = on_ell_R(c, cs, I3, V(s * 0.08, -0.16, -1))
+        m.seg("Mustache", p0 + n0 * 0.14, p0 + n0 * 0.1 + V(s * 0.64, -0.1, 0.12), 0.17, beard, bulge=0.35)
+        m.ball("Mustache", 0.24, p0 + n0 * 0.08 + V(s * 0.68, 0.0, 0.14), beard)
+    p, n = on_ell_R(c, cs, I3, V(0, -0.3, -1))
+    m.mouth(p + n * 0.02, n, 0.34, imperious, color=(36, 36, 52), d=0.06)
+    for (x, y, z, d) in [(0, -0.62, -0.84, 0.64), (-0.44, -0.5, -0.78, 0.52), (0.44, -0.5, -0.78, 0.52),
+                         (-0.22, -0.96, -0.74, 0.46), (0.22, -0.96, -0.74, 0.46), (0, -1.28, -0.68, 0.38)]:
+        m.ball("Beard", d, c + V(x, y, z), beard)
+    # crown: a velvet cap inside a gold band with lightning-bolt points and sky-blue gems
+    crc = c + V(0, 1.2, 0.0)
+    m.ell("Crown", (1.5, 0.75, 1.5), crc + V(0, 0.16, 0), (120, 40, 70), "Fabric")
+    m.cyl("CrownBand", 0.36, 1.64, crc, GOLD, "y", "Metal", refl=0.2)
+    m.cyl("CrownBand", 0.09, 1.72, crc + V(0, -0.16, 0), shade(GOLD, 0.8), "y", "Metal")
+    m.cyl("CrownBand", 0.07, 1.7, crc + V(0, 0.16, 0), shade(GOLD, 1.1), "y", "Metal")
     for k in range(5):
-        x = -0.8 + k * 0.4
-        h = 0.85 if k == 2 else 0.6
-        p = m.blk("Crown", (0.16, h * 0.55, 0.16), (x, 4.3 + h * 0.2, -0.2), (255, 230, 60), mat="Neon", R=rot(z=(k - 2) * -10 - 18))
-        m.blk("Crown", (0.16, h * 0.55, 0.16), (x + 0.06, 4.3 + h * 0.6, -0.2), (255, 230, 60), mat="Neon", R=rot(z=(k - 2) * -10 + 18))
-        m.wedge("Crown", (0.12, 0.2, 0.16), (x + 0.02, 4.3 + h * 0.95, -0.2), (255, 245, 150), mat="Neon")
-        if k == 2:
-            crown = p
-    m.cyl("CrownBand", 0.18, 1.9, (0, 4.25, -0.1), (255, 210, 50), mat="Neon", R=rot(x=-8))
-    m.gem("CrownGem", (0, 4.25, -1.05), 0.26, (120, 200, 255), glow=True)
-    m.light(crown, (200, 220, 255), 2, 10)
-    m.sparkles(crown, (255, 240, 120))
-    # cloud arms with puffy fists and a lightning scepter with a storm orb
-    m.rod("Arm", (-1.5, 2.7, -0.2), (-2.0, 2.1, -0.8), 0.6, c, shape="E")
-    m.rod("Arm", (1.5, 2.7, -0.2), (2.0, 2.3, -0.8), 0.6, c, shape="E")
-    for s, y in ((1, 2.25), (-1, 2.05)):
-        m.ball("Hand", 0.6, (s * 2.05, y, -0.85), c)
-        m.ball("Knuckle", 0.25, (s * 1.95, y + 0.2, -1.1), shade(c, 1.15))
-        m.ball("Knuckle", 0.25, (s * 2.15, y + 0.15, -1.1), shade(c, 1.15))
-    m.blk("Scepter", (0.2, 0.9, 0.2), (2.15, 2.85, -0.9), (255, 230, 60), mat="Neon", R=rot(z=-20))
-    m.blk("Scepter", (0.2, 0.8, 0.2), (2.15, 3.55, -0.9), (255, 230, 60), mat="Neon", R=rot(z=20))
-    m.blk("Scepter", (0.2, 0.7, 0.2), (2.1, 1.95, -0.9), (255, 230, 60), mat="Neon", R=rot(z=15))
-    orb = m.ball("Orb", 0.42, (2.05, 4.05, -0.9), (170, 200, 255), mat="Glass", tr=0.3, refl=0.3)
-    m.ball("StaffGem", 0.2, (2.05, 4.05, -0.9), (255, 250, 200), mat="Neon")
-    m.sparkles(orb, (200, 220, 255))
-    # rain under the cloud and a rippling puddle
-    for (x, z) in [(-1.0, 0.2), (-0.4, 0.6), (0.5, 0.4), (1.1, 0.0), (0.0, 0.9), (-0.7, -0.3), (0.8, 0.9)]:
-        m.ell("Rain", (0.08, 0.5, 0.08), (x, 0.9, z), (120, 170, 240), mat="Glass", tr=0.3)
-    m.cyl("Puddle", 0.05, 2.6, (0, 0.03, 0.2), (100, 150, 220), mat="Glass", tr=0.35, refl=0.3)
-    for (x, z, r) in [(-0.4, 0.5, 0.3), (0.6, 0.1, 0.22), (0.1, 1.0, 0.18)]:
-        m.ring("Ripple", (x, 0.07, z), r, 0.03, (180, 210, 255), normal="y", segments=8, tr=0.2)
+        a = math.radians(-90 + (k - 2) * 38)
+        q = crc + V(math.cos(a) * 0.8, 0.12, math.sin(a) * 0.8)
+        m.bolt("CrownPoint", q + V(0, 0.66, 0), 0.66, w=0.16, color=BOLT, R=Ry(-math.degrees(a) - 90))
+    for k in (-1, 0, 1):
+        a = math.radians(-90 + k * 38)
+        m.gem("CrownGem", crc + V(math.cos(a) * 0.83, 0.0, math.sin(a) * 0.83), 0.2 if k else 0.26, SKY)
+    m.ball("Crown", 0.24, crc + V(0, 0.62, 0), GOLD, "Metal")
+    # a royal mantle round the back: deep blue with a gold trim and an ermine collar
+    mantle = (44, 56, 120)
+    m.ell("Mantle", (4.1, 2.2, 0.5), c + V(0, -0.35, 1.25), mantle, "Fabric", R=rot(x=-10))
+    m.ell("Mantle", (4.2, 0.24, 0.56), c + V(0, -1.42, 1.43), GOLD, "Fabric", R=rot(x=-10))
+    for k in range(7):
+        x = -1.65 + k * 0.55
+        m.ball("Ermine", 0.5, c + V(x, 0.68 - abs(x) * 0.18, 0.95 + abs(x) * 0.06), (246, 246, 250), "Fabric")
+        if k % 2:
+            m.ell("Ermine", (0.07, 0.14, 0.05), c + V(x, 0.68 - abs(x) * 0.18, 0.69 + abs(x) * 0.06), (30, 30, 36))
+    # big cloud arms: a bolt sceptre in the right hand, a crackling orb above the left
+    for s in (-1, 1):
+        sh, el, wr = c + V(s * 1.62, -0.2, 0.0), c + V(s * 1.96, -0.8, -0.4), c + V(s * 1.82, -0.9, -1.0)
+        m.ball("Shoulder", 0.92, sh, body)
+        m.seg("UpperArm", sh, el, 0.36, body, bulge=0.45)
+        m.ball("Elbow", 0.68, el, body)
+        m.seg("Forearm", el, wr, 0.34, body, bulge=0.6)
+        m.ball("Cuff", 0.58, wr + V(0, 0.02, 0.12), GOLD, "Metal")
+        m.glove(wr + V(0, 0.02, -0.1), 0.3, shade(body, 1.08), s, fist=(s > 0), fingers=3)
+    sx = c + V(1.82, -0.9, -1.12)
+    m.seg("Scepter", sx + V(0, -1.3, 0), sx + V(0, 1.2, 0), 0.08, GOLD, "Metal", shape="C")
+    for y in (1.15, 0.45, -1.25):
+        m.cyl("ScepterBand", 0.12, 0.24, sx + V(0, y, 0), shade(GOLD, 0.85), "y", "Metal")
+    st = m.bolt("ScepterTop", sx + V(0.05, 2.08, 0), 0.98, w=0.25, color=BOLT)
+    m.sparkles(st, (255, 240, 120))
+    orb = c + V(-1.82, -0.5, -1.15)
+    o = m.ball("Orb", 0.44, orb, (210, 236, 255), "Neon", tr=0.2)
+    m.bolt("Orb", orb + V(0.05, 0.17, -0.02), 0.34, w=0.07, color=BOLT)
+    m.light(o, (200, 230, 255), 1.4, 8)
+    # a gold medallion on a chain
+    for s_ in (-1, 1):
+        a0, _ = on_ell_R(c, cs, I3, V(s_ * 0.78, -0.4, -1))
+        b0, _ = on_ell_R(c, cs, I3, V(s_ * 0.12, -0.74, -1))
+        m.seg("MedalChain", a0 + V(0, 0, -0.05), b0 + V(0, 0, -0.08), 0.045, GOLD, "Metal", shape="C")
+    p, n = on_ell_R(c, cs, I3, V(0, -0.78, -1))
+    med = p + n * 0.1 + V(0, -0.06, 0)
+    m.cyl("Medal", 0.1, 0.62, med, GOLD, "z", "Metal", refl=0.2)
+    m.cyl("Medal", 0.12, 0.42, med + V(0, 0, -0.01), SKY, "z")
+    m.bolt("Medal", med + V(0.02, 0.15, -0.08), 0.3, w=0.08, t=0.04, color=BOLT, mat="SmoothPlastic")
+    # bolts striking down and a curtain of rain
+    m.bolt("Strike", c + V(-0.95, -1.15, -0.2), 1.1, w=0.18, color=BOLT)
+    m.bolt("Strike", c + V(0.9, -1.2, 0.35), 0.9, w=0.15, color=BOLT, R=Ry(180))
+    rnd = random.Random(4)
+    for k in range(14):
+        x = -1.65 + k * 0.255 + rnd.uniform(-0.05, 0.05)
+        z = -0.45 + rnd.uniform(-0.35, 0.7)
+        y0 = 1.8 - rnd.uniform(0, 0.25)
+        m.seg("Rain", V(x, y0, z), V(x - 0.08, y0 - 0.95 - rnd.uniform(0, 0.45), z), 0.04, RAIN, "Glass", tr=0.25, refl=0.3)
+    m.cyl("Puddle", 0.05, 3.2, (0, 0.025, -0.05), RAIN, mat="Glass", tr=0.3, refl=0.4)
+    for (x, z, r) in [(-0.9, -0.3, 0.32), (0.7, 0.2, 0.26)]:
+        m.cyl("Puddle", 0.06, r * 2, (x, 0.03, z), (200, 228, 255), mat="Glass", tr=0.2)
+    m.light(1, (190, 210, 255), 0.8, 10)
     return m
+

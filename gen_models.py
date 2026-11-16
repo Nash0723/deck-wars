@@ -2,15 +2,22 @@
 import sys, glob, msgpack
 from cards import C
 from modelkit import to_luau
-import models_snack, models_junk, models_weather, models_critter, models_spooky, models_robo, models_extra
+import models_snack, models_junk, models_weather, models_critter, models_spooky, models_robo, models_extra, models_spells
 
-FILES = [models_snack, models_junk, models_weather, models_critter, models_spooky, models_robo, models_extra]
+FILES = [models_snack, models_junk, models_weather, models_critter, models_spooky, models_robo, models_extra, models_spells]
 models = [fn() for mod in FILES for fn in mod.MODELS]
+# keep every remodeled model at the size it showed before (see sizefit.py)
+import sizefit
+fit_notes = []
+for m in models:
+    k, note = sizefit.fit(m)
+    if note:
+        fit_notes.append(f"{m.id}: {note}")
 ids = [m.id for m in models]
 dupes = {i for i in ids if ids.count(i) > 1}
 assert not dupes, f"duplicate model ids: {dupes}"
 
-need = [c[0] for c in C if c[2] in ("Creature", "Building")] + ["ghost", "pigeon", "hero_bonk", "hero_granny_bolt", "bot_bonkers"]
+need = [c[0] for c in C if c[2] in ("Creature", "Building", "Spell")] + ["ghost", "pigeon", "hero_bonk", "hero_granny_bolt", "bot_bonkers", "scrap"]
 missing = [i for i in need if i not in ids]
 extra = [i for i in ids if i not in need]
 assert not missing, f"models missing for: {missing}"
@@ -26,7 +33,7 @@ p = _found[-1]
 db = msgpack.unpackb(open(p, 'rb').read(), raw=False, strict_map_key=False)
 enums = db[2]
 material_names = set(enums["Material"][1].keys()) if isinstance(enums["Material"], list) else set(enums["Material"]["items"].keys())
-problems = []
+problems = list(fit_notes)
 for m in models:
     for part in m.parts:
         if part["mat"] not in material_names:
@@ -35,7 +42,7 @@ for m in models:
             problems.append(f"{m.id}: part {part['name']} is very thin {part['size']}")
     lo, hi = m.bounds()
     w, d = hi[0] - lo[0], hi[2] - lo[2]
-    limit = {"creature": 5.3, "token": 4.6, "gadget": 3.8, "hero": 3.2, "avatar": 6.0, "terrain": 4.6}[m.kind]
+    limit = {"creature": 5.3, "token": 4.6, "gadget": 3.8, "hero": 3.2, "avatar": 6.0, "terrain": 4.6, "spell": 4.6}[m.kind]
     if max(w, d) > limit + 0.01:
         problems.append(f"{m.id}: footprint {w:.2f} x {d:.2f} is bigger than {limit}")
 for pr in problems:

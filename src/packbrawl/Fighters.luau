@@ -17,7 +17,39 @@ Fighter.__index = Fighter
 
 local Fighters = {}
 
--- A spell has no creature, so it fights as a giant glowing card.
+-- The spell's own 3D model stands in front of the card's picture window, so it pops out of the
+-- card. Parts are scaled by hand (sizes and offsets) so Fighter:render can keep scaling them.
+local SPELL_MODEL_HEIGHT, SPELL_MODEL_WIDTH = 1.75, 2.0
+local function addSpellModel(model, id)
+	local info = CreatureBuilder.info(id)
+	local spell = info and CreatureBuilder.build(id)
+	if not spell then
+		return false
+	end
+	local k = math.min(SPELL_MODEL_HEIGHT / math.max(info.height, 0.5), SPELL_MODEL_WIDTH / math.max(info.width, 0.5))
+	-- how far the model reaches back (+z), so it can stand just in front of the card's face
+	local back = 0
+	for _, d in ipairs(spell:GetChildren()) do
+		if d:IsA("BasePart") and d ~= spell.PrimaryPart then
+			local cf, sz = d.CFrame, d.Size
+			local reach = math.abs(cf.RightVector.Z) * sz.X / 2 + math.abs(cf.UpVector.Z) * sz.Y / 2 + math.abs(cf.LookVector.Z) * sz.Z / 2
+			back = math.max(back, cf.Position.Z + reach)
+		end
+	end
+	local place = CFrame.new(0, 0.95, -0.12 - back * k)
+	for _, d in ipairs(spell:GetChildren()) do
+		if d:IsA("BasePart") and d ~= spell.PrimaryPart then
+			local cf = d.CFrame
+			d.Size *= k
+			d.CFrame = place * CFrame.new(cf.Position * k) * cf.Rotation
+			d.Parent = model
+		end
+	end
+	spell:Destroy()
+	return true
+end
+
+-- A spell has no creature, so it fights as a giant glowing card with the spell's model in front.
 local function buildSpellCard(def)
 	local model = Instance.new("Model")
 	model.Name = def.id
@@ -28,9 +60,12 @@ local function buildSpellCard(def)
 	Kit.part({ Name = "Frame", Size = Vector3.new(2.4, 3.3, 0.08), CFrame = CFrame.new(0, 1.9, 0.03), Color = Kit.TierColor[def.rarity] or fam, Material = Enum.Material.Neon }, model)
 	local g = make("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0.3, CanvasSize = Vector2.new(220, 310) }, card)
 	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.25), Position = UDim2.fromScale(0.05, 0.05), BackgroundTransparency = 1, Text = def.name, TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(40, 30, 60) }, g)
-	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.4), Position = UDim2.fromScale(0.05, 0.35), BackgroundTransparency = 1, Text = "★", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = Kit.TierColor[def.rarity] or fam }, g)
+	local hasModel = addSpellModel(model, def.id)
+	if not hasModel then
+		make("TextLabel", { Size = UDim2.fromScale(0.9, 0.4), Position = UDim2.fromScale(0.05, 0.35), BackgroundTransparency = 1, Text = "★", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = Kit.TierColor[def.rarity] or fam }, g)
+	end
 	make("TextLabel", { Size = UDim2.fromScale(0.9, 0.18), Position = UDim2.fromScale(0.05, 0.78), BackgroundTransparency = 1, Text = "SPELL", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(90, 80, 110) }, g)
-	return model, { height = 3.5, width = 2.4, depth = 0.2 }
+	return model, { height = 3.5, width = 2.4, depth = hasModel and 1.2 or 0.2 }
 end
 
 function Fighters.new(info, index, parent)

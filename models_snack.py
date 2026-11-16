@@ -1,6 +1,11 @@
-# Snack family models (warm, food colors, glossy and a little sticky)
+# Snack family: glossy sweets and comfort food with a lot of attitude.
+# Palette: caramel gold (main), frosting cream (secondary), cherry red (accent).
+# Materials: glossy glaze (a little reflectance), sugar and salt (sand), foil wrappers.
 import math
-from modelkit import Model, rot, Rx, Ry, Rz, WHITE, BLACK, PUPIL, shade, ell_front, cyl_front, front_of, ell_top, top_of
+import random
+import numpy as np
+from modelkit import rot, Rx, Ry, Rz, shade, I3, WHITE, frame_normal
+from stylekit import SModel, PAL, V, norm, on_ell_R, INK, GOLD, SILVER
 
 MODELS = []
 
@@ -10,470 +15,562 @@ def model(fn):
     return fn
 
 
+P = PAL["Snack"]
+CARAMEL = P["main"]
+CREAM = P["second"]
+CHERRY = P["accent"]
+PINK = P["pink"]
+MINT = P["mint"]
+CHOC = P["choc"]
+GLAZE = P["glaze"]
+BLUSH = (255, 150, 170)
+LEATHER = (150, 96, 56)
+STEEL = (200, 206, 216)
+
+
+def cheeks(m, c, s_, R, sep, y, d, color=BLUSH):
+    for s in (-1, 1):
+        p, n = on_ell_R(c, s_, R, R @ V(s * sep, y, -1))
+        m.ell("Cheek", (d, d * 0.58, d * 0.3), p + n * 0.01, color, R=frame_normal(n))
+
+
+def sprinkles(m, c, size, n, seed, colors=None, ymin=0.15, d=0.07):
+    m.scatter("Sprinkle", c, size, n, colors or [(255, 90, 120), (90, 200, 255), (255, 230, 90), (140, 230, 140), WHITE],
+              seed=seed, d=d, ymin=ymin, shape="sprinkle", length=2.8)
+
+
+# ------------------------------------------------------------------------------------------------
 @model
 def jelly_bean_scout():
-    m = Model("jelly_bean_scout")
-    body = (235, 60, 105)
-    dark = (190, 40, 80)
-    m.ell("Body", (1.5, 2.0, 1.3), (0, 1.3, 0), body, R=rot(z=-8), refl=0.2)
-    m.ell("Belly", (1.0, 1.2, 0.5), (0.05, 1.1, -0.45), (255, 120, 150), refl=0.1)
-    # jelly shine and speckles
-    m.ell("Shine", (0.22, 0.75, 0.12), (-0.48, 1.75, -0.42), (255, 215, 230), R=rot(z=-14, y=-30), tr=0.25)
-    m.ell("Shine", (0.12, 0.25, 0.08), (-0.38, 2.2, -0.36), (255, 235, 240), R=rot(z=-20, y=-30), tr=0.2)
-    m.scatter("Speckle", (0, 1.3, 0), (1.5, 2.0, 1.3), 14, [(200, 35, 80), (255, 150, 180)], seed=4, d=0.09, shape="dot", ymin=-0.7)
-    # hiking boots
-    for s in (-1, 1):
-        m.cyl("Leg", 0.55, 0.32, (s * 0.35, 0.42, 0), dark)
-        m.cyl("Sock", 0.14, 0.36, (s * 0.35, 0.33, 0), (245, 240, 230), mat="Fabric")
-        m.shoe(s * 0.36, -0.1, 0.46, 0.68, (120, 75, 45), sole=(55, 40, 35), toe=(140, 90, 55), lace=(240, 220, 150))
-    # arms: one waving, one holding the backpack strap
-    m.rod("Arm", (-0.65, 1.35, 0), (-1.05, 0.88, -0.1), 0.24, dark)
-    m.rod("Arm", (0.65, 1.4, 0), (1.05, 1.95, -0.1), 0.24, dark)
-    m.cyl("Cuff", 0.12, 0.3, (-0.98, 0.96, -0.09), (90, 130, 70), mat="Fabric", R=rot(z=-40))
-    m.cyl("Cuff", 0.12, 0.3, (0.99, 1.87, -0.1), (90, 130, 70), mat="Fabric", R=rot(z=40))
-    m.mitt((-1.08, 0.82, -0.1), 0.32, dark, -1)
-    m.mitt((1.08, 2.0, -0.1), 0.32, dark, 1, fingers=3)
-    # scout neckerchief with a woggle
-    m.wedge("Scarf", (0.55, 0.36, 0.08), (0.02, 1.12, -0.66), (250, 200, 50), R=rot(z=180) @ rot(x=14))
-    m.cyl("Woggle", 0.1, 0.16, (0.02, 1.27, -0.67), (160, 100, 50), axis="z")
-    # merit badge sash
-    # (lies on the bean and the belly, so the badges show instead of sinking into the belly)
-    bean = front_of(ell_front((0, 1.3, 0), (1.5, 2.0, 1.3)), ell_front((0.05, 1.1, -0.45), (1.0, 1.2, 0.5)))
-    sash = [(-0.7 + 1.15 * t, 1.3 - 0.68 * t) for t in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)]
-    m.band("Sash", sash, 0.26, 0.06, (70, 120, 60), surface=bean, lift=0.01, mat="Fabric")
-    for k, c in enumerate([(60, 140, 230), (250, 180, 40), (230, 70, 70)]):
-        t = 0.3 + k * 0.22
-        x, y = -0.7 + 1.15 * t, 1.3 - 0.68 * t
-        z = bean(x, y)
-        m.cyl("Badge", 0.06, 0.18, (x, y, z - 0.06), c, axis="z")
-        m.cyl("Badge", 0.065, 0.08, (x, y, z - 0.08), (255, 250, 230), axis="z")
-    # campaign hat with the four pinches and a feather
-    hat = (195, 155, 95)
-    m.cyl("HatBrim", 0.1, 1.5, (0, 2.27, 0), (185, 145, 85))
-    m.ring("HatBrim", (0, 2.28, 0), 0.74, 0.08, (165, 125, 70), normal="y", segments=14)
-    m.cyl("HatBand", 0.13, 0.9, (0, 2.38, 0), (110, 70, 40))
-    m.cyl("HatCrown", 0.42, 0.8, (0, 2.58, 0), hat)
-    m.ell("HatCrown", (0.8, 0.3, 0.8), (0, 2.79, 0), hat)
-    for k in range(4):
-        a = k * math.pi / 2
-        m.ell("HatDent", (0.18, 0.3, 0.18), (math.cos(a) * 0.3, 2.78, math.sin(a) * 0.3), (165, 125, 70))
-    m.ell("HatDent", (0.12, 0.12, 0.45), (0, 2.92, 0), (165, 125, 70))
-    m.ell("HatFeather", (0.12, 0.55, 0.06), (0.45, 2.6, 0.05), (240, 90, 60), R=rot(z=-30))
-    # backpack with a bedroll, a pocket and a canteen
-    m.rbox("Backpack", (0.9, 0.95, 0.45), (0.0, 1.35, 0.72), (90, 130, 70), 0.12, mat="Fabric")
-    m.blk("BackpackFlap", (0.92, 0.32, 0.5), (0.0, 1.74, 0.72), (70, 105, 55), mat="Fabric")
-    m.blk("Pocket", (0.6, 0.35, 0.12), (0, 1.12, 0.98), (70, 105, 55), mat="Fabric")
-    m.cyl("Buckle", 0.04, 0.12, (0, 1.6, 0.98), (230, 200, 90), axis="z", mat="Metal")
-    m.ell("Bedroll", (1.05, 0.34, 0.34), (0.0, 1.97, 0.74), (180, 60, 50), mat="Fabric")
-    for x in (-0.3, 0.3):
-        m.cyl("BedrollTie", 0.06, 0.36, (x, 1.97, 0.74), (110, 70, 40), axis="x")
-    for s in (-1, 1):
-        m.rod("Strap", (s * 0.36, 2.0, 0.45), (s * 0.5, 1.0, 0.45), 0.1, (70, 105, 55), mat="Fabric", shape="B")
-    m.cyl("Canteen", 0.18, 0.4, (0.62, 1.0, 0.55), (150, 160, 170), axis="x", mat="Metal")
+    """Common. A glossy kidney-bean scout leaning eagerly forward: saluting under a campaign hat, a
+    cherry neckerchief, a badge sash, a canteen and a little backpack, stubby legs in hiking boots.
+    Mood: eager."""
+    m = SModel("jelly_bean_scout")
+    bean = PINK
+    m.ell("Body", (1.56, 1.42, 1.28), (0, 1.36, 0.06), bean, refl=GLAZE)
+    hc, hs, HR = V(0, 2.08, -0.1), (1.46, 1.36, 1.22), rot(x=-12)
+    m.ell("Head", hs, hc, bean, R=HR, refl=GLAZE)
     # face
-    m.eyes(1.78, -0.5, 0.52, 0.4, lid=body, iris=(110, 60, 40), z_back=0.02)
-    m.brow(-0.26, 2.08, -0.48, 0.28, dark, -1, tilt=-8)
-    m.brow(0.26, 2.08, -0.48, 0.28, dark, 1, tilt=-8)
-    m.grin(1.5, -0.6, 0.36, curve=0.25, open_=True, teeth=2, surface=front_of(ell_front((0, 1.3, 0), (1.5, 2.0, 1.3)), ell_front((0.05, 1.1, -0.45), (1.0, 1.2, 0.5))))
-    m.cheeks(1.55, -0.56, 0.95, 0.22)
+    m.eyes_on(hc, hs, HR, 22, 10, 0.4, 0.46, bean, "eager", iris=CHOC, brow=CHOC, brow_k=0.8)
+    p, n = on_ell_R(hc, hs, HR, HR @ V(0, -0.34, -1))
+    m.mouth(p, n, 0.36, "eager", skin=bean)
+    cheeks(m, hc, hs, HR, 0.62, -0.22, 0.24)
+    # campaign hat with a cherry band and a gold badge
+    hat = hc + HR @ V(0, 0.66, 0.02)
+    m.ell("HatBrim", (1.66, 0.08, 1.56), hat, (204, 164, 104), R=HR)
+    m.ell("Hat", (0.84, 0.56, 0.8), hat + HR @ V(0, 0.26, 0), (214, 176, 116), R=HR)
+    m.ell("HatDent", (0.12, 0.2, 0.56), hat + HR @ V(0, 0.5, 0), (186, 146, 92), R=HR)
+    m.cyl("HatBand", 0.12, 0.86, hat + HR @ V(0, 0.08, 0), CHERRY, "y", R=HR)
+    m.cyl("CapBadge", 0.05, 0.2, hat + HR @ V(0, 0.1, -0.43), GOLD, "z", "Metal", R=HR)
+    # cherry neckerchief: a knot under the chin and a flap down the chest
+    for k in range(5):
+        a1, a2 = math.radians(205 + k * 26), math.radians(231 + k * 26)
+        p1 = V(math.cos(a1) * 0.7, 1.72, 0.05 + math.sin(a1) * 0.56)
+        p2 = V(math.cos(a2) * 0.7, 1.72, 0.05 + math.sin(a2) * 0.56)
+        m.seg("Scarf", p1, p2, 0.11, CHERRY, "Fabric", ext=0.05)
+    m.ell("Scarf", (0.44, 0.52, 0.1), V(0, 1.44, -0.64), CHERRY, "Fabric", R=rot(x=-16))
+    m.cyl("Scarf", 0.12, 0.17, V(0, 1.66, -0.56), GOLD, "y", "Metal")
+    # mint sash with merit badges
+    bc_, bs_ = V(0, 1.36, 0.06), (1.56, 1.42, 1.28)
+    pts = [on_ell_R(bc_, bs_, I3, V(x, y, -1)) for (x, y) in [(0.75, 0.42), (0.3, 0.1), (-0.2, -0.25), (-0.7, -0.5)]]
+    for (a, na), (b, nb) in zip(pts, pts[1:]):
+        m.seg("Sash", a + na * 0.03, b + nb * 0.03, 0.1, MINT, "Fabric", r2=0.04, ext=0.06)
+    for k, col in enumerate([GOLD, (90, 170, 250), CHERRY]):
+        q, nq = pts[1][0] + (pts[2][0] - pts[1][0]) * (0.1 + k * 0.42), pts[1][1]
+        m.cyl("Badge", 0.05, 0.17, q + nq * 0.07, col, "z", R=frame_normal(nq) @ Ry(90) @ Ry(-90))
+    # arms: the right one salutes at the brim, the left holds the canteen strap
+    m.arms2(1.74, 0.7, bean, 0.16, 0.14, 0.15, 0.18, CREAM,
+            {1: ((1.08, 2.12, -0.22), (0.7, 2.56, -0.66), False), -1: ((-0.98, 1.3, 0.02), (-0.84, 1.04, -0.36), True)},
+            z=-0.05, refl=GLAZE)
+    # canteen at the hip
+    m.cyl("Canteen", 0.18, 0.46, V(-0.86, 0.98, 0.28), (176, 184, 192), "x", "Metal")
+    m.cyl("Canteen", 0.2, 0.3, V(-0.86, 0.98, 0.28), MINT, "x", "Fabric")
+    m.cyl("Canteen", 0.1, 0.1, V(-0.86, 1.24, 0.28), (70, 70, 80), "y")
+    # a little backpack with a rolled mat
+    m.ell("Backpack", (0.96, 0.9, 0.44), V(0, 1.55, 0.7), (110, 150, 90), "Fabric")
+    m.cyl("Backpack", 0.98, 0.28, V(0, 2.06, 0.74), (200, 120, 80), "x", "Fabric")
+    # stubby legs in hiking boots with cream socks
+    m.legs2(0.95, 0.3, bean, 0.17, 0.14, 0.14, 0.44, 0.64, LEATHER, sole=(70, 50, 40), cuff=CREAM, refl=GLAZE)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def pretzel_guard():
-    m = Model("pretzel_guard")
-    bread = (175, 105, 45)
-    dark = (140, 80, 35)
-    salt = (250, 250, 245)
-    steel = (190, 195, 205)
-    m.ell("Body", (2.0, 2.4, 1.7), (0, 1.35, 0), bread, refl=0.15)
-    # the pretzel twist pressed into the belly
-    # (the loops and the crossing follow the round belly, so they read as a raised twist)
-    belly = ell_front((0, 1.35, 0), (2.0, 2.4, 1.7))
-    for cx in (-0.32, 0.32):
-        loop = [(cx + math.cos(a) * 0.32, 1.05 + math.sin(a) * 0.32) for a in [k * 2 * math.pi / 12 for k in range(13)]]
-        m.band("Twist", loop, 0.13, 0.1, dark, surface=belly, lift=0.02)
-    m.band("Twist", [(-0.55, 0.62), (-0.08, 0.96), (0.4, 1.3)], 0.13, 0.1, dark, surface=belly, lift=0.04)
-    m.band("Twist", [(0.55, 0.62), (0.08, 0.96), (-0.4, 1.3)], 0.13, 0.1, dark, surface=belly, lift=0.07)
-    m.scatter("Salt", (0, 1.35, 0), (2.0, 2.4, 1.7), 16, [salt], seed=7, d=0.075, shape="cube", ymin=-0.3)
-    # belt with a buckle
-    m.cyl("Belt", 0.2, 1.88, (0, 0.72, 0), (90, 55, 30), mat="Leather")
-    m.rbox("Buckle", (0.32, 0.24, 0.08), (0, 0.72, -0.8), (230, 190, 80), 0.05, mat="Metal", axis="z")
-    # knight helmet: ridge, rivets, nose guard, cheek guards, a big plume
-    m.ell("Helmet", (1.6, 0.95, 1.5), (0, 2.45, 0.05), steel, mat="Metal", refl=0.25)
-    m.blk("HelmetRim", (1.72, 0.16, 0.2), (0, 2.18, -0.68), (160, 165, 175), mat="Metal")
-    m.ring("HelmetRim", (0, 2.18, 0.05), 0.8, 0.1, (160, 165, 175), normal="y", segments=14, mat="Metal")
-    m.rod("HelmetRidge", (0, 2.92, -0.4), (0, 2.88, 0.6), 0.14, (160, 165, 175), mat="Metal")
-    m.blk("NoseGuard", (0.14, 0.5, 0.1), (0, 2.02, -0.82), (160, 165, 175), mat="Metal")
+    """Common. A soft-pretzel guard: a pretzel knot on his dough chest, a bun head with a mustache, a
+    round steel helmet with a cherry plume, a pretzel-stick spear and a cracker shield. Mood: stern."""
+    m = SModel("pretzel_guard")
+    dough = (204, 132, 64)
+    crust = (170, 96, 42)
+    salt = (250, 246, 236)
+    bc, bs = V(0, 1.62, 0.05), (1.4, 1.42, 1.08)
+    # a cherry-red guard's tunic with a gold trim; the pretzel knot is the emblem on the chest
+    m.ell("Body", bs, bc, CHERRY, "Fabric")
+    m.ell("Tunic", (1.46, 0.16, 1.14), bc + V(0, -0.5, 0), GOLD, "Fabric")
+    m.ell("Tunic", (0.92, 0.2, 0.74), bc + V(0, 0.64, 0), GOLD, "Fabric")
+    # the pretzel knot on the chest: a heart-shaped loop with a twist inside
+    heart = [(0, -0.5), (-0.36, -0.36), (-0.52, -0.04), (-0.42, 0.28), (-0.18, 0.36), (0, 0.2),
+             (0.18, 0.36), (0.42, 0.28), (0.52, -0.04), (0.36, -0.36), (0, -0.5)]
+    twist = [[(0, 0.2), (-0.08, 0.0), (0.28, -0.3)], [(0, 0.2), (0.08, 0.0), (-0.28, -0.3)]]
+
+    def on_chest(x, y):
+        p, n = on_ell_R(bc, bs, I3, V(x * 1.45, y * 1.35 + 0.05, -1))
+        return p + n * 0.1
+
+    for a, b in zip(heart, heart[1:]):
+        m.seg("Pretzel", on_chest(*a), on_chest(*b), 0.15, crust, ext=0.06, refl=GLAZE)
+    for strand in twist:
+        for a, b in zip(strand, strand[1:]):
+            m.seg("Pretzel", on_chest(*a) + V(0, 0, -0.04), on_chest(*b) + V(0, 0, -0.04), 0.14, crust, ext=0.05, refl=GLAZE)
+    rnd = random.Random(3)
+    for k in range(12):
+        a = heart[rnd.randrange(len(heart) - 1)]
+        q = on_chest(a[0] + rnd.uniform(-0.04, 0.04), a[1] + rnd.uniform(-0.04, 0.04)) + V(0, 0.08, -0.1)
+        m.blk("Salt", (0.08, 0.08, 0.08), q, salt, "Sand", R=rot(rnd.uniform(0, 90), rnd.uniform(0, 90), 0))
+    # belt
+    m.cyl("Belt", 0.16, 1.34, V(0, 1.1, 0.05), (70, 44, 30), "y", "Leather")
+    m.blk("Buckle", (0.24, 0.2, 0.06), V(0, 1.12, -0.64), GOLD, "Metal")
+    # bun head with scored crust and salt
+    hc, hs = V(0, 2.7, -0.04), (1.02, 0.92, 0.96)
+    m.ell("Head", hs, hc, dough, refl=GLAZE)
+    m.eyes_on(hc, hs, I3, 22, 4, 0.3, 0.34, dough, "stern", iris=(70, 130, 60), brow=CHOC, brow_k=1.0)
+    p, n = on_ell_R(hc, hs, I3, V(0, -0.36, -1))
+    m.mouth(p, n, 0.24, "stern", color=(70, 36, 24), d=0.04)
     for s in (-1, 1):
-        for k in range(3):
-            m.ball("HelmetRivet", 0.08, (s * (0.35 + k * 0.17), 2.2, -0.795), (230, 200, 90), mat="Metal")
-    m.cyl("Plume", 0.55, 0.24, (0, 3.08, 0.1), (230, 190, 80), mat="Metal")
-    for k, c in enumerate([(220, 50, 50), (250, 240, 235), (220, 50, 50)]):
-        m.ell("PlumeTop", (0.26, 0.5, 0.85), (0, 3.35 + k * 0.05, 0.18 + k * 0.3), c, R=rot(x=20 + k * 25), mat="Fabric")
-    # face: stern eyes and a pretzel-dough mustache
-    m.eyes(1.82, -0.78, 0.6, 0.38, lid=bread, angry=12, iris=(70, 130, 60))
-    for s in (-1, 1):
-        m.chain("Mustache", [(0, 1.56, -0.86), (s * 0.25, 1.52, -0.84), (s * 0.42, 1.6, -0.78), (s * 0.5, 1.72, -0.72)], 0.13, dark)
-    m.grin(1.38, -0.84, 0.3, curve=-0.12, color=(80, 35, 20))
-    # legs with steel greaves
-    for s in (-1, 1):
-        m.cyl("Leg", 0.5, 0.42, (s * 0.45, 0.3, 0), dark)
-        m.cyl("Greave", 0.3, 0.46, (s * 0.45, 0.4, 0), steel, mat="Metal")
-        m.shoe(s * 0.47, -0.12, 0.55, 0.78, (90, 60, 40), sole=(50, 35, 25), toe=(160, 165, 175))
-    # pretzel shield (two loops and a twist, salted) held on the left
-    sx, sy, sz = -1.0, 1.25, -0.95
-    m.cyl("ShieldBoss", 0.14, 1.45, (sx, sy, sz + 0.1), (120, 70, 30), axis="z")
-    for k in (-1, 1):
-        m.ring("Shield", (sx + k * 0.33, sy + 0.12, sz), 0.38, 0.22, dark, normal="z", segments=12)
-    m.rod("Shield", (sx - 0.62, sy - 0.25, sz), (sx + 0.62, sy - 0.25, sz), 0.22, dark)
-    m.rod("Shield", (sx - 0.35, sy - 0.5, sz), (sx + 0.3, sy + 0.2, sz), 0.22, dark)
-    m.rod("Shield", (sx + 0.35, sy - 0.5, sz), (sx - 0.3, sy + 0.2, sz), 0.22, dark)
-    for (x, y) in [(-0.45, 0.35), (-0.2, 0.25), (0.25, -0.2), (0.0, 0.0), (0.5, 0.3), (0.3, 0.45), (-0.5, -0.25), (0.45, -0.25)]:
-        m.blk("ShieldSalt", (0.07, 0.07, 0.07), (sx + x, sy + y, sz - 0.13), salt, R=rot(30, 30, 0))
-    m.rod("Arm", (-0.85, 1.55, -0.2), (-1.0, 1.25, -0.8), 0.3, bread)
-    m.cyl("Gauntlet", 0.2, 0.34, (-0.98, 1.3, -0.72), steel, mat="Metal", R=rot(x=60))
-    # salted breadstick spear with a pennant on the right
-    m.rod("Arm", (0.9, 1.5, -0.1), (1.2, 1.3, -0.45), 0.3, bread)
-    m.cyl("Gauntlet", 0.2, 0.34, (1.15, 1.34, -0.4), steel, mat="Metal", R=rot(x=50))
-    m.cyl("Spear", 3.0, 0.2, (1.25, 1.6, -0.5), (215, 170, 100))
-    for k in range(4):
-        m.cyl("SpearBand", 0.08, 0.23, (1.25, 0.5 + k * 0.85, -0.5), (180, 130, 65))
-    m.ell("SpearTip", (0.34, 0.66, 0.34), (1.25, 3.27, -0.5), (200, 150, 80))
-    for k in range(3):
-        m.blk("SpearSeed", (0.08, 0.08, 0.08), (1.25 + 0.1 * (k - 1), 3.2 + k * 0.1, -0.66), salt, R=rot(30, 30, 0))
-    m.wedge("SpearFlag", (0.06, 0.4, 0.6), (1.25, 2.75, -0.2), (60, 110, 200), R=rot(x=90))
-    m.mitt((1.25, 1.3, -0.52), 0.34, bread, 1)
-    m.mitt((-1.02, 1.2, -0.86), 0.32, bread, -1, thumb=False)
+        q, nq = on_ell_R(hc, hs, I3, V(s * 0.12, -0.22, -1))
+        m.seg("Mustache", q + nq * 0.06, q + nq * 0.03 + V(s * 0.3, -0.06, 0.06), 0.08, CHOC, bulge=0.3)
+    m.ell("Nose", (0.2, 0.18, 0.16), on_ell_R(hc, hs, I3, V(0, -0.1, -1))[0] + V(0, 0, -0.04), shade(dough, 1.08))
+    # helmet: a round steel kettle hat with a brim, a crest ridge and a cherry plume
+    hm = hc + V(0, 0.36, 0.02)
+    m.ell("Helmet", (1.1, 0.66, 1.06), hm, STEEL, "Metal", refl=0.1)
+    m.ell("HelmetRim", (1.42, 0.09, 1.36), hm + V(0, -0.12, 0), shade(STEEL, 0.9), "Metal")
+    m.seg("HelmetRidge", hm + V(0, 0.3, -0.42), hm + V(0, 0.33, 0.42), 0.05, shade(STEEL, 1.1), "Metal")
+    for k, (dz, dy, L) in enumerate([(-0.05, 0.0, 0.5), (0.1, -0.04, 0.45), (0.24, -0.1, 0.4)]):
+        base = hm + V(0, 0.32, dz)
+        m.seg("Plume", base, base + V(0, 0.3 + dy, 0.28 + k * 0.08), 0.1 - k * 0.012, shade(CHERRY, 1 + k * 0.08), "Fabric", bulge=0.35)
+    # arms: a pretzel-stick spear in the right hand, a cracker shield on the left
+    hands = m.arms2(1.98, 0.66, dough, 0.16, 0.14, 0.15, 0.17, CREAM,
+                    {1: ((0.98, 1.55, -0.12), (0.92, 1.28, -0.5), True), -1: ((-0.95, 1.6, -0.12), (-0.78, 1.38, -0.58), True)},
+                    z=0.0, refl=GLAZE)
+    sp = hands[1]
+    m.seg("Spear", sp + V(0, -1.2, 0.05), sp + V(0, 1.85, -0.05), 0.06, (196, 120, 56), shape="C")
+    for k in range(6):
+        m.ball("SpearSeed", 0.05, sp + V(0.05 * (1 if k % 2 else -1), -0.9 + k * 0.48, -0.03), salt, "Sand")
+    m.crystal("SpearTip", sp + V(0, 1.84, -0.05), V(0, 1, 0), 0.42, 0.14, STEEL, mat="Metal", tr=0, refl=0.2)
+    m.cyl("SpearBand", 0.1, 0.16, sp + V(0, 1.8, -0.05), GOLD, "y", "Metal")
+    sh = hands[-1] + V(-0.12, 0.05, -0.18)
+    m.blk("Shield", (0.08, 0.92, 0.92), sh, (232, 194, 124), R=rot(y=-18))
+    for iy in (-1, 1):
+        for iz in (-1, 1):
+            m.ell("ShieldRim", (0.1, 0.22, 0.22), sh + rot(y=-18) @ V(0, iy * 0.36, iz * 0.36), (240, 206, 140), R=rot(y=-18))
+    for (yy, zz) in [(-0.2, -0.2), (-0.2, 0.2), (0.2, -0.2), (0.2, 0.2), (0, 0)]:
+        m.ell("ShieldGrid", (0.06, 0.07, 0.07), sh + rot(y=-18) @ V(-0.05, yy, zz), (176, 130, 70), R=rot(y=-18))
+    # legs in leather boots with steel shin plates
+    ank = m.legs2(1.0, 0.3, dough, 0.17, 0.15, 0.15, 0.44, 0.62, (92, 58, 36), sole=(52, 40, 34), refl=GLAZE)
+    for a in ank:
+        m.ell("ShinPlate", (0.26, 0.3, 0.1), a + V(0, 0.25, -0.13), STEEL, "Metal")
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def pancake_paladin():
-    m = Model("pancake_paladin")
-    cake = (225, 160, 75)
-    edge = (190, 115, 45)
-    toast = (165, 95, 35)
-    for i, (y, dx) in enumerate([(0.75, 0.0), (1.25, 0.08), (1.75, -0.06)]):
-        m.cyl("Pancake", 0.5, 2.5, (dx, y, 0), edge)
-        m.cyl("PancakeFace", 0.52, 2.3, (dx, y, 0), cake)
-        # golden-brown cooked rim lines above and below
-        m.ring("PancakeRim", (dx, y + 0.22, 0), 1.2, 0.08, toast, normal="y", segments=16)
-    m.cyl("Syrup", 0.16, 2.35, (0, 2.06, 0), (160, 70, 20), refl=0.35)
-    m.ell("SyrupPool", (2.2, 0.22, 2.2), (0, 2.12, 0), (175, 80, 25), refl=0.4)
-    for (x, z, ln) in [(-1.12, -0.3, 0.7), (0.72, -0.9, 0.9), (1.13, 0.4, 0.55), (-0.45, -1.08, 0.5), (0.0, 1.17, 0.8), (-0.85, 0.8, 0.45)]:
-        m.drip("Drip", (x, 2.08, z), ln, 0.26, (165, 75, 25), refl=0.35)
-    # melting butter pat
-    m.rbox("Butter", (0.75, 0.38, 0.75), (0.1, 2.34, 0.1), (255, 230, 120), 0.08, R=rot(y=20))
-    m.ell("ButterMelt", (1.0, 0.1, 0.95), (0.12, 2.18, 0.12), (255, 225, 110), R=rot(y=20), refl=0.2)
-    # strawberry helmet with seeds and a leafy crown
-    m.ell("Strawberry", (0.7, 0.8, 0.7), (-0.15, 2.92, 0.1), (230, 40, 50), refl=0.15)
-    m.scatter("Seed", (-0.15, 2.92, 0.1), (0.7, 0.8, 0.7), 12, [(255, 230, 120)], seed=3, d=0.06, shape="dot", ymin=-0.6)
-    for k in range(5):
-        a = k * 2 * math.pi / 5
-        m.ell("Leaves", (0.32, 0.06, 0.14), (-0.15 + math.cos(a) * 0.16, 3.3, 0.1 + math.sin(a) * 0.16), (60, 160, 60), R=rot(y=-math.degrees(a), z=-20))
-    m.cyl("Leaves", 0.18, 0.06, (-0.15, 3.42, 0.1), (60, 130, 50))
-    # face on the middle pancake
-    m.eyes(1.33, -1.2, 0.7, 0.42, lid=cake, iris=(90, 140, 220), bulge=0.5)
-    m.brow(-0.35, 1.67, -1.22, 0.32, toast, -1, tilt=-10)
-    m.brow(0.35, 1.67, -1.22, 0.32, toast, 1, tilt=-10)
-    m.grin(0.85, -1.26, 0.46, curve=0.22, open_=True, teeth=2)
-    m.cheeks(0.95, -1.18, 1.25, 0.28)
-    # stubby legs in boots
+    """Rare. A knight made of three fat pancakes with syrup running down, a butter-pat helmet with a
+    strawberry plume, steel pauldrons, gauntlets and greaves, a fork lance, a waffle shield and a
+    cherry cape. Mood: noble."""
+    m = SModel("pancake_paladin")
+    cake = (228, 162, 76)
+    edge = (186, 116, 48)
+    top = (242, 196, 118)
+    syrup = (176, 82, 24)
+    stack = [(0.98, 1.76, "Pancake"), (1.42, 1.86, "Pancake"), (1.88, 1.72, "Head")]
+    for (y, d, nm) in stack:
+        m.ell(nm, (d * 1.04, 0.46, d * 1.04), V(0, y, 0), edge, refl=GLAZE)
+        m.cyl(nm if nm != "Head" else "Pancake", 0.4, d, V(0, y + 0.02, 0), cake, "y", refl=GLAZE)
+        m.cyl("Pancake", 0.04, d * 0.94, V(0, y + 0.22, 0), top, "y")
+    # syrup pooled on top and running down
+    m.ell("Syrup", (1.5, 0.12, 1.42), V(0, 2.12, 0), syrup, "Glass", tr=0.1, refl=0.35)
+    for k, (a, L) in enumerate([(200, 0.55), (250, 0.9), (290, 0.4), (330, 0.75), (20, 0.5), (120, 0.8), (160, 0.45)]):
+        r = 0.86
+        x, z = math.cos(math.radians(a)) * r, math.sin(math.radians(a)) * r
+        m.drip("Syrup", (x, 2.1, z), L, 0.13, syrup, "Glass", refl=0.35)
+    # noble face on the top pancake's rim
+    fy = 1.86
     for s in (-1, 1):
-        m.cyl("Leg", 0.55, 0.38, (s * 0.5, 0.3, 0), edge)
-        m.shoe(s * 0.5, -0.15, 0.52, 0.72, (110, 70, 40), sole=(60, 40, 25), toe=(200, 205, 215))
-    # fork sword in the right hand
-    m.rod("Arm", (1.2, 1.3, 0), (1.55, 1.2, -0.45), 0.28, edge)
-    m.cyl("Bracer", 0.16, 0.32, (1.48, 1.22, -0.36), (200, 205, 215), mat="Metal", R=rot(y=-50) @ rot(z=90))
-    m.mitt((1.55, 1.2, -0.5), 0.36, edge, 1)
-    m.cyl("ForkGrip", 0.7, 0.24, (1.55, 1.05, -0.5), (70, 110, 200), mat="Fabric")
-    m.ball("ForkPommel", 0.24, (1.55, 0.66, -0.5), (240, 200, 80), mat="Metal")
-    m.cyl("ForkHandle", 1.2, 0.18, (1.55, 1.55, -0.5), (200, 200, 210), mat="Metal", refl=0.2)
-    m.blk("ForkNeck", (0.55, 0.25, 0.12), (1.55, 2.2, -0.5), (200, 200, 210), mat="Metal")
-    m.blk("ForkGrip", (0.75, 0.1, 0.16), (1.55, 2.08, -0.5), (240, 200, 80), mat="Metal")
+        d = norm(V(s * 0.38, 0.0, -1))
+        pe = V(d[0] * 0.86, fy + 0.02, d[2] * 0.86)
+        m.eye(pe, d, 0.28, 0.34, edge, "regal", iris=(70, 120, 200))
+    m.mouth(V(0, 1.68, -0.87), V(0, 0, -1), 0.3, "regal", color=(110, 50, 30), d=0.045)
+    for s in (-1, 1):
+        m.ell("Cheek", (0.2, 0.11, 0.06), V(s * 0.52, 1.72, -0.72), BLUSH, R=frame_normal(V(s * 0.6, 0, -0.8)))
+    # butter-pat helmet with a visor line and a strawberry plume
+    m.rbox("Helmet", (0.92, 0.34, 0.92), (0, 2.34, 0), (255, 232, 150), 0.12, refl=0.15)
+    m.blk("Visor", (0.94, 0.05, 0.05), (0, 2.3, -0.47), (230, 200, 110))
+    sb = V(0, 2.82, 0.02)
+    m.ell("Plume", (0.5, 0.62, 0.5), sb, (226, 40, 54), refl=0.15)
+    for k in range(8):
+        a = k * 2.4
+        q, nq = on_ell_R(sb, (0.5, 0.62, 0.5), I3, V(math.cos(a), (k % 3 - 1) * 0.5, math.sin(a)))
+        m.ell("Plume", (0.04, 0.06, 0.03), q, (255, 230, 120), R=frame_normal(nq))
     for k in range(4):
-        m.blk("ForkTine", (0.08, 0.95, 0.08), (1.37 + k * 0.12, 2.78, -0.5), (215, 215, 225), mat="Metal", refl=0.2)
-        m.wedge("ForkTine", (0.08, 0.12, 0.08), (1.37 + k * 0.12, 3.31, -0.5), (215, 215, 225), mat="Metal")
-    # round waffle shield in the left hand
-    m.rod("Arm", (-1.2, 1.3, 0), (-1.45, 1.15, -0.5), 0.28, edge)
-    m.mitt((-1.45, 1.15, -0.5), 0.34, edge, -1, thumb=False)
-    m.cyl("ShieldRim", 0.2, 1.42, (-1.5, 1.2, -0.62), (185, 120, 50), axis="z")
-    m.cyl("Shield", 0.22, 1.25, (-1.5, 1.2, -0.64), (225, 165, 75), axis="z")
-    for i in range(4):
-        for j in range(4):
-            x, y = -1.5 + (i - 1.5) * 0.24, 1.2 + (j - 1.5) * 0.24
-            if (x + 1.5) ** 2 + (y - 1.2) ** 2 < 0.42:
-                m.blk("ShieldGrid", (0.15, 0.15, 0.06), (x, y, -0.77), (190, 120, 45))
-    m.drip("ShieldRim", (-1.25, 1.55, -0.77), 0.3, 0.12, (165, 75, 25), refl=0.35)
-    # blue cape with a golden clasp and a butter emblem
-    m.ell("Cape", (1.9, 1.7, 0.16), (0, 1.15, 1.3), (60, 90, 200), mat="Fabric", R=rot(x=-8))
-    m.ell("CapeFold", (0.2, 1.5, 0.18), (-0.4, 1.15, 1.38), (45, 70, 170), mat="Fabric", R=rot(x=-8))
-    m.ell("CapeFold", (0.2, 1.5, 0.18), (0.4, 1.15, 1.38), (45, 70, 170), mat="Fabric", R=rot(x=-8))
-    m.rbox("CapeBadge", (0.4, 0.3, 0.06), (0, 1.25, 1.42), (255, 230, 120), 0.06, axis="z", R=rot(x=-8))
+        a = math.radians(45 + k * 90)
+        m.ell("PlumeTop", (0.36, 0.06, 0.16), sb + V(math.cos(a) * 0.15, 0.3, math.sin(a) * 0.15), (90, 170, 70), R=rot(y=-math.degrees(a), z=18))
+    # arms in steel pauldrons and gauntlets: a fork lance and a waffle shield
+    hands = m.arms2(1.5, 0.92, cake, 0.16, 0.14, 0.15, 0.18, STEEL,
+                    {1: ((1.3, 1.15, -0.1), (1.18, 0.98, -0.52), True), -1: ((-1.28, 1.2, -0.12), (-1.08, 1.12, -0.6), True)},
+                    refl=GLAZE, cuff=STEEL)
     for s in (-1, 1):
-        m.ball("Clasp", 0.2, (s * 0.85, 1.95, 1.05), (240, 200, 80), mat="Metal")
+        m.ell("Pauldron", (0.6, 0.36, 0.62), V(s * 0.98, 1.66, 0), STEEL, "Metal", R=rot(z=s * -24))
+        m.ball("PauldronRivet", 0.08, V(s * 1.12, 1.75, -0.24), GOLD, "Metal")
+    fk = hands[1]
+    m.seg("ForkHandle", fk + V(0, -0.85, 0.08), fk + V(0, 1.2, -0.06), 0.07, SILVER, "Metal", shape="C")
+    m.ball("ForkPommel", 0.17, fk + V(0, -0.88, 0.08), GOLD, "Metal")
+    m.ell("ForkNeck", (0.42, 0.26, 0.1), fk + V(0, 1.3, -0.07), SILVER, "Metal")
+    for k in range(4):
+        x = -0.15 + k * 0.1
+        m.seg("ForkTine", fk + V(x, 1.36, -0.07), fk + V(x * 1.1, 1.95, -0.08), 0.03, SILVER, "Metal", shape="C")
+    ws = hands[-1] + V(-0.16, 0.06, -0.16)
+    Rw = rot(y=-20) @ rot(z=90)
+    m.cyl("Shield", 0.14, 1.06, ws, (232, 176, 84), "x", R=rot(y=-20))
+    m.cyl("ShieldRim", 0.1, 1.14, ws + rot(y=-20) @ V(0.02, 0, 0), (196, 132, 56), "x", R=rot(y=-20))
+    for k in (-2, -1, 0, 1, 2):
+        L = 0.95 * math.sqrt(max(0.0, 1 - (k * 0.19 / 0.5) ** 2))
+        m.blk("ShieldGrid", (0.06, 0.06, L), ws + rot(y=-20) @ V(-0.07, k * 0.19, 0), (206, 146, 64), R=rot(y=-20))
+        m.blk("ShieldGrid", (0.06, L, 0.06), ws + rot(y=-20) @ V(-0.07, 0, k * 0.19), (206, 146, 64), R=rot(y=-20))
+    # a cherry cape behind the stack
+    m.ell("Cape", (1.7, 1.6, 0.18), V(0, 1.26, 0.88), CHERRY, "Fabric", R=rot(x=8))
+    m.seg("Cape", V(-0.8, 1.96, 0.72), V(0.8, 1.96, 0.72), 0.08, GOLD, "Metal")
+    # blueberries on the stack
+    for (a, y) in [(220, 1.42), (300, 0.98), (40, 1.44), (140, 1.0)]:
+        x, z = math.cos(math.radians(a)) * 0.92, math.sin(math.radians(a)) * 0.92
+        m.ball("Blueberry", 0.2, (x, y, z), (70, 70, 150), refl=0.1)
+    # armoured legs: steel knee pads, greaves and sabatons
+    ank = m.legs2(0.78, 0.36, cake, 0.18, 0.15, 0.15, 0.46, 0.66, STEEL, sole=(90, 94, 104), toe=shade(STEEL, 1.08),
+                  knee_color=STEEL, refl=GLAZE)
+    for a in ank:
+        m.ell("Greave", (0.3, 0.32, 0.3), a + V(0, 0.2, -0.02), STEEL, "Metal")
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def hot_sauce_imp():
-    m = Model("hot_sauce_imp")
-    red = (210, 30, 25)
-    deep = (150, 20, 20)
-    m.cyl("Body", 1.5, 1.25, (0, 1.05, 0), red, refl=0.2)
-    m.ell("Shoulder", (1.25, 0.6, 1.25), (0, 1.8, 0), red, refl=0.2)
-    m.cyl("Neck", 0.5, 0.55, (0, 2.2, 0), red, refl=0.2)
-    m.ring("NeckRing", (0, 2.02, 0), 0.3, 0.08, deep, normal="y", segments=10)
-    # glass shine
-    m.ell("Shine", (0.1, 0.5, 0.06), (-0.5, 1.72, -0.4), (255, 170, 160), R=rot(y=-50), tr=0.4)
-    m.ell("Shine", (0.08, 0.3, 0.08), (-0.18, 1.9, -0.5), (255, 190, 180), R=rot(x=-30, y=-30), tr=0.2)
-    # ridged cap on fire, with a little drip of sauce
-    cap = m.cyl("Cap", 0.42, 0.68, (0, 2.62, 0), (40, 140, 60))
-    for k in range(3):
-        m.ring("CapRidge", (0, 2.48 + k * 0.13, 0), 0.34, 0.05, (30, 110, 45), normal="y", segments=10)
-    m.fire(cap, size=1.4, heat=6)
-    m.drip("Drip", (0.25, 2.42, -0.2), 0.35, 0.1, red, refl=0.3)
-    # label: cream paper with a chili and flame stripes
-    m.cyl("Label", 0.8, 1.3, (0, 1.05, 0), (250, 240, 215))
-    m.ring("LabelEdge", (0, 1.45, 0), 0.65, 0.06, (230, 170, 40), normal="y", segments=14)
-    m.ring("LabelEdge", (0, 0.65, 0), 0.65, 0.06, (230, 170, 40), normal="y", segments=14)
-    for k in range(5):
-        a = math.radians(-50 + k * 25)
-        x, z = math.sin(a) * 0.66, -math.cos(a) * 0.66
-        m.wedge("Flame", (0.16, 0.26, 0.04), (x, 0.8, z), (255, 140, 30) if k % 2 else (255, 200, 60), R=rot(y=-math.degrees(a)))
-    m.ell("Chili", (0.4, 0.16, 0.1), (math.sin(math.radians(140)) * 0.66, 1.05, -math.cos(math.radians(140)) * 0.66), (220, 40, 30), R=rot(y=-140, z=18))
-    m.ell("ChiliStem", (0.1, 0.05, 0.05), (math.sin(math.radians(150)) * 0.67, 1.12, -math.cos(math.radians(150)) * 0.67), (60, 150, 60), R=rot(y=-150))
-    # little flame ticks along the label's lower edge, beside the chili
-    for k in range(3):
-        a = math.radians(160 + k * 14)
-        for d in (-1, 1):
-            m.blk("Hot", (0.03, 0.12, 0.02), (math.sin(a) * 0.655, 1.28, -math.cos(a) * 0.655), (180, 30, 30), R=rot(y=-math.degrees(a)) @ rot(z=d * 35))
-    # face: mischievous
-    m.eyes(1.2, -0.62, 0.48, 0.36, lid=(250, 240, 215), angry=18, look=(0, -0.03), iris=(255, 180, 40), z_back=0.03)
-    m.grin(0.92, -0.66, 0.34, curve=0.3, color=(90, 20, 20), bend=0.03)
-    for s in (-1, 1):
-        m.wedge("Fang", (0.06, 0.1, 0.04), (s * 0.08, 0.9, -0.67), WHITE, R=rot(x=180))
-    # curved horns
-    for s in (-1, 1):
-        m.chain("Horn", [(s * 0.42, 1.92, -0.05), (s * 0.6, 2.08, -0.1), (s * 0.66, 2.26, -0.04)], 0.18, (120, 15, 15))
-        m.ell("Horn", (0.1, 0.2, 0.1), (s * 0.67, 2.36, -0.02), (90, 10, 10))
-    # arms on hips, pointy tail
-    for s in (-1, 1):
-        m.rod("Arm", (s * 0.6, 1.4, 0), (s * 0.95, 1.0, -0.05), 0.2, red)
-        m.rod("Arm", (s * 0.95, 1.0, -0.05), (s * 0.65, 0.75, -0.2), 0.2, red)
-        m.ball("Elbow", 0.22, (s * 0.95, 1.0, -0.05), red)
-        m.mitt((s * 0.63, 0.74, -0.2), 0.24, deep, s, thumb=False)
-    m.chain("Tail", [(0, 0.5, 0.6), (0.2, 0.4, 1.0), (0.45, 0.65, 1.25), (0.5, 1.0, 1.3)], 0.14, deep)
-    m.wedge("TailTip", (0.12, 0.35, 0.35), (0.5, 1.2, 1.3), deep, R=rot(x=-90))
-    m.wedge("TailTip", (0.12, 0.35, 0.35), (0.5, 1.2, 1.3), deep, R=rot(x=90))
-    # pointy little shoes
-    for s in (-1, 1):
-        m.cyl("Leg", 0.3, 0.3, (s * 0.3, 0.3, 0), deep)
-        m.shoe(s * 0.3, -0.15, 0.4, 0.6, (50, 30, 30), sole=(30, 20, 20))
-        m.ell("Toe", (0.18, 0.18, 0.3), (s * 0.3, 0.2, -0.5), (50, 30, 30), R=rot(x=25))
-    # back of the label: barcode, small print and flames all the way round
-    for k in range(9):
-        a = math.radians(180 + (k - 4) * 4.2)
-        w = 0.035 if k % 3 else 0.06
-        m.blk("Barcode", (w, 0.34, 0.02), (math.sin(a) * 0.656, 1.0, -math.cos(a) * 0.656), (30, 25, 25), R=rot(y=-math.degrees(a)))
-    for (y, w) in [(1.32, 0.46), (1.25, 0.38), (1.18, 0.42)]:
-        m.blk("SmallPrint", (w, 0.03, 0.02), (0, y, 0.656), (150, 60, 40))
-    m.blk("BackStamp", (0.34, 0.12, 0.02), (0.0, 0.74, 0.658), (230, 170, 40))
+    """Rare. A curvy hot-sauce bottle imp: a cream label with a chili, a screw cap worn like a hat with
+    a flame on top, little horns, a pointed tail, clawed hands and a fanged grin. Mood: mischievous."""
+    m = SModel("hot_sauce_imp")
+    red = (214, 40, 46)
+    dark = (140, 24, 34)
+    # a curvy bottle: a round belly, sloping shoulders (the head), a long neck and a screw cap
+    m.ell("Body", (1.26, 1.22, 1.14), V(0, 0.96, 0), red, refl=0.18)
+    hc, hs = V(0, 1.66, -0.02), (1.06, 0.92, 0.98)
+    m.ell("Head", hs, hc, red, refl=0.18)
+    m.seg("Neck", V(0, 1.86, 0), V(0, 2.42, 0), 0.22, red, bulge=0.25, refl=0.18)
+    m.ell("Sheen", (0.1, 0.5, 0.05), V(-0.42, 1.0, -0.42), (255, 150, 150), R=rot(y=45), tr=0.25)
+    # label with a chili pepper and flame stripes
+    m.ell("Label", (1.3, 0.52, 1.18), V(0, 0.92, 0), CREAM)
+    for y in (0.66, 1.18):
+        m.ell("Label", (1.22, 0.07, 1.1), V(0, y, 0), (255, 150, 40))
+    m.seg("Chili", V(-0.18, 1.0, -0.6), V(0.16, 0.84, -0.62), 0.09, red, bulge=0.35)
+    m.seg("Chili", V(-0.2, 1.0, -0.6), V(-0.3, 1.08, -0.56), 0.03, (80, 160, 60))
+    # cap worn like a hat, with a three-tongued flame on top
+    cap = V(0.04, 2.56, 0)
+    m.cyl("Hat", 0.36, 0.54, cap, (40, 112, 64), "y", R=rot(z=-12))
     for k in range(6):
-        a = math.radians(120 + k * 24)
-        x, z = math.sin(a) * 0.66, -math.cos(a) * 0.66
-        m.wedge("Flame", (0.16, 0.26, 0.04), (x, 0.8, z), (255, 140, 30) if k % 2 else (255, 200, 60), R=rot(y=-math.degrees(a)))
+        a_ = 2 * math.pi * k / 6
+        m.blk("HatTrim", (0.05, 0.32, 0.05), cap + rot(z=-12) @ V(math.cos(a_) * 0.27, 0, math.sin(a_) * 0.27), (30, 90, 50), R=rot(z=-12))
+    fl = cap + V(-0.05, 0.22, 0)
+    f = m.seg("Flame", fl, fl + V(-0.08, 0.6, 0.0), 0.17, (255, 110, 30), bulge=0.28)
+    m.seg("Flame", fl + V(-0.08, 0.0, 0.02), fl + V(-0.3, 0.36, 0.02), 0.1, (255, 140, 40), bulge=0.3)
+    m.seg("Flame", fl + V(0.07, 0.0, 0.02), fl + V(0.24, 0.32, 0.02), 0.09, (255, 140, 40), bulge=0.3)
+    m.seg("Flame", fl + V(-0.02, 0.0, -0.06), fl + V(-0.05, 0.36, -0.08), 0.1, (255, 216, 80), bulge=0.3)
+    m.fire(f, size=1, heat=3)
+    # mischievous face: half-lidded yellow eyes, raised brows, a fanged grin
+    m.eyes_on(hc, hs, I3, 23, 14, 0.32, 0.38, red, "sly", iris=(255, 200, 40), brow=dark, brow_k=0.9)
+    p, n = on_ell_R(hc, hs, I3, V(0, -0.34, -1))
+    m.mouth(p, n, 0.42, "sly", color=(80, 14, 24), fangs=True, side_bias=1)
+    cheeks(m, hc, hs, I3, 0.62, -0.2, 0.22, color=(255, 120, 120))
+    for s in (-1, 1):
+        m.horn("Horn", hc + V(s * 0.34, 0.36, 0.05), hc + V(s * 0.58, 0.82, 0.12), 0.12, CREAM, curve=(s * 0.06, 0, -0.05))
+    # little arms: one hand on the hip, one claw raised to scheme
+    m.arms2(1.32, 0.62, red, 0.14, 0.12, 0.13, 0.16, dark,
+            {1: ((0.92, 1.6, -0.25), (0.66, 1.88, -0.55), False), -1: ((-0.94, 0.98, 0.0), (-0.62, 0.86, -0.34), True)},
+            refl=0.18)
+    # short legs with cloven hooves
+    for s in (-1, 1):
+        hip, knee, ankle = V(s * 0.32, 0.55, 0.0), V(s * 0.36, 0.36, -0.05), V(s * 0.38, 0.22, 0.0)
+        m.leg(hip, knee, ankle, 0.17, 0.14, 0.14, red, refl=0.18)
+        m.hoof((s * 0.38, -0.02), 0.2, (60, 18, 26), notch=True)
+    # pointed devil tail
+    pts = [V(0, 0.8, 0.5), V(0.1, 0.62, 0.9), V(0.32, 0.72, 1.2), V(0.42, 1.05, 1.32)]
+    for k, (a, b) in enumerate(zip(pts, pts[1:])):
+        m.seg("Tail", a, b, 0.07 - k * 0.012, red, ext=0.03)
+    tip = pts[-1]
+    m.ell("TailTip", (0.08, 0.34, 0.26), tip + V(0.03, 0.14, 0.02), dark, R=rot(x=-20, z=-18))
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def spaghetti_hydra():
-    m = Model("spaghetti_hydra")
-    noodle = (240, 205, 120)
-    noodle2 = (250, 220, 140)
-    sauce = (195, 40, 30)
-    meat = (125, 65, 40)
-    meat2 = (100, 50, 30)
-    # plate with a blue rim pattern
-    m.cyl("Plate", 0.18, 3.6, (0, 0.09, 0), (245, 245, 250), refl=0.15)
-    m.ring("PlateRim", (0, 0.19, 0), 1.65, 0.07, (70, 110, 200), normal="y", segments=16)
-    m.ring("PlateRim", (0, 0.19, 0), 1.5, 0.035, (70, 110, 200), normal="y", segments=16)
-    m.cyl("PlateInner", 0.2, 2.8, (0, 0.1, 0), (225, 228, 235))
-    m.ell("Pile", (2.7, 1.1, 2.5), (0, 0.6, 0.1), noodle)
-    # noodle loops wrapped around the pile
-    for k in range(3):
-        m.ring("Noodle", (0, 0.48 + k * 0.2, 0.1), 1.25 - k * 0.24, 0.1, noodle2 if k % 2 else noodle, normal="y", segments=12, R=rot(x=4 * (k - 1), z=5 * (k % 2)))
+    """Epic. A plate heaped with spaghetti and sauce, three meatball heads on thick braided noodle
+    necks (grumpy, goofy and fierce), cheese flakes, basil and a fork stuck in. Mood: three of them."""
+    m = SModel("spaghetti_hydra")
+    noodle = (250, 220, 140)
+    noodle_d = (232, 196, 112)
+    sauce = (200, 40, 32)
+    meat = (128, 70, 44)
+    # the plate
+    m.cyl("Base", 0.14, 3.2, V(0, 0.07, 0), WHITE, "y")
+    m.cyl("Base", 0.1, 3.24, V(0, 0.1, 0), (90, 140, 220), "y")
+    m.cyl("Base", 0.06, 2.66, V(0, 0.17, 0), WHITE, "y")
+    # noodle heap
+    hc, hs = V(0, 0.62, 0.05), (2.7, 1.0, 2.5)
+    m.ell("Body", hs, hc, noodle)
+    rnd = random.Random(8)
+    for k in range(14):
+        a0 = rnd.uniform(0, 2 * math.pi)
+        y0 = rnd.uniform(-0.1, 0.55)
+        pts = []
+        for j in range(4):
+            a = a0 + j * 0.45
+            v = V(math.cos(a), y0 + math.sin(j * 1.3 + k) * 0.18, math.sin(a))
+            p, n = on_ell_R(hc, hs, I3, v)
+            pts.append(p + n * 0.04)
+        col = noodle if k % 2 else noodle_d
+        for a_, b_ in zip(pts, pts[1:]):
+            m.seg("Noodle", a_, b_, 0.055, col, ext=0.03)
+    # sauce on top with drips
+    m.ell("Sauce", (1.7, 0.3, 1.5), hc + V(0.05, 0.42, 0.0), sauce, refl=0.2)
+    for (a, L) in [(30, 0.35), (130, 0.45), (220, 0.32), (300, 0.42)]:
+        q = hc + V(math.cos(math.radians(a)) * 0.78, 0.42, math.sin(math.radians(a)) * 0.7)
+        m.drip("Sauce", q, L, 0.14, sauce, refl=0.2)
+    # three braided noodle necks and meatball heads
+    heads = [(-0.92, 2.1, -0.2, "grumpy", 0.92), (0.05, 2.85, 0.15, "goofy", 1.0), (0.96, 2.2, -0.25, "fierce", 0.94)]
+    for (x, y, z, mood, d) in heads:
+        base = V(x * 0.55, 0.95, z * 0.4)
+        top = V(x, y - d * 0.4, z)
+        mid = (base + top) / 2 + V(x * 0.2, 0, -0.15)
+        for k in range(3):
+            o = V(math.cos(k * 2.1) * 0.09, 0, math.sin(k * 2.1) * 0.09)
+            o2 = V(math.cos(k * 2.1 + 1.5) * 0.09, 0, math.sin(k * 2.1 + 1.5) * 0.09)
+            m.seg("Noodle", base + o * 1.2, mid + o2 * 1.2, 0.1, noodle if k != 1 else noodle_d, ext=0.05)
+            m.seg("Noodle", mid + o2 * 1.2, top + o * 1.2, 0.1, noodle if k != 1 else noodle_d, ext=0.05)
+        hc2, hs2 = V(x, y, z), (d, d * 0.94, d)
+        m.ell("Head", hs2, hc2, meat)
+        for j in range(5):
+            q, nq = on_ell_R(hc2, hs2, I3, V(math.cos(j * 2.4), 0.6 - j * 0.3, math.sin(j * 2.4) + 0.3))
+            m.ball("Bump", d * 0.18, q - nq * 0.02, shade(meat, 0.85))
+        iris = {"grumpy": (240, 200, 60), "goofy": (90, 160, 240), "fierce": (230, 80, 60)}[mood]
+        m.eyes_on(hc2, hs2, I3, 24, 10, d * 0.38, d * 0.44, meat, mood, iris=iris, brow=(60, 30, 20), brow_k=0.95)
+        p, n = on_ell_R(hc2, hs2, I3, V(0, -0.42, -1))
+        m.mouth(p, n, d * 0.48, mood, color=(70, 20, 20), skin=meat if mood != "grumpy" else None, d=d * 0.06)
+        # a sauce cap with a drip and a basil leaf
+        m.ell("HeadSauce", (d * 0.8, d * 0.3, d * 0.8), hc2 + V(0, d * 0.36, 0.03), sauce, refl=0.2)
+        m.drip("HeadSauce", hc2 + V(d * 0.2, d * 0.3, -d * 0.3), d * 0.3, d * 0.12, sauce, refl=0.2)
+        m.ell("Basil", (d * 0.36, 0.04, d * 0.2), hc2 + V(-d * 0.1, d * 0.52, 0.04), (70, 160, 70), R=rot(z=12, y=30))
+    # cheese flakes and basil on the heap, a fork stuck in
     for k in range(7):
-        a = k * 2 * math.pi / 7
-        x, z = math.cos(a) * 1.15, math.sin(a) * 1.0
-        m.chain("Noodle", [(x, 0.22, z + 0.1), (x * 0.8, 0.6, z * 0.8 + 0.1), (x * 0.4, 1.0, z * 0.4 + 0.1)], 0.1, noodle2)
-    # a stray noodle hanging over the plate edge
-    m.chain("Noodle", [(1.2, 0.4, -0.6), (1.55, 0.25, -0.7), (1.75, 0.12, -0.85)], 0.1, noodle2)
-    m.ell("Sauce", (1.8, 0.55, 1.7), (0, 1.05, 0.1), sauce, refl=0.25)
-    for (x, z) in [(-0.6, -0.55), (0.7, -0.4), (0.2, 0.75), (-0.7, 0.5)]:
-        m.drip("Sauce", (x, 1.0, z), 0.3, 0.2, sauce, refl=0.25)
-    for (x, z, c) in [(-0.3, -0.2, (225, 70, 50)), (0.35, 0.2, (225, 70, 50)), (0.1, -0.45, (240, 90, 60))]:
-        m.blk("Tomato", (0.18, 0.14, 0.18), (x, 1.3, z), c, R=rot(10, 40, 15))
-    for (x, z, a) in [(0.35, 0.3, 30), (-0.45, 0.1, -40), (0.05, 0.55, 100)]:
-        m.ell("Basil", (0.5, 0.08, 0.28), (x, 1.33, z), (60, 150, 60), R=rot(y=a, z=8))
-    m.scatter("Cheese", (0, 1.05, 0.1), (1.8, 0.55, 1.7), 8, [(255, 250, 220), (250, 240, 200)], seed=5, d=0.09, shape="cube", ymin=0.4)
-    # a fork stuck in the pile
-    m.rod("Fork", (-1.0, 0.85, 0.7), (-1.5, 2.0, 1.05), 0.12, (205, 205, 215), mat="Metal")
-    for k in range(3):
-        m.rod("Fork", (-0.95 + k * 0.06, 0.85, 0.7), (-0.9 + k * 0.06, 0.5, 0.55), 0.05, (205, 205, 215), mat="Metal")
-    heads = [((-1.0, 2.55, -0.55), [(-0.5, 1.0, 0.0), (-0.9, 1.7, 0.1), (-0.85, 2.2, -0.3)], -1),
-             ((0.0, 3.25, -0.45), [(0.0, 1.1, 0.2), (0.25, 2.0, 0.2), (0.0, 2.8, -0.2)], 0),
-             ((1.0, 2.55, -0.55), [(0.5, 1.0, 0.0), (0.95, 1.7, 0.1), (0.9, 2.2, -0.3)], 1)]
-    for (hx, hy, hz), pts, s in heads:
-        # each neck is a twist of three noodles
-        for k, off in enumerate([(-0.06, 0, 0.02), (0.06, 0, -0.02)]):
-            p = [(x + off[0] * (1 + 0.5 * math.sin(i + k)), y, z + off[2]) for i, (x, y, z) in enumerate(pts)]
-            m.chain("Neck", p + [(hx + off[0], hy - 0.3, hz + 0.1 + off[2])], 0.17, noodle if k == 0 else noodle2)
-        m.ball("Head", 1.0, (hx, hy, hz), meat)
-        m.scatter("Bump", (hx, hy, hz), (1.0, 1.0, 1.0), 8, [meat2, (140, 75, 45)], seed=11 + s, d=0.13, shape="dot", ymin=-0.5)
-        m.ell("HeadSauce", (0.82, 0.36, 0.82), (hx, hy + 0.38, hz + 0.05), sauce, refl=0.25)
-        m.drip("HeadSauce", (hx + 0.25, hy + 0.3, hz - 0.3), 0.22, 0.12, sauce, refl=0.25)
-        m.ell("Basil", (0.32, 0.06, 0.18), (hx - 0.1, hy + 0.58, hz + 0.05), (60, 150, 60), R=rot(y=30 + s * 40, z=10))
-        m.eyes(hy + 0.05, hz - 0.45, 0.4, 0.3, lid=meat, x=hx, angry=10, iris=(230, 170, 40), z_back=0.03)
-        m.grin(hy - 0.22, hz - 0.47, 0.34, color=(60, 20, 20), x=hx, open_=True, teeth=0, bend=0.05)
-        for t in (-1, 1):
-            m.wedge("Fang", (0.07, 0.12, 0.05), (hx + t * 0.1, hy - 0.2, hz - 0.5), WHITE, R=rot(x=180))
+        a = k * 0.9 + 0.3
+        q, nq = on_ell_R(hc, hs, I3, V(math.cos(a), 0.55, math.sin(a)))
+        m.blk("Cheese", (0.12, 0.04, 0.08), q + nq * 0.05, (255, 240, 170), R=frame_normal(nq, k * 40))
+    for (x, z) in [(-0.55, 0.6), (0.6, 0.45)]:
+        m.ell("Basil", (0.3, 0.04, 0.16), V(x, 1.14, z), (70, 160, 70), R=rot(z=10, y=x * 60))
+    fork = V(1.0, 1.0, 0.75)
+    m.seg("ForkHandle", fork, fork + V(0.45, 1.25, 0.25), 0.07, SILVER, "Metal", shape="C")
+    for k in range(4):
+        m.seg("ForkTine", fork + V(-0.1 + k * 0.07, 0, 0), fork + V(-0.16 + k * 0.08, -0.35, -0.06), 0.025, SILVER, "Metal", shape="C")
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def burrito_bouncer():
-    m = Model("burrito_bouncer")
-    tort = (230, 195, 135)
-    grill = (175, 125, 70)
-    m.cyl("Body", 2.4, 1.9, (0, 1.6, 0), tort)
-    m.ell("Top", (1.9, 0.7, 1.9), (0, 2.8, 0), tort)
-    # grill marks and toasty spots
-    for k in range(4):
-        m.rod("Grill", (-0.85, 1.55 + k * 0.35, -0.42), (-0.35, 1.75 + k * 0.35, -0.86), 0.06, grill, shape="B")
-        m.rod("Grill", (0.85, 1.55 + k * 0.35, -0.42), (0.6, 1.65 + k * 0.35, -0.75), 0.06, grill, shape="B")
-    m.scatter("Toast", (0, 1.6, 0), (1.95, 2.4, 1.95), 10, [(205, 160, 100)], seed=9, d=0.18, shape="dot", ymin=-0.6)
-    # filling bursting out of the top
-    m.ell("Filling", (1.45, 0.48, 1.45), (0, 3.02, 0), (120, 70, 45))
-    m.ell("Rice", (1.1, 0.3, 1.1), (0.1, 3.12, 0.1), (250, 248, 235))
-    for (x, z, c) in [(-0.35, -0.2, (90, 180, 70)), (0.3, 0.1, (220, 60, 50)), (0.0, 0.35, (250, 250, 240)), (-0.2, 0.3, (90, 180, 70)), (0.35, -0.3, (250, 220, 90)), (-0.45, 0.1, (220, 60, 50)), (0.15, -0.45, (90, 180, 70))]:
-        m.ball("Topping", 0.3, (x, 3.2, z), c)
-    for (x, z, a) in [(-0.55, -0.4, 20), (0.5, -0.45, -30)]:
-        m.ell("Lettuce", (0.5, 0.1, 0.35), (x, 3.05, z), (110, 200, 80), R=rot(x=-25, y=a))
-    # foil wrapper with crinkles
-    m.cyl("Foil", 1.0, 1.98, (0, 0.55, 0), (210, 215, 225), mat="Foil", refl=0.35)
-    m.blk("FoilEdge", (2.0, 0.16, 0.3), (0, 1.07, -0.9), (220, 225, 235), mat="Foil", R=rot(z=4))
-    for k in range(7):
-        a = math.radians(-70 + k * 23)
-        m.blk("Crinkle", (0.06, 0.7, 0.05), (math.sin(a) * 1.0, 0.55, -math.cos(a) * 1.0), (185, 190, 205), mat="Foil", R=rot(y=-math.degrees(a), z=12 * (1 if k % 2 else -1)))
-    # tortilla fold seam
-    m.blk("Fold", (0.12, 1.5, 0.1), (0.35, 1.95, -0.95), (205, 165, 110))
-    m.blk("Fold", (0.55, 0.1, 0.1), (0.45, 2.66, -0.86), (205, 165, 110), R=rot(y=-28, z=-8))
-    # mirror shades with a frame, a stern mouth and a furrowed brow
-    for s in (-1, 1):
-        m.rbox("Shades", (0.62, 0.4, 0.12), (s * 0.38, 2.3, -0.96), (20, 20, 25), 0.1, axis="z", refl=0.5)
-        m.ell("ShadesShine", (0.2, 0.08, 0.04), (s * 0.38 - 0.12, 2.4, -1.03), (150, 170, 220), R=rot(z=20), mat="Neon", tr=0.3)
-        m.brow(s * 0.36, 2.6, -0.86, 0.36, (150, 105, 60), s, tilt=14, d=0.1)
-    m.blk("ShadesBridge", (0.3, 0.1, 0.1), (0, 2.38, -0.97), (20, 20, 25))
-    m.grin(1.88, -0.97, 0.5, curve=-0.08, color=(90, 40, 30))
-    m.ell("Chin", (0.4, 0.12, 0.1), (0, 1.72, -0.95), (210, 170, 115))
-    m.cyl("Earpiece", 0.2, 0.2, (0.96, 2.2, -0.2), (30, 30, 30), axis="x")
-    m.chain("EarWire", [(1.0, 2.1, -0.2), (1.05, 1.7, 0.0), (0.98, 1.3, 0.1)], 0.05, (30, 30, 30), joints=False)
-    # big crossed arms with bicep bulges and knuckles
-    m.rod("Arm", (-0.95, 1.95, -0.2), (0.55, 1.45, -1.15), 0.5, tort, shape="E")
-    m.rod("Arm", (0.95, 1.95, -0.2), (-0.55, 1.45, -1.05), 0.5, tort, shape="E")
-    m.ell("Bicep", (0.62, 0.55, 0.62), (-0.85, 1.85, -0.35), tort)
-    m.ell("Bicep", (0.62, 0.55, 0.62), (0.85, 1.85, -0.35), tort)
-    m.ball("Fist", 0.52, (0.62, 1.47, -1.17), tort)
-    m.ball("Fist", 0.52, (-0.62, 1.47, -1.07), tort)
-    for k in range(3):
-        m.ball("Knuckle", 0.13, (0.62 + (k - 1) * 0.13, 1.66, -1.3), grill)
-        m.ball("Knuckle", 0.13, (-0.62 + (k - 1) * 0.13, 1.66, -1.2), grill)
-    # gold chain with a hot pepper medallion
-    m.ring("Chain", (0, 2.0, 0.0), 1.0, 0.08, (240, 200, 60), normal="y", segments=16, R=rot(x=-12), mat="Metal")
-    m.cyl("Medal", 0.06, 0.3, (0.0, 1.88, -0.98), (250, 210, 70), axis="z", mat="Metal", refl=0.3)
-    # sneakers
-    for s in (-1, 1):
-        m.shoe(s * 0.5, -0.3, 0.62, 0.85, (245, 245, 250), sole=(200, 40, 40), toe=(225, 225, 235), lace=(40, 40, 45))
-    # the back: the tortilla's folded-over flap with grill marks, foil crinkles all round
-    m.ell("BackFlap", (1.5, 1.9, 0.3), (0.05, 1.95, 0.86), shade(tort, 0.93))
-    m.ell("BackFlapEdge", (0.12, 1.8, 0.2), (-0.68, 1.95, 0.8), shade(tort, 0.82), R=rot(y=-30))
-    for k in range(4):
-        m.rod("Grill", (-0.36, 1.35 + k * 0.36, 0.985), (0.4, 1.52 + k * 0.36, 0.985), 0.06, grill, shape="B")
+    """Mythic. A huge burrito bouncer: a toasted tortilla wrapped round with a fold across the front,
+    a crinkly foil skirt, filling spilling out of the open top, wraparound shades, a toothpick, a
+    security earpiece, a gold chain and big folded arms. Mood: tough and unimpressed."""
+    m = SModel("burrito_bouncer")
+    tort = (238, 204, 146)
+    tort_l = (246, 222, 176)
+    toast = (196, 140, 76)
+    foil = (206, 212, 222)
+    R0 = 0.92
+    m.cyl("Body", 1.95, 2 * R0, V(0, 1.72, 0.02), tort, "y")
+    m.ell("Body", (2 * R0, 0.6, 2 * R0), V(0, 0.78, 0.02), tort)
+    # toasted spots
+    rnd = random.Random(5)
+    for k in range(12):
+        a = rnd.uniform(0, 2 * math.pi)
+        y = rnd.uniform(1.35, 2.55)
+        if abs(math.degrees(a) % 360 - 270) < 40 and y > 1.75:
+            continue   # keep the face clear
+        m.ell("Toast", (0.28, 0.17, 0.05), V(math.cos(a) * R0, y, 0.02 + math.sin(a) * R0), toast, R=frame_normal(V(math.cos(a), 0, math.sin(a)), rnd.uniform(0, 180)))
+
+    def on_wrap(a_deg, y, out=0.0):
+        a = math.radians(a_deg)
+        return V(math.cos(a) * (R0 + out), y, 0.02 + math.sin(a) * (R0 + out))
+
+    # the tortilla's wrapped edge sweeping across the front, with a toasted shadow under it
+    pts = [on_wrap(a, 2.5 - k * 0.24, 0.05) for k, a in enumerate(range(130, 420, 48))]
+    for a_, b_ in zip(pts, pts[1:]):
+        m.seg("Fold", a_ + V(0, -0.11, 0), b_ + V(0, -0.11, 0), 0.07, toast, r2=0.06, ext=0.06)
+        m.seg("Fold", a_, b_, 0.12, tort_l, r2=0.1, ext=0.1)
+    # the open top: a rolled tortilla rim with floppy flaps and the filling heaped inside
+    m.ell("Rim", (2 * R0 + 0.04, 0.24, 2 * R0 + 0.04), V(0, 2.7, 0.02), tort_l)
+    for k, a in enumerate((20, 95, 160, 215, 330)):
+        n = V(math.cos(math.radians(a)), 0, math.sin(math.radians(a)))
+        p = on_wrap(a, 2.92, -0.08)
+        R = frame_normal(n) @ Rx(-28)
+        m.ell("Rim", (0.92, 0.62, 0.14), p, tort_l if k % 2 else tort, R=R)
+        m.ell("Toast", (0.22, 0.14, 0.05), p + n * 0.08 + V(0, 0.12, 0), toast, R=R)
+    m.ell("Filling", (1.62, 0.66, 1.58), V(0, 2.9, 0.02), (150, 84, 48))
+    rnd = random.Random(11)
+    for k in range(18):
+        a = k * 0.62 + 0.3
+        r = (0.2, 0.42, 0.6)[k % 3]
+        q = V(math.cos(a) * r, 3.1 + rnd.uniform(-0.03, 0.08) - r * 0.18, 0.02 + math.sin(a) * r)
+        kind = k % 6
+        if kind in (0, 3):
+            m.ell("Lettuce", (0.5, 0.1, 0.34), q + V(0, 0.08, 0), (110, 196, 70) if kind == 0 else (150, 214, 90),
+                  R=rot(z=26 * math.cos(a), y=math.degrees(a), x=24))
+        elif kind == 1:
+            m.blk("Tomato", (0.2, 0.17, 0.2), q + V(0, 0.04, 0), (226, 58, 48), R=rot(20, k * 30, 10))
+        elif kind == 2:
+            m.ball("Bean", 0.17, q, (96, 52, 34))
+        elif kind == 4:
+            m.ball("Rice", 0.15, q + V(0, 0.03, 0), (252, 250, 240))
+        else:
+            m.ball("Corn", 0.13, q + V(0, 0.05, 0), (255, 214, 70))
+    m.ell("Guac", (0.62, 0.3, 0.56), V(0.2, 3.26, 0.12), (130, 184, 70))
+    m.ell("SourCream", (0.46, 0.3, 0.44), V(-0.22, 3.3, -0.02), (252, 250, 244))
+    m.ell("SourCream", (0.24, 0.22, 0.24), V(-0.2, 3.46, -0.02), (252, 250, 244))
+    # melted cheese drips over the rim at the sides and back, away from the face
+    for a in (140, 175, 10, 40, 95):
+        n = V(math.cos(math.radians(a)), 0, math.sin(math.radians(a)))
+        ln = 0.3 + (a % 4) * 0.07
+        p = on_wrap(a, 2.68 - ln / 2, 0.0)
+        m.ell("Cheese", (0.24, ln + 0.1, 0.12), p, (255, 200, 60), R=frame_normal(n))
+        m.ell("Cheese", (0.22, 0.2, 0.16), on_wrap(a, 2.68 - ln, 0.02), (255, 200, 60), R=frame_normal(n))
+    # face: wraparound shades, heavy brows, a flat mouth with a toothpick, an earpiece
+    # two big wraparound lenses with a bridge and arms running back to the earpiece
+    for sd in (-1, 1):
+        a = 270 + sd * 21
+        n = V(math.cos(math.radians(a)), 0, math.sin(math.radians(a)))
+        m.ell("Glasses", (0.6, 0.42, 0.12), on_wrap(a, 2.24, 0.05), (22, 22, 28), R=frame_normal(n) @ Rz(sd * 6), refl=0.4)
+        m.ell("Glint", (0.22, 0.07, 0.02), on_wrap(a - sd * 6, 2.32, 0.12), (210, 222, 240), R=frame_normal(n) @ Rz(-20))
+        arm = [on_wrap(270 + sd * k, 2.3, 0.06) for k in (40, 62, 84)]
+        m.chain("Glasses", arm, 0.035, (30, 30, 36), joints=False)
+        b = on_wrap(270 + sd * 24, 2.58, 0.05)
+        m.ell("Brow", (0.52, 0.14, 0.1), b, (110, 66, 34), R=frame_normal(V(math.cos(math.radians(270 + sd * 24)), 0, math.sin(math.radians(270 + sd * 24)))) @ Rz(-sd * 14))
+    m.seg("Glasses", on_wrap(266, 2.28, 0.06), on_wrap(274, 2.28, 0.06), 0.05, (30, 30, 36))
+    pm = on_wrap(270, 1.92, 0.02)
+    m.mouth(pm, V(0, 0, -1), 0.46, "stern", color=(110, 60, 40), d=0.06, curve=-0.07, kind="smile")
+    m.seg("Toothpick", pm + V(0.18, 0, -0.03), pm + V(0.46, 0.08, -0.22), 0.026, (220, 190, 130))
+    qe = on_wrap(0, 2.3, 0.04)
+    m.ell("Earpiece", (0.1, 0.2, 0.16), qe, (30, 30, 36))
+    m.ball("EyeLED", 0.06, qe + V(0.05, 0.07, 0), (255, 60, 60), "Neon")
+    m.chain("EarWire", [qe + V(0.03, -0.08, 0.02), qe + V(0.05, -0.4, 0.14), qe + V(0.02, -0.72, 0.24)], 0.025, (40, 40, 46), joints=False)
+    # a gold chain with a chili medallion
     for k in range(8):
-        a = math.radians(110 + k * 20)
-        m.blk("Crinkle", (0.06, 0.7, 0.05), (math.sin(a) * 1.0, 0.55, -math.cos(a) * 1.0), (185, 190, 205), mat="Foil", R=rot(y=-math.degrees(a), z=12 * (1 if k % 2 else -1)))
-    m.blk("FoilEdge", (2.0, 0.16, 0.3), (0, 1.07, 0.9), (220, 225, 235), mat="Foil", R=rot(z=-4))
-    m.ell("SalsaDrip", (0.22, 0.4, 0.1), (0.5, 2.62, 0.82), (220, 60, 50))
-    m.ball("SalsaDrop", 0.14, (0.5, 2.36, 0.86), (220, 60, 50))
+        a1, a2 = 205 + k * 16.5, 205 + (k + 1) * 16.5
+        y1 = 1.98 - math.sin(math.radians((a1 - 205) * 180 / 132)) * 0.3
+        y2 = 1.98 - math.sin(math.radians((a2 - 205) * 180 / 132)) * 0.3
+        m.seg("Chain", on_wrap(a1, y1, 0.07), on_wrap(a2, y2, 0.07), 0.075, GOLD, "Metal", ext=0.02)
+    med = on_wrap(270, 1.5, 0.1)
+    m.cyl("Medal", 0.08, 0.38, med, GOLD, "z", "Metal", refl=0.2)
+    m.seg("Medal", med + V(-0.09, 0.07, -0.05), med + V(0.09, -0.07, -0.05), 0.075, CHERRY)
+    # a crinkly foil skirt
+    m.cyl("Foil", 0.74, 2 * R0 + 0.1, V(0, 0.92, 0.02), foil, "y", "Foil", refl=0.2)
+    for k in range(14):
+        a = 2 * math.pi * k / 14
+        m.blk("Foil", (0.06, 0.7, 0.16), V(math.cos(a) * (R0 + 0.05), 0.92, 0.02 + math.sin(a) * (R0 + 0.05)), shade(foil, 1.07), "Foil", R=rot(y=-math.degrees(a)))
+    m.cyl("Foil", 0.1, 2 * R0 + 0.16, V(0, 1.28, 0.02), shade(foil, 1.1), "y", "Foil")
+    # big arms folded across the belly (each hand tucked on its own side)
+    for s in (-1, 1):
+        sh, el, wr = V(s * 1.0, 2.05, 0.0), V(s * 1.2, 1.42, -0.45), V(s * 0.3, 1.36 + s * 0.12, -1.05)
+        m.ball("Shoulder", 0.68, sh, tort)
+        m.seg("UpperArm", sh, el, 0.29, tort, bulge=0.5)
+        m.ball("Elbow", 0.48, el, tort)
+        m.seg("Forearm", el, wr, 0.28, tort, bulge=0.62)
+        m.ball("Fist", 0.48, wr + V(-s * 0.05, 0, -0.04), shade(tort, 0.96))
+        m.ell("Wristband", (0.52, 0.2, 0.52), el + (wr - el) * 0.62, (36, 36, 42), R=frame_normal(norm(wr - el)) @ Rx(90))
+    # short legs in black boots
+    m.legs2(0.62, 0.42, tort, 0.24, 0.2, 0.2, 0.52, 0.72, (36, 36, 42), sole=(20, 20, 24), cuff=(60, 60, 68), ankle_y=0.32)
     return m
 
 
+# ------------------------------------------------------------------------------------------------
 @model
 def queen_parfait():
-    m = Model("queen_parfait")
-    glass = (220, 235, 245)
-    m.cyl("Base", 0.18, 1.8, (0, 0.09, 0), glass, mat="Glass", tr=0.35, refl=0.25)
-    m.ring("BaseRim", (0, 0.18, 0), 0.88, 0.06, (250, 210, 90), normal="y", segments=14, mat="Metal")
-    m.cyl("Stem", 0.9, 0.42, (0, 0.6, 0), glass, mat="Glass", tr=0.35, refl=0.25)
-    m.ball("StemKnob", 0.55, (0, 0.62, 0), glass, mat="Glass", tr=0.35, refl=0.25)
-    m.cyl("Bowl", 2.5, 2.3, (0, 2.3, 0), (225, 240, 250), mat="Glass", tr=0.6, refl=0.3)
-    m.ring("BowlRim", (0, 3.55, 0), 1.15, 0.1, (250, 210, 90), normal="y", segments=18, mat="Metal")
-    layers = [(1.3, (220, 50, 70)), (1.85, (255, 245, 230)), (2.4, (90, 70, 190)), (2.95, (255, 180, 200))]
-    for i, (y, c) in enumerate(layers):
-        m.cyl("Layer", 0.55, 2.1, (0, y, 0), c)
-        # granola crumbs between the layers
-        if i < 3:
-            for k in range(8):
-                a = k * 2 * math.pi / 8 + i
-                m.blk("Granola", (0.14, 0.1, 0.12), (math.cos(a) * 1.02, y + 0.27, math.sin(a) * 1.02), (200, 150, 80), R=rot(20, k * 30, 10))
-    for (x, y, z) in [(-0.7, 1.6, -0.8), (0.6, 2.1, -0.85), (-0.3, 2.65, -0.95), (0.8, 2.75, -0.6), (0.85, 1.4, -0.5), (-0.9, 2.3, -0.5)]:
-        m.ball("Berry", 0.34, (x, y, z), (70, 60, 170), refl=0.2)
-    # whipped cream swirl
-    for k, (w, y) in enumerate([(2.45, 3.65), (2.0, 3.92), (1.7, 4.12), (1.3, 4.35), (0.9, 4.55)]):
-        m.ell("Cream", (w, 0.55, w), (0.04 * (k % 2), y, 0.03 * k), (255, 250, 245))
-    m.scatter("Sprinkle", (0, 4.0, 0), (2.0, 1.2, 2.0), 16, [(255, 90, 130), (90, 200, 255), (255, 220, 60), (150, 230, 120)], seed=2, d=0.06, ymin=0.3)
-    # face
-    m.eyes(3.75, -1.12, 0.62, 0.38, lid=(255, 250, 245), iris=(180, 60, 150), lash=3, z_back=0.03)
-    m.grin(3.42, -1.15, 0.36, curve=0.28, open_=True, teeth=0, color=(200, 50, 90), bend=0.03)
-    m.cheeks(3.5, -1.1, 1.2, 0.3)
-    # crown with gems
-    m.cyl("Crown", 0.38, 1.0, (0, 4.9, 0), (245, 200, 60), mat="Metal", refl=0.25)
-    m.ring("CrownBand", (0, 4.75, 0), 0.5, 0.07, (255, 230, 120), normal="y", segments=12, mat="Metal")
-    for k in range(5):
-        a = k * 2 * math.pi / 5 + math.pi / 2
-        m.ell("CrownPoint", (0.2, 0.42, 0.2), (math.cos(a) * 0.45, 5.18, -math.sin(a) * 0.45), (245, 200, 60), mat="Metal")
-        m.ball("CrownPoint", 0.1, (math.cos(a) * 0.45, 5.42, -math.sin(a) * 0.45), (255, 245, 200), mat="Neon")
-    gem = m.ball("CrownGem", 0.24, (0, 4.92, -0.52), (255, 60, 120), mat="Neon")
-    for s in (-1, 1):
-        m.ball("CrownGem", 0.14, (s * 0.32, 4.92, -0.4), (90, 200, 255), mat="Glass", refl=0.3)
-    m.ball("Cherry", 0.5, (0.0, 5.35, 0.0), (210, 20, 40), refl=0.35)
-    m.ball("CherryShine", 0.14, (-0.12, 5.48, -0.18), (255, 200, 200), tr=0.2)
-    m.rod("CherryStem", (0, 5.55, 0), (0.18, 5.9, 0.1), 0.06, (90, 140, 50))
-    m.sparkles(gem, (255, 170, 220))
-    m.light(gem, (255, 150, 200), 1.2, 8)
-    # a wafer stick and a mint leaf in the cream
-    m.blk("WaferStick", (0.18, 0.9, 0.3), (-0.65, 4.2, 0.35), (220, 175, 100), R=rot(z=20))
-    m.ell("Mint", (0.4, 0.08, 0.22), (0.55, 4.45, 0.3), (80, 190, 110), R=rot(z=-25, y=30))
-    # arms and a wafer scepter topped with a strawberry
-    for s in (-1, 1):
-        m.rod("Arm", (s * 1.12, 2.6, 0), (s * 1.6, 2.2, -0.35), 0.24, (255, 210, 225))
-        m.cyl("Cuff", 0.1, 0.3, (s * 1.5, 2.28, -0.28), (255, 250, 245), R=rot(y=s * 35) @ rot(z=s * 40))
-        m.mitt((s * 1.62, 2.18, -0.38), 0.3, (255, 210, 225), s)
-    m.blk("Wafer", (0.26, 2.2, 0.26), (1.62, 2.6, -0.4), (220, 175, 100), R=rot(z=-8))
-    for k in range(5):
-        m.blk("WaferStripe", (0.28, 0.05, 0.28), (1.62 + 0.03 * (k - 2), 1.75 + k * 0.38, -0.4), (180, 130, 70), R=rot(z=-8))
-    m.ell("ScepterTop", (0.58, 0.62, 0.58), (1.78, 3.72, -0.4), (225, 40, 60), refl=0.15)
-    m.ring("ScepterBand", (1.76, 3.45, -0.4), 0.18, 0.06, (250, 210, 90), normal="y", segments=8, mat="Metal")
-    # a raspberry cape hanging from the shoulders with an ermine-style trim
-    m.ell("Cape", (1.5, 1.5, 0.3), (0, 3.25, 1.2), (200, 60, 120), mat="Fabric", R=rot(x=-4))
-    m.ell("Cape", (2.3, 1.9, 0.34), (0, 2.2, 1.3), (200, 60, 120), mat="Fabric", R=rot(x=-8))
-    m.ell("CapeFold", (0.22, 1.7, 0.2), (-0.45, 2.3, 1.46), (170, 45, 100), mat="Fabric", R=rot(x=-8, z=6))
-    m.ell("CapeFold", (0.22, 1.7, 0.2), (0.45, 2.3, 1.46), (170, 45, 100), mat="Fabric", R=rot(x=-8, z=-6))
+    """Legendary. A parfait queen: a gown that is a tall layered parfait glass on a stem, a whipped-cream
+    bodice and beehive hair swirl, a gold-foil crown with a cherry, puffed cream sleeves, a wafer
+    sceptre, a glossy syrup cape and sprinkles. Mood: regal."""
+    m = SModel("queen_parfait")
+    glass = (226, 236, 248)
+    skin = (255, 230, 228)
+    # the glass: a foot, a stem and a tulip bowl of layers
+    m.cyl("Base", 0.12, 1.5, V(0, 0.06, 0), glass, "y", "Glass", tr=0.25, refl=0.3)
+    m.seg("Stem", V(0, 0.1, 0), V(0, 0.8, 0), 0.14, glass, "Glass", shape="C", tr=0.2, refl=0.3)
+    m.ball("Stem", 0.36, V(0, 0.55, 0), glass, "Glass", tr=0.2, refl=0.3)
+    layers = [(1.0, 1.0, (255, 140, 170)), (1.38, 1.36, CREAM), (1.76, 1.64, (150, 110, 200)), (2.14, 1.84, (230, 176, 90)),
+              (2.5, 1.96, (255, 150, 180))]
+    for k, (y, d, col) in enumerate(layers):
+        m.ell("Robe", (d, 0.5, d), V(0, y, 0), col)
+        if col == (230, 176, 90):
+            for j in range(7):
+                a = j * 0.9
+                m.ball("Crumb", 0.12, V(math.cos(a) * d * 0.48, y + 0.06, math.sin(a) * d * 0.48), (200, 140, 60))
+        if col == (150, 110, 200):
+            for j in range(6):
+                a = j * 1.05 + 0.4
+                m.ball("Berry", 0.18, V(math.cos(a) * d * 0.47, y + 0.08, math.sin(a) * d * 0.47), (90, 70, 170), refl=0.1)
+    m.ell("Robe", (2.12, 2.2, 2.12), V(0, 1.78, 0), glass, "Glass", tr=0.82, refl=0.35)
+    m.ell("Robe", (2.18, 0.14, 2.18), V(0, 2.8, 0), glass, "Glass", tr=0.3, refl=0.35)
+    # whipped-cream bodice swirling up out of the glass
+    for k, (y, d) in enumerate([(2.98, 1.7), (3.3, 1.3), (3.58, 0.94)]):
+        m.ell("Body" if k == 1 else "Cream", (d, 0.46, d), V(0, y, 0), CREAM)
+    sprinkles(m, V(0, 3.1, 0), (1.5, 0.8, 1.5), 12, seed=4, ymin=0.1)
+    # head and regal face
+    hc, hs = V(0, 4.22, -0.02), (0.98, 0.96, 0.92)
+    m.ell("Head", hs, hc, skin)
+    m.eyes_on(hc, hs, I3, 24, 8, 0.3, 0.36, skin, "regal", iris=(200, 70, 120), lash=3, brow=(170, 90, 110), brow_k=0.8)
+    p, n = on_ell_R(hc, hs, I3, V(0, -0.38, -1))
+    m.mouth(p, n, 0.26, "regal", color=(200, 50, 90), d=0.045)
+    cheeks(m, hc, hs, I3, 0.62, -0.22, 0.22)
+    # beehive hair: a whipped-cream swirl
+    for k, (y, d) in enumerate([(0.32, 1.04), (0.6, 0.86), (0.85, 0.64), (1.06, 0.42)]):
+        m.ell("Hair", (d, 0.34, d * 0.96), hc + V(0, y, 0.08), CREAM)
+    m.seg("Hair", hc + V(0, 1.12, 0.08), hc + V(0.06, 1.34, 0.06), 0.1, CREAM, bulge=0.3)
+    # gold-foil crown with points, gems and a cherry
+    cr = hc + V(0, 0.52, -0.02)
+    m.cyl("Crown", 0.26, 1.02, cr, GOLD, "y", "Foil", refl=0.2)
     for k in range(6):
-        x = -0.95 + k * 0.38
-        m.ell("CapeTrim", (0.4, 0.26, 0.3), (x, 1.32 + 0.04 * abs(k - 2.5), 1.43), (255, 250, 245), mat="Fabric")
-        m.ell("CapeTrim", (0.07, 0.11, 0.05), (x, 1.32 + 0.04 * abs(k - 2.5), 1.6), (40, 30, 40))
-    m.ell("Collar", (1.6, 0.35, 0.6), (0, 3.62, 0.85), (255, 250, 245), mat="Fabric")
+        a = math.radians(-90 + (k - 2.5) * 30)
+        m.seg("CrownPoint", cr + V(math.cos(a) * 0.5, 0.1, math.sin(a) * 0.5), cr + V(math.cos(a) * 0.54, 0.42, math.sin(a) * 0.54), 0.08, GOLD, "Foil", bulge=0.25)
+    for k in (-1, 0, 1):
+        a = math.radians(-90 + k * 32)
+        m.gem("CrownGem", cr + V(math.cos(a) * 0.52, 0.0, math.sin(a) * 0.52), 0.14, (255, 80, 130) if k == 0 else (110, 200, 255))
+    ch = hc + V(0.02, 1.52, 0.06)
+    m.ball("Cherry", 0.36, ch, (210, 20, 50), refl=0.3)
+    m.seg("Cherry", ch + V(0, 0.15, 0), ch + V(0.15, 0.45, 0.05), 0.025, (90, 140, 60))
+    # puffed cream sleeves and gloved arms; a wafer sceptre in the right hand
+    hands = m.arms2(3.42, 0.72, skin, 0.13, 0.11, 0.12, 0.15, WHITE,
+                    {1: ((1.05, 3.0, -0.2), (1.0, 2.62, -0.58), True), -1: ((-1.05, 3.55, -0.15), (-1.1, 4.0, -0.45), False)})
+    for s in (-1, 1):
+        m.ball("Sleeve", 0.56, V(s * 0.74, 3.44, 0.0), CREAM)
+        m.ball("Sleeve", 0.36, V(s * 0.9, 3.62, 0.02), WHITE)
+    w = hands[1]
+    m.seg("Wafer", w + V(0, -1.0, 0.05), w + V(0, 0.95, -0.05), 0.08, (230, 180, 100), shape="B")
+    for k in range(5):
+        m.blk("WaferStripe", (0.17, 0.035, 0.17), w + V(0, -0.8 + k * 0.38, 0), (200, 140, 70))
+    m.ell("WaferTop", (0.42, 0.42, 0.42), w + V(0, 1.12, -0.05), (255, 150, 180))
+    m.gem("WaferTop", w + V(0, 1.42, -0.05), 0.2, (255, 60, 110))
+    # a glossy syrup cape with drips
+    syrup = (180, 40, 60)
+    m.ell("Cape", (1.9, 2.6, 0.24), V(0, 2.4, 0.92), syrup, "Glass", R=rot(x=10), tr=0.1, refl=0.3)
+    m.seg("Cape", V(-0.72, 3.5, 0.62), V(0.72, 3.5, 0.62), 0.1, GOLD, "Foil")
+    for k in range(6):
+        x = -0.75 + k * 0.3
+        m.drip("Cape", (x, 1.3 + abs(x) * 0.3, 1.14), 0.3 + (k % 3) * 0.12, 0.16, syrup, "Glass", refl=0.3)
+    sp = m.ball("Sparkle", 0.1, hc + V(0, 1.8, 0), (255, 255, 220), "Neon")
+    m.sparkles(sp, (255, 210, 230))
     return m
