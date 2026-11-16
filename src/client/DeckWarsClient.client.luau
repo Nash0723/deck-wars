@@ -3024,7 +3024,7 @@ do
 	do
 		local CEILING = {
 			DuelTable = { TableLamp = true, TableLampCord = true, TableLampRim = true, TableLampShade = true, TableLampTop = true },
-			PackParty = { DiscoBall = true, DiscoString = true, LightWire = true, PartyLight1 = true, PartyLight2 = true, PartyLight3 = true, StringLight = true },
+			PackParty = { DiscoBall = true, DiscoString = true, LightWire = true, PartyCan = true, PartyLight1 = true, PartyLight2 = true, PartyLight3 = true, StringLight = true },
 		}
 		local ceiling = room:FindFirstChild("Ceiling") or Instance.new("Folder")
 		ceiling.Name = "Ceiling"

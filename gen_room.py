@@ -903,6 +903,257 @@ def painting_frame():
 
 
 # ------------------------------------------------------------------------------------------------
+# The Duel Table: legs, apron, rim, the two chairs and the two hanging lamps
+# (the top, the felt, the old tile board and the seats stay as they are: matches are laid out on
+# them. Every new part takes a name the scripts already know, so table themes (Cosmetics), the
+# pull stage (BiomeStage), the chairs' slide (RoomLife) and the ceiling lamps all keep working:
+# Rim/RimCorner/Apron/Inlay/Stretcher are painted by the board theme, Leg* are the legs, every
+# chair part starts with Chair/Armrest/ArmPost/BackCushion, the lamps are TableLamp*.)
+# ------------------------------------------------------------------------------------------------
+TABLE_WOOD, TABLE_WOOD_DK, TABLE_WOOD_LT = (92, 58, 36), (70, 43, 27), (112, 72, 46)
+TABLE_BRASS = (215, 175, 80)
+CHAIR_RED, CHAIR_RED_DK = (150, 35, 48), (112, 26, 38)
+
+
+def duel_table():
+    """The Duel Table round its top (at the room's middle): a padded rim with brass corner knobs
+    and a bead under it, a panelled apron with diamond medallions, six turned bun-foot legs and
+    an H stretcher with a turned middle."""
+    m = SModel("duel_table", "room")
+    hx, hz = 12.05, 10.55  # the rim's middle line
+    # the rim: a low base, a round padded bolster on it, and a bead round the top's outer edge
+    for sz in (-1, 1):
+        m.blk("Rim", (2 * hx, 0.3, 0.9), (0, 4.1, sz * hz), TABLE_WOOD_DK, "Wood")
+        m.cyl("Rim", 2 * hx, 0.66, (0, 4.28, sz * hz), TABLE_WOOD_DK, "x", "Wood")
+        m.cyl("Rim", 25.0, 0.44, (0, 3.9, sz * 11.0), TABLE_WOOD_DK, "x", "Wood")
+    for sx in (-1, 1):
+        m.blk("Rim", (0.9, 0.3, 2 * hz), (sx * hx, 4.1, 0), TABLE_WOOD_DK, "Wood")
+        m.cyl("Rim", 2 * hz, 0.66, (sx * hx, 4.28, 0), TABLE_WOOD_DK, "z", "Wood")
+        m.cyl("Rim", 22.0, 0.44, (sx * 12.5, 3.9, 0), TABLE_WOOD_DK, "z", "Wood")
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            m.ball("Rim", 0.44, (sx * 12.5, 3.9, sz * 11.0), TABLE_WOOD_DK, "Wood")
+            m.cyl("RimCorner", 0.5, 1.15, (sx * hx, 4.25, sz * hz), TABLE_BRASS, "y", "Metal")
+            m.ball("RimCorner", 0.72, (sx * hx, 4.62, sz * hz), TABLE_BRASS, "Metal")
+    # the apron: the old block, a cove under the top's overhang, a bead along the bottom, raised
+    # panels on the long sides with a brass diamond in each
+    m.blk("Apron", (23.6, 1.0, 20.6), (0, 2.3, 0), TABLE_WOOD_DK, "Wood")
+    for sz in (-1, 1):
+        m.cyl("Apron", 23.4, 0.4, (0, 2.74, sz * 10.32), TABLE_WOOD, "x", "Wood")
+        m.cyl("Apron", 21.4, 0.34, (0, 1.86, sz * 10.3), TABLE_WOOD, "x", "Wood")
+        for x in (-7.0, 0.0, 7.0):
+            m.blk("Apron", (6.0, 0.58, 0.1), (x, 2.3, sz * 10.33), TABLE_WOOD_LT, "Wood")
+            m.cyl("Inlay", 0.08, 0.5, (x, 2.3, sz * 10.4), TABLE_BRASS, "z", "Metal")
+            m.blk("Inlay", (0.3, 0.3, 0.07), (x, 2.3, sz * 10.43), TABLE_BRASS, "Metal", R=Rz(45))
+    for sx in (-1, 1):
+        m.cyl("Apron", 20.4, 0.4, (sx * 11.82, 2.74, 0), TABLE_WOOD, "z", "Wood")
+        m.cyl("Apron", 18.4, 0.34, (sx * 11.8, 1.86, 0), TABLE_WOOD, "z", "Wood")
+    # six turned legs: brass foot, a fat bun, a neck, a round knob, a brass collar, a square top
+    for sx in (-1, 1):
+        for z in (-9.7, 0.0, 9.7):
+            x = sx * 11.1
+            m.cyl("LegFoot", 0.16, 1.32, (x, 0.08, z), TABLE_BRASS, "y", "Metal")
+            m.ell("Leg", (1.58, 0.84, 1.58), (x, 0.56, z), TABLE_WOOD_DK, "Wood")
+            m.cyl("Leg", 0.38, 0.86, (x, 1.06, z), TABLE_WOOD_DK, "y", "Wood")
+            m.ell("LegKnob", (1.42, 0.7, 1.42), (x, 1.42, z), TABLE_WOOD, "Wood")
+            m.cyl("LegFoot", 0.12, 1.1, (x, 1.77, z), TABLE_BRASS, "y", "Metal")
+            m.blk("Leg", (1.5, 1.0, 1.5), (x, 2.3, z), TABLE_WOOD, "Wood")
+    # the H stretcher at the legs' necks, with a turned middle
+    m.cyl("Stretcher", 21.6, 0.48, (0, 1.06, 0), TABLE_WOOD_DK, "x", "Wood")
+    for sx in (-1, 1):
+        m.cyl("Stretcher", 18.9, 0.48, (sx * 11.1, 1.06, 0), TABLE_WOOD_DK, "z", "Wood")
+        m.cyl("Stretcher", 0.16, 0.7, (sx * 0.72, 1.06, 0), TABLE_WOOD, "x", "Wood")
+    m.ell("Stretcher", (1.1, 0.9, 0.9), (0, 1.06, 0), TABLE_WOOD, "Wood")
+    return m
+
+
+def duel_chair():
+    """A chunky card-room armchair (front toward -z, its middle over the origin): bun feet with
+    brass caps, a rounded seat frame with a brass cord, a plump red cushion, rolled wooden arms
+    with padded tops and brass scroll caps, raked back posts with brass finials, a button-tufted
+    padded back and an arched crest rail with a brass diamond."""
+    m = SModel("duel_chair", "room")
+    wood, dark, light = TABLE_WOOD, TABLE_WOOD_DK, TABLE_WOOD_LT
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            x, z = sx * 1.85, sz * 1.85
+            m.cyl("ChairFoot", 0.1, 0.6, (x, 0.05, z), TABLE_BRASS, "y", "Metal")
+            m.ell("ChairLeg", (0.72, 0.52, 0.72), (x, 0.34, z), dark, "Wood")
+    m.rbox("ChairBase", (4.4, 0.5, 4.4), (0, 0.78, 0), wood, 0.3, "Wood", edge_name="ChairTrim")
+    m.cyl("ChairTrim", 4.1, 0.12, (0, 1.04, -2.14), TABLE_BRASS, "x", "Metal")
+    # the cushion (the Seat itself stays): a plump front roll and a gently domed top
+    m.cyl("ChairCushion", 3.94, 1.0, (0, 1.5, -1.5), CHAIR_RED, "x", "Fabric")
+    m.ell("ChairCushion", (3.8, 0.36, 3.5), (0, 1.99, 0.1), CHAIR_RED, "Fabric")
+    # rolled arms on turned front posts
+    for sx in (-1, 1):
+        x = sx * 2.2
+        m.seg("ArmPost", (x, 1.0, -1.35), (x, 2.84, -1.35), 0.21, wood, "Wood", bulge=0.45)
+        m.blk("Armrest", (0.5, 0.3, 3.45), (x, 2.95, 0.27), dark, "Wood")
+        m.cyl("Armrest", 3.0, 0.56, (x, 3.08, 0.45), wood, "z", "Wood")
+        m.cyl("Armrest", 0.56, 0.62, (x, 3.0, -1.39), wood, "x", "Wood")
+        m.cyl("ChairTrim", 0.06, 0.42, (x + sx * 0.3, 3.0, -1.39), TABLE_BRASS, "x", "Metal")
+        m.ell("Armrest", (0.5, 0.22, 2.5), (x, 3.36, 0.45), CHAIR_RED, "Fabric")
+    # back posts (raked a little), finials, crest rail
+    for sx in (-1, 1):
+        x = sx * 1.95
+        m.rod("ChairPost", (x, 0.6, 1.9), (x, 5.95, 2.2), 0.5, wood, "Wood")
+        m.cyl("ChairFinial", 0.16, 0.56, (x, 6.02, 2.21), dark, "y", "Wood")
+        m.ball("ChairFinial", 0.56, (x, 6.3, 2.22), TABLE_BRASS, "Metal")
+    m.cyl("ChairTopRail", 3.5, 0.6, (0, 5.72, 2.2), wood, "x", "Wood")
+    m.ell("ChairTopRail", (2.4, 0.78, 0.5), (0, 6.02, 2.2), wood, "Wood")
+    for sz in (-1, 1):
+        m.cyl("ChairEmblem", 0.06, 0.46, (0, 6.0, 2.2 + sz * 0.26), TABLE_BRASS, "z", "Metal")
+        m.blk("ChairEmblem", (0.28, 0.28, 0.06), (0, 6.0, 2.2 + sz * 0.3), CHAIR_RED_DK, R=Rz(45))
+    # the padded back, button tufted, on a wooden back panel
+    m.blk("ChairSlat", (3.5, 3.5, 0.2), (0, 3.95, 2.16), dark, "Wood")
+    m.rbox("ChairSlat", (2.7, 2.6, 0.1), (0, 3.95, 2.29), light, 0.3, "Wood", axis="z")
+    m.blk("ChairEmblem", (0.34, 0.34, 0.06), (0, 3.95, 2.36), TABLE_BRASS, "Metal", R=Rz(45))
+    m.blk("BackCushion", (3.4, 3.2, 0.42), (0, 3.95, 1.86), CHAIR_RED, "Fabric")
+    m.ell("BackCushion", (3.3, 3.1, 0.52), (0, 3.98, 1.68), CHAIR_RED, "Fabric")
+    for bx in (-1.0, 0.0, 1.0):
+        for by in (-0.62, 0.62):
+            u, v = bx / 1.65, by / 1.55
+            depth = 0.26 * math.sqrt(max(0.0, 1 - u * u - v * v))
+            m.ball("ChairButton", 0.16, (bx, 3.98 + by, 1.68 - depth + 0.03), CHAIR_RED_DK, "Fabric")
+    return m
+
+
+def table_lamp():
+    """A billiard lamp (around the bulb = origin): an emerald twelve-sided shade with a brass rim,
+    a domed top, a brass cap and neck, a cord up to a brass ceiling rose."""
+    m = SModel("table_lamp", "room")
+    green, green_dk = (30, 106, 68), (22, 80, 52)
+    n = 12
+    a_bot, a_top, y_bot, y_top = 2.0, 1.08, -0.05, 1.0
+    slant = math.hypot(a_bot - a_top, y_top - y_bot)
+    th = math.atan2(a_bot - a_top, y_top - y_bot)
+    width = 2 * a_bot * math.tan(math.pi / n) + 0.04
+    for k in range(n):
+        ph = 2 * math.pi * (k + 0.5) / n
+        rad = np.array([math.cos(ph), 0.0, math.sin(ph)])
+        tan = np.array([-math.sin(ph), 0.0, math.cos(ph)])
+        up = math.cos(th) * np.array([0.0, 1.0, 0.0]) - math.sin(th) * rad
+        nrm = np.cross(tan, up)
+        R = np.column_stack([tan, up, nrm])
+        mid = rad * (a_bot + a_top) / 2 + np.array([0.0, (y_bot + y_top) / 2, 0.0])
+        m.blk("TableLampShade", (width, slant + 0.04, 0.1), mid, green, "SmoothPlastic", R=R, refl=0.08)
+    m.ring("TableLampRim", (0, y_bot, 0), a_bot / math.cos(math.pi / n), 0.16, TABLE_BRASS, "y", n, "Metal")
+    m.ell("TableLampShade", (2.3, 0.72, 2.3), (0, 1.02, 0), green_dk, refl=0.08)
+    m.ell("TableLampTop", (0.92, 0.5, 0.92), (0, 1.42, 0), TABLE_BRASS, "Metal")
+    m.cyl("TableLampTop", 0.42, 0.34, (0, 1.82, 0), TABLE_BRASS, "y", "Metal")
+    m.ball("TableLampTop", 0.3, (0, 2.06, 0), TABLE_BRASS, "Metal")
+    m.cyl("TableLampCord", 0.5, 0.08, (0, 2.38, 0), (40, 36, 36), "y")
+    m.cyl("TableLampCord", 0.16, 0.86, (0, 2.57, 0), TABLE_BRASS, "y", "Metal")
+    m.ball("TableLamp", 0.8, (0, 0, 0), (255, 235, 190), "Neon")
+    return m
+
+
+# ------------------------------------------------------------------------------------------------
+# Pack Party: the Pack Shelf cabinet, the dance floor's frame, the string lights, the party lights
+# and the disco ball's mount (the packs, risers, glows, jars, marquee sign and its bulbs stay: the
+# Pack Shelf script and RoomLife use them)
+# ------------------------------------------------------------------------------------------------
+CASE_DARK, CASE_VELVET, CASE_GOLD = (30, 22, 48), (44, 34, 70), (255, 206, 72)
+CASE_MID = (40, 30, 64)
+
+
+def pack_case():
+    """The Pack Shelf cabinet (front toward +z, around the plinth's middle): a rounded plinth on a
+    kick, thick rounded side pillars with gold capitals, bases and finials and a neon line up
+    their fronts, a velvet back, round-nosed shelves with gold lips, gold corbels under the top
+    shelf, brass jar rings on arms, and the marquee framed in gold with round ends and a crest."""
+    m = SModel("pack_case", "room")
+    # plinth
+    m.blk("Plinth", (10.4, 0.2, 3.8), (0, 0.1, 0), (22, 16, 36))
+    m.rbox("Plinth", (10.6, 0.8, 3.8), (0, 0.6, 0), CASE_DARK, 0.45)
+    m.blk("PlinthTop", (10.0, 0.06, 3.3), (0, 1.03, 0), CASE_VELVET, "Fabric")
+    m.cyl("PlinthTrim", 9.7, 0.16, (0, 1.0, 1.9), CASE_GOLD, "x", "Metal")
+    # side pillars
+    for sx in (-1, 1):
+        x = sx * 5.45
+        m.rbox("ShelfSide", (0.8, 11.6, 3.8), (x, 5.8, 0), CASE_DARK, 0.3)
+        m.blk("ShelfSide", (0.5, 10.4, 0.1), (x, 5.9, 1.92), CASE_MID)
+        m.blk("ShelfSideGlow", (0.08, 10.2, 0.08), (x, 5.9, 1.99), CASE_GOLD, "Neon")
+        m.rbox("ShelfSideCap", (1.12, 0.3, 4.1), (x, 11.75, 0), CASE_GOLD, 0.22, "Metal")
+        m.rbox("ShelfSideCap", (1.0, 0.16, 3.96), (x, 1.12, 0), CASE_GOLD, 0.2, "Metal")
+        m.cyl("ShelfSideCap", 0.2, 0.5, (x, 12.0, 1.2), CASE_GOLD, "y", "Metal")
+        m.ball("ShelfSideCap", 0.56, (x, 12.32, 1.2), CASE_GOLD, "Metal")
+    # back
+    m.blk("ShelfBack", (10.4, 11.0, 0.4), (0, 6.0, -1.8), CASE_DARK)
+    m.blk("ShelfBackInset", (9.7, 10.2, 0.08), (0, 6.1, -1.58), CASE_VELVET, "Fabric")
+    # the middle step, round-nosed with a gold lip
+    m.blk("ShelfStep", (10.1, 0.35, 2.42), (0, 4.05, -0.44), CASE_DARK)
+    m.cyl("ShelfStep", 10.1, 0.35, (0, 4.05, 0.78), CASE_DARK, "x")
+    m.cyl("ShelfStepLip", 10.1, 0.12, (0, 4.2, 0.98), CASE_GOLD, "x", "Metal")
+    # the top shelf for the big pack, on two gold corbels
+    m.blk("ShelfTop", (4.6, 0.35, 1.72), (0, 7.45, -0.79), CASE_DARK)
+    m.cyl("ShelfTop", 4.6, 0.35, (0, 7.45, 0.07), CASE_DARK, "x")
+    m.cyl("ShelfTopLip", 4.6, 0.12, (0, 7.6, 0.27), CASE_GOLD, "x", "Metal")
+    for x in (-1.9, 1.9):
+        m.wedge("ShelfTop", (0.3, 0.9, 0.9), (x, 6.82, -1.15), CASE_GOLD, "Metal", R=Ry(180) @ Rx(180))
+    # brass jar rings on arms from the pillars
+    for sx in (-1, 1):
+        m.cyl("JarBracket", 0.16, 1.5, (sx * 3.65, 7.3, -0.55), CASE_GOLD, "y", "Metal")
+        m.cyl("JarBracket", 0.7, 0.16, (sx * 4.72, 7.28, -0.55), CASE_GOLD, "x", "Metal")
+        m.ball("JarBracket", 0.26, (sx * 4.98, 7.28, -0.55), CASE_GOLD, "Metal")
+    # the marquee's gold frame: rods top and bottom, round ends, a crest with a gem
+    for y in (13.12, 11.38):
+        m.cyl("MarqueeTrim", 10.9, 0.2, (0, y, -1.35), CASE_GOLD, "x", "Metal")
+    for sx in (-1, 1):
+        m.cyl("MarqueeTrim", 0.66, 1.9, (sx * 5.42, 12.25, -1.35), CASE_GOLD, "z", "Metal")
+        m.cyl("MarqueeTrim", 0.7, 1.2, (sx * 5.42, 12.25, -1.35), CASE_DARK, "z")
+    m.cyl("MarqueeTrim", 0.3, 1.7, (0, 13.25, -1.35), CASE_GOLD, "z", "Metal")
+    m.ball("MarqueeTrim", 0.46, (0, 13.62, -1.2), (255, 120, 200), "Neon")
+    return m
+
+
+def disco_frame():
+    """A chrome frame round the dance floor (tiles from x 10 to 22, z -22 to -10), with a row of
+    little warm bulbs along the two sides that face the room."""
+    m = SModel("disco_frame", "room")
+    chrome = CHROME
+    lo, hi = 9.85, 22.15
+    mid, L = (lo + hi) / 2, hi - lo
+    for z in (-lo, -hi):
+        m.blk("DiscoFrame", (L, 0.08, 0.44), (mid, 0.04, z), (60, 60, 72), "Metal")
+        m.cyl("DiscoFrame", L, 0.28, (mid, 0.12, z), chrome, "x", "Metal", refl=0.15)
+    for x in (lo, hi):
+        m.blk("DiscoFrame", (0.44, 0.08, L), (x, 0.04, -mid), (60, 60, 72), "Metal")
+        m.cyl("DiscoFrame", L, 0.28, (x, 0.12, -mid), chrome, "z", "Metal", refl=0.15)
+    for x in (lo, hi):
+        for z in (-lo, -hi):
+            m.ball("DiscoFrame", 0.42, (x, 0.16, z), chrome, "Metal", refl=0.15)
+    for k in range(7):
+        u = 11.0 + 2.0 * k - 1.0
+        m.ball("DiscoFrame", 0.16, (u, 0.29, -lo), (255, 236, 190), "Neon")
+        m.ball("DiscoFrame", 0.16, (lo, 0.29, -u), (255, 236, 190), "Neon")
+    return m
+
+
+def party_can():
+    """A stage light can around a party light (its glowing lens shows underneath): a rounded
+    black can, a yoke with knobs and a plate on the ceiling."""
+    m = SModel("party_can", "room")
+    can = (34, 32, 40)
+    m.rbox("PartyCan", (1.56, 1.0, 1.56), (0, 0.32, 0), can, 0.32)
+    m.cyl("PartyCan", 0.1, 1.62, (0, -0.16, 0), (70, 66, 80), "y", "Metal")
+    for sx in (-1, 1):
+        m.blk("PartyCan", (0.12, 1.0, 0.46), (sx * 0.87, 0.6, 0), can)
+        m.cyl("PartyCan", 0.14, 0.32, (sx * 0.92, 0.32, 0), (150, 146, 160), "x", "Metal")
+    m.blk("PartyCan", (1.86, 0.12, 0.46), (0, 1.06, 0), can)
+    m.cyl("PartyCan", 0.12, 0.8, (0, 1.14, 0), (60, 58, 66), "y", "Metal")
+    return m
+
+
+def disco_mount():
+    m = SModel("disco_mount", "room")
+    m.cyl("DiscoString", 0.16, 0.8, (0, 3.12, 0), CHROME, "y", "Metal")
+    m.cyl("DiscoString", 0.2, 0.5, (0, 1.32, 0), CHROME, "y", "Metal")
+    m.ball("DiscoString", 0.22, (0, 1.48, 0), CHROME, "Metal")
+    return m
+
+
+# ------------------------------------------------------------------------------------------------
 # Building the room
 # ------------------------------------------------------------------------------------------------
 def build(room):
@@ -1019,6 +1270,54 @@ def build(room):
     room.put(ST, door(), (0, 0, 0), 0, t)
     t = room.take(ST, ["PaintingFrame", "PaintingTrim", "PaintingDetail"], near=[(0, 11.2, -22.7)], radius=3.8)
     room.put(ST, painting_frame(), (0, 0, 0), 0, t)
+
+    # the Duel Table: legs, apron and rim (the top, felt, old board and seats stay), its two chairs
+    # and its two hanging lamps
+    DT = "Stations/DuelTable"
+    t = room.take(DT, ["Leg", "LegKnob", "LegFoot", "Stretcher", "Rim", "RimCorner", "Apron"], box=((-13.5, -0.5, -12), (13.5, 5.0, 12)))
+    room.put(DT, duel_table(), (0, 0, 0), 0, t)
+    t = room.take(DT, ["ChairBase", "ChairLeg", "ChairPost", "ChairFinial", "Armrest", "ArmPost", "ChairTopRail", "ChairSlat", "BackCushion"],
+                  near=[(0, 2.5, 13.7), (0, 2.5, -13.7)], radius=4.6)
+    for z, yaw in ((13.7, 0), (-13.7, 180)):
+        room.put(DT, duel_chair(), (0, 0, z), yaw, t)
+    t = room.take(DT, ["TableLampCord", "TableLampShade", "TableLampTop", "TableLampRim", "TableLamp"], near=[(0, 16.2, -4.6), (0, 16.2, 4.6)], radius=2.9)
+    for z in (-4.6, 4.6):
+        room.put(DT, table_lamp(), (0, 15.35, z), 0, t)
+
+    # Pack Party: the Pack Shelf cabinet, the dance floor's frame, string lights, party lights, the
+    # disco ball's mount
+    PS = PP + "/PackShelf"
+    case_at, case_yaw = (17.8939, 0, -17.8939), -45
+    t = room.take(PS, ["Plinth", "PlinthTop", "PlinthTrim", "ShelfBack", "ShelfBackInset", "ShelfSide", "ShelfSideGlow", "ShelfSideCap",
+                       "ShelfStep", "ShelfStepLip", "ShelfTop", "ShelfTopLip", "MarqueeTrim", "JarBracket"], box=((11, -0.5, -25), (25, 14, -11)))
+    room.put(PS, pack_case(), case_at, case_yaw, t)
+    room.put(PP, disco_frame(), (0, 0, 0), 0, ())
+    t = room.take(PP, ["StringLight", "LightWire"], box=((8, 13.5, -24.5), (24.5, 15.5, -8)))
+    runs = [[(9.0 + 1.25 * k, -23.5) for k in range(12)], [(23.5, -9.0 - 1.25 * k) for k in range(12)]]
+    for run in runs:
+        m = SModel("string_lights", "room")
+        tops = []
+        for k, (x, z) in enumerate(run):
+            y = 14.6 if k % 3 == 0 else 14.34
+            old_bulb = nearest(t, "StringLight", (x, y, z))
+            col = color_of(old_bulb[2]) if old_bulb else (255, 220, 120)
+            m.ell("StringLight", (0.28, 0.4, 0.28), (x, y, z), col, "Neon")
+            m.cyl("LightWire", 0.18, 0.17, (x, y + 0.29, z), (40, 46, 40), "y")
+            tops.append(V(x, y + 0.38, z))
+        for a, b in zip(tops[:-1], tops[1:]):
+            sag = (a + b) / 2 - V(0, 0.07, 0)
+            m.rod("LightWire", a, sag, 0.05, (30, 30, 30))
+            m.rod("LightWire", sag, b, 0.05, (30, 30, 30))
+        m.ball("LightWire", 0.14, tops[0], (176, 132, 60), "Metal")
+        room.put(PP, m, (0, 0, 0), 0, t)
+    corner = SModel("string_corner", "room")
+    corner.rod("LightWire", V(22.75, 14.72, -23.5), V(23.5, 14.98, -23.5), 0.05, (30, 30, 30))
+    corner.rod("LightWire", V(23.5, 14.98, -23.5), V(23.5, 14.72, -22.75), 0.05, (30, 30, 30))
+    corner.ball("LightWire", 0.14, (23.5, 14.98, -23.5), (176, 132, 60), "Metal")
+    room.put(PP, corner, (0, 0, 0), 0, ())
+    for at in ((10, 16.8, -22), (22, 16.8, -10), (22, 16.8, -22)):
+        room.put(PP, party_can(), at, 0, ())
+    room.put(PP, disco_mount(), (14, 14.8, -14), 0, ())
 
 
 if __name__ == "__main__":

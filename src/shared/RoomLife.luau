@@ -234,7 +234,8 @@ local CHAIR_IN = 0.9 -- studs under the table at rest (the armrests just touch t
 local CHAIR_OUT = 1.7 -- studs out from their real spot when pulled out
 def("chair", {
 	scope = "DuelTable", anchor = "ChairBase", radius = 7, pivot = "bottom", always = true,
-	with = { "ChairLeg", "ChairPost", "ChairFinial", "Armrest", "ArmPost", "ChairTopRail", "ChairSlat", "BackCushion", "Seat_Near", "Seat_Far" },
+	with = { "ChairLeg", "ChairPost", "ChairFinial", "Armrest", "ArmPost", "ChairTopRail", "ChairSlat", "BackCushion", "Seat_Near", "Seat_Far",
+		"ChairTrim", "ChairCushion", "ChairButton", "ChairFoot", "ChairEmblem" },
 	springK = 70, -- slower and softer than the other props: a chair is heavy
 	clickSound = { "thudSmall", 0.3, 1.1 },
 	move = function(p, c)

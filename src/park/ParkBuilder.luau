@@ -605,16 +605,25 @@ local function roseArch(parent, name, at, facing, halfWidth, postHeight, rise, r
 		end
 		tops[d] = arc
 		for _, s in ipairs({ -1, 1 }) do
+			-- a square iron post on a stone footing, with a collar where the arch springs from it
 			local base = at + facing * depth + right * (s * halfWidth)
-			part(m, "Post", Vector3.new(0.3, postHeight, 0.3), CFrame.new(base + Vector3.new(0, postHeight / 2, 0)), WHITE_IRON, Enum.Material.Metal)
+			local function up(y)
+				local p = base + Vector3.new(0, y, 0)
+				return CFrame.lookAt(p, p + facing)
+			end
+			part(m, "Post", Vector3.new(0.42, postHeight, 0.42), up(postHeight / 2), WHITE_IRON, Enum.Material.Metal)
+			part(m, "PostFoot", Vector3.new(0.95, 0.5, 0.95), up(0.25), STONE, Enum.Material.Limestone, NO_TOUCH)
+			part(m, "PostFoot", Vector3.new(0.66, 0.22, 0.66), up(0.6), WHITE_IRON, Enum.Material.Metal, NO_TOUCH)
+			part(m, "PostCollar", Vector3.new(0.62, 0.2, 0.62), up(postHeight - 0.35), WHITE_IRON, Enum.Material.Metal, NO_TOUCH)
+			ball(m, "PostCollar", 0.5, up(postHeight), WHITE_IRON, Enum.Material.Metal, NO_TOUCH)
 		end
 		for k = 1, #arc - 1 do
-			beam(m, "Arch", arc[k], arc[k + 1], 0.25, WHITE_IRON, Enum.Material.Metal)
+			beam(m, "Arch", arc[k], arc[k + 1], 0.32, WHITE_IRON, Enum.Material.Metal)
 		end
 	end
 	-- rungs between the two arches, and the roses climbing up and over
 	for k = 1, 13, 2 do
-		beam(m, "Rung", tops[1][k], tops[2][k], 0.16, WHITE_IRON, Enum.Material.Metal)
+		beam(m, "Rung", tops[1][k], tops[2][k], 0.2, WHITE_IRON, Enum.Material.Metal)
 		roses(m, (tops[1][k] + tops[2][k]) / 2, rng, 5, 0.75)
 	end
 	for _, s in ipairs({ -1, 1 }) do
@@ -687,7 +696,9 @@ local function stringLights(parent, a, b, sag)
 		local p = a + (b - a) * t - Vector3.new(0, sag * 4 * t * (1 - t), 0)
 		beam(m, "Wire", prev, p, 0.05, rgb(34, 30, 28), Enum.Material.SmoothPlastic, NO_TOUCH)
 		if k < n then
-			local bulb = ball(m, "Bulb", 0.34, CFrame.new(p - Vector3.new(0, 0.22, 0)), rgb(255, 238, 206), Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.15, CastShadow = false }))
+			-- a little dark socket under the wire, and a pear-shaped bulb hanging from it
+			part(m, "Socket", Vector3.new(0.16, 0.2, 0.16), CFrame.new(p - Vector3.new(0, 0.1, 0)), rgb(34, 30, 28), Enum.Material.SmoothPlastic, merge(NO_TOUCH, { CastShadow = false }))
+			local bulb = egg(m, "Bulb", Vector3.new(0.3, 0.44, 0.3), CFrame.new(p - Vector3.new(0, 0.38, 0)), rgb(255, 238, 206), Enum.Material.Glass, { Transparency = 0.15, CastShadow = false })
 			if k % 4 == 2 then
 				light(bulb, rgb(255, 196, 124), 8, 0)
 			end
@@ -1966,21 +1977,13 @@ end
 ---------------------------------------------------------------------------
 
 local GOLD = rgb(226, 184, 84)
-local MARBLE = rgb(240, 234, 222)
 
 local function easel(parent, name, at, lookAt)
 	local m = make("Model", { Name = name .. "Easel" }, parent)
 	local base = CFrame.lookAt(at, Vector3.new(lookAt.X, at.Y, lookAt.Z))
-	local wood = rgb(176, 136, 70)
-	-- three legs: two in front, one behind
-	for _, x in ipairs({ -1.3, 1.3 }) do
-		beam(m, "Leg", (base * CFrame.new(x, 0, 0.3)).Position, (base * CFrame.new(x * 0.45, 6.6, 0.75)).Position, 0.2, wood, Enum.Material.Wood)
-	end
-	beam(m, "Leg", (base * CFrame.new(0, 0, 2.2)).Position, (base * CFrame.new(0, 6.4, 0.85)).Position, 0.2, wood, Enum.Material.Wood)
-	part(m, "Ledge", Vector3.new(3.8, 0.22, 0.6), base * CFrame.new(0, 1.6, 0.25), GOLD, Enum.Material.Metal)
-	-- the card, leaning back on the legs, in a thin gold frame
-	local cardCf = base * CFrame.new(0, 1.7 + 2.15, 0.62) * CFrame.Angles(math.rad(10), 0, 0)
-	part(m, "Frame", Vector3.new(3.45, 4.75, 0.12), cardCf * CFrame.new(0, 0, 0.08), GOLD, Enum.Material.Metal)
+	propFrom(m, "easel", base) -- (gen_park.py: turned legs, the ledge, the gold frame)
+	-- the card, standing on the ledge and leaning back on the front legs, in the gold frame
+	local cardCf = base * CFrame.new(0, 3.85, 0.37) * CFrame.Angles(math.rad(10), 0, 0)
 	local card = part(parent, name, Vector3.new(3.1, 4.34, 0.1), cardCf, rgb(30, 26, 40), Enum.Material.SmoothPlastic, { CanCollide = false })
 	return card
 end
@@ -1988,26 +1991,16 @@ end
 local function buildTopCollector(root)
 	local m = make("Model", { Name = "TopCollector" }, root)
 	local rng = Random.new(808)
-	local c = CFrame.new(TERRACE)
 	-- (laid out facing TERRACE_FACING: x to the stand's left, z toward the front)
 	local F = CFrame.lookAt(TERRACE, TERRACE + TERRACE_FACING)
 	local function L(x, y, z)
 		return F * Vector3.new(-x, y, -z)
 	end
 	local front = TERRACE_FACING
-	local paving = STONE:Lerp(rgb(255, 255, 255), 0.3)
-	-- round stone steps up to the terrace, with a ring of darker stone round the pedestal
-	cylinder(m, "Step", 29.6, 0.34, c * CFrame.new(0, 0.17, 0), paving:Lerp(rgb(0, 0, 0), 0.05), Enum.Material.Slate)
-	cylinder(m, "Step", 28.2, 0.67, c * CFrame.new(0, 0.335, 0), paving:Lerp(rgb(0, 0, 0), 0.02), Enum.Material.Slate)
-	cylinder(m, "Terrace", 26.8, TERRACE_TOP, c * CFrame.new(0, TERRACE_TOP / 2, 0), paving, Enum.Material.Slate)
-	cylinder(m, "Inlay", 12, 0.04, c * CFrame.new(0, TERRACE_TOP + 0.02, 0), rgb(150, 140, 126), Enum.Material.Slate, NO_TOUCH)
-	cylinder(m, "Inlay", 11, 0.06, c * CFrame.new(0, TERRACE_TOP + 0.03, 0), paving:Lerp(rgb(255, 250, 235), 0.4), Enum.Material.Marble, NO_TOUCH)
-	-- the marble pedestal with a gold band
+	-- round stone steps up to the terrace (with a rounded edge and a gold star round the pedestal),
+	-- and the reeded marble pedestal: gen_park.py's "tcterrace"
+	propFrom(m, "tcterrace", F)
 	local t = TERRACE_TOP
-	cylinder(m, "PedestalBase", 6.2, 0.6, c * CFrame.new(0, t + 0.3, 0), MARBLE:Lerp(rgb(0, 0, 0), 0.06), Enum.Material.Marble)
-	cylinder(m, "Pedestal", 4.8, 2.4, c * CFrame.new(0, t + 1.8, 0), MARBLE, Enum.Material.Marble)
-	cylinder(m, "PedestalBand", 4.95, 0.28, c * CFrame.new(0, t + 2.6, 0), GOLD, Enum.Material.Metal)
-	cylinder(m, "PedestalCap", 5.6, 0.36, c * CFrame.new(0, t + 3.18, 0), MARBLE:Lerp(rgb(255, 255, 255), 0.3), Enum.Material.Marble)
 	local standY = t + 3.36
 	-- where the avatar stands (facing the way in)
 	local spotAt = TERRACE + Vector3.new(0, standY, 0)
@@ -2031,23 +2024,19 @@ local function buildTopCollector(root)
 	local lookAt = TERRACE + front * 70
 	easel(m, "Card2", L(-6.6, t, 1.6), lookAt)
 	easel(m, "Card3", L(6.6, t, 1.6), lookAt)
-	-- the plaque on a slanted stone lectern in front
+	-- the plaque on a slanted marble lectern in front (the lectern and the plaque's gold frame:
+	-- gen_park.py's "lectern")
 	local lectern = L(0, t, 5.4)
-	part(m, "Lectern", Vector3.new(2.4, 1.5, 1), CFrame.lookAt(lectern + Vector3.new(0, 0.75, 0), lectern + Vector3.new(0, 0.75, 0) + front), MARBLE:Lerp(rgb(0, 0, 0), 0.08), Enum.Material.Marble)
+	propFrom(m, "lectern", CFrame.lookAt(lectern, lectern + front))
 	local plaqueAt = lectern + Vector3.new(0, 1.75, 0) + front * 0.2
 	local plaqueCf = CFrame.lookAt(plaqueAt, plaqueAt + front) * CFrame.Angles(math.rad(48), 0, 0)
-	part(m, "PlaqueFrame", Vector3.new(5.8, 2.9, 0.22), plaqueCf * CFrame.new(0, 0, 0.06), GOLD, Enum.Material.Metal)
 	part(m, "Plaque", Vector3.new(5.5, 2.6, 0.2), plaqueCf, rgb(30, 38, 36), Enum.Material.Marble)
 	-- the rose arch behind, with the sign on top
 	local _, tops = roseArch(m, "RoseArch", L(0, t, -6.2), front, 8.6, 9.6, 3.4, rng)
 	local apex = (tops[1][7] + tops[2][7]) / 2
 	local signAt = apex + Vector3.new(0, 2.6, 0)
 	local sign = part(m, "Sign", Vector3.new(9, 1.8, 0.3), CFrame.lookAt(signAt, signAt + front), rgb(36, 64, 48), Enum.Material.Wood)
-	part(m, "SignTrim", Vector3.new(9.4, 2.2, 0.2), CFrame.lookAt(signAt, signAt + front) * CFrame.new(0, 0, 0.12), GOLD, Enum.Material.Metal)
-	for _, x in ipairs({ -2.5, 2.5 }) do
-		local foot = (CFrame.lookAt(apex, apex + front) * CFrame.new(x, 0, 0)).Position
-		part(m, "SignPost", Vector3.new(0.18, 1.8, 0.18), CFrame.new(foot + Vector3.new(0, 0.9, 0)), WHITE_IRON, Enum.Material.Metal)
-	end
+	propFrom(m, "tcsign", CFrame.lookAt(signAt, signAt + front)) -- (gold trim, round ends, a crown, scroll brackets)
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local sg = make("SurfaceGui", { Face = face, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 40, LightInfluence = 0 }, sign)
 		make("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "🏆 TOP COLLECTOR", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 228, 150) }, sg)
@@ -2070,17 +2059,18 @@ local function buildTopCollector(root)
 	return m
 end
 
--- A park notice board: green painted wood under a little shingled roof.
-local BOARD_GREEN = rgb(56, 84, 60)
+-- The Hall of Pulls and the leaderboards: green painted notice boards on stone, in carved frames,
+-- under shingled gable roofs (gen_park.py's "hall" and "leaderboard"). The Board parts the client
+-- draws on and the lanterns are made here.
 local function buildBoards(root)
 	-- the Hall of Pulls: a big board behind the Top Collector's terrace, facing the pond
 	local hall = make("Model", { Name = "HallOfPulls" }, root)
-	local hallCf = CFrame.lookAt(HALL + Vector3.new(0, 11, 0), Vector3.new(0, 11, 0))
-	part(hall, "Frame", Vector3.new(26, 16, 1), hallCf, BOARD_GREEN, Enum.Material.Wood)
+	local hallBase = CFrame.lookAt(HALL, Vector3.new(0, 0, 0))
+	propFrom(hall, "hall", hallBase)
+	local hallCf = hallBase * CFrame.new(0, 11, 0)
 	part(hall, "Board", Vector3.new(24, 14, 0.3), hallCf * CFrame.new(0, 0, -0.6), rgb(30, 44, 38), Enum.Material.SmoothPlastic)
-	part(hall, "Roof", Vector3.new(28, 1, 3.4), hallCf * CFrame.new(0, 8.6, -0.5), rgb(96, 66, 52), Enum.Material.WoodPlanks)
-	for _, x in ipairs({ -13.5, 13.5 }) do
-		part(hall, "Leg", Vector3.new(1.2, 19, 1.2), hallCf * CFrame.new(x, -1.5, 0), BOARD_GREEN, Enum.Material.Wood)
+	for _, x in ipairs({ -9, 9 }) do
+		lantern(hall, (hallBase * CFrame.new(x, 18.15, -3.4)).Position, 1) -- (hung from the hooks under the eave)
 	end
 	for _, x in ipairs({ -8, 8 }) do
 		topiary(hall, HALL + HALL_SIDE * x + HALL_FRONT * 5.5)
@@ -2089,16 +2079,10 @@ local function buildBoards(root)
 	local boards = make("Model", { Name = "Boards" }, root)
 	for i, def in ipairs(Park.Boards) do
 		local m = make("Model", { Name = def.key }, boards)
-		local at = boardSpot(i) + Vector3.new(0, 7, 0)
-		local cf = CFrame.lookAt(at, Vector3.new(0, 7, 0))
-		part(m, "Frame", Vector3.new(13, 13, 1), cf, BOARD_GREEN, Enum.Material.Wood)
-		part(m, "Board", Vector3.new(12, 12, 0.3), cf * CFrame.new(0, 0, -0.6), rgb(30, 44, 38), Enum.Material.SmoothPlastic)
-		part(m, "Roof", Vector3.new(14.5, 0.8, 2.6), cf * CFrame.new(0, 7, -0.4), rgb(96, 66, 52), Enum.Material.WoodPlanks)
-		for _, x in ipairs({ -6, 6 }) do
-			part(m, "Leg", Vector3.new(1, 14, 1), cf * CFrame.new(x, -0.5, 0.2), BOARD_GREEN, Enum.Material.Wood)
-		end
-		local lantern = part(m, "Lantern", Vector3.new(1, 1, 1), cf * CFrame.new(0, 7.9, -1.2), rgb(255, 222, 160), Enum.Material.Glass, { Transparency = 0.2 })
-		light(lantern, rgb(255, 210, 150), 12, 0.8)
+		local base = CFrame.lookAt(boardSpot(i), Vector3.new(0, 0, 0))
+		propFrom(m, "leaderboard", base)
+		part(m, "Board", Vector3.new(12, 12, 0.3), base * CFrame.new(0, 7, -0.6), rgb(30, 44, 38), Enum.Material.SmoothPlastic)
+		lantern(m, (base * CFrame.new(8.9, 10.46, 0)).Position, 1) -- (on the bracket by the right post)
 	end
 end
 
@@ -2138,23 +2122,26 @@ local function gate(root, name, angle, title, color, promptName, action)
 	for _, x in ipairs({ -2.15, 2.15 }) do
 		part(porch, "RunnerEdge", Vector3.new(0.18, 0.07, 16), face * CFrame.new(x, 0.54, BACK - 8.3), GOLD_TRIM, Enum.Material.Fabric, NO_TOUCH)
 	end
-	-- four white columns, a beam round the top and a glass roof on iron ribs
+	-- four fluted marble columns (ParkPropData "porchcolumn", standing on the porch floor), a beam
+	-- round the top and a glass roof on iron ribs
 	for _, x in ipairs({ -W, W }) do
 		for _, z in ipairs({ FRONT, BACK - 0.4 }) do
-			cylinder(porch, "Column", 1.3, 14.4, face * CFrame.new(x, 7.7, z), FRAME, Enum.Material.Marble)
-			part(porch, "ColumnBase", Vector3.new(2, 0.7, 2), face * CFrame.new(x, 0.85, z), FRAME, Enum.Material.Marble, NO_TOUCH)
-			part(porch, "ColumnCap", Vector3.new(2.1, 0.6, 2.1), face * CFrame.new(x, 14.9, z), GOLD_TRIM, Enum.Material.Metal, NO_TOUCH)
-			for k = 0, 3 do -- (the fluting)
-				part(porch, "Flute", Vector3.new(0.12, 13.4, 0.12), face * CFrame.new(x, 7.7, z) * CFrame.Angles(0, k * math.pi / 4, 0) * CFrame.new(0.66, 0, 0), FRAME:Lerp(rgb(170, 170, 170), 0.3), Enum.Material.Marble, NO_TOUCH)
-			end
+			propFrom(porch, "porchcolumn", face * CFrame.new(x, 0.5, z))
 		end
 		part(porch, "SideBeam", Vector3.new(1, 1, BACK - FRONT + 0.6), face * CFrame.new(x, 15.7, (FRONT + BACK) / 2 - 0.2), FRAME, Enum.Material.Metal, NO_TOUCH)
-		-- a lantern on each front column
-		local lanternAt = face * CFrame.new(x + (x > 0 and 1.1 or -1.1), 11.2, FRONT)
-		part(porch, "LanternArm", Vector3.new(1.2, 0.2, 0.2), face * CFrame.new(x + (x > 0 and 0.6 or -0.6), 12.2, FRONT), IRON, Enum.Material.Metal, NO_TOUCH)
-		local glass = part(porch, "Lantern", Vector3.new(1, 1.5, 1), lanternAt, rgb(255, 232, 186), Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.2 }))
-		part(porch, "LanternCap", Vector3.new(1.3, 0.3, 1.3), lanternAt * CFrame.new(0, 0.9, 0), IRON, Enum.Material.Metal, NO_TOUCH)
-		light(glass, rgb(255, 206, 140), 16, 0.5)
+		-- a lantern hanging from a scrolled iron bracket on each front column
+		local s = x > 0 and 1 or -1
+		local function at(dx, y)
+			return (face * CFrame.new(x + s * dx, y, FRONT)).Position
+		end
+		part(porch, "LanternBracket", Vector3.new(0.22, 1.3, 0.5), face * CFrame.new(x + s * 0.72, 12.3, FRONT), IRON, Enum.Material.Metal, NO_TOUCH)
+		beam(porch, "LanternArm", at(0.72, 12.85), at(2.05, 12.85), 0.18, IRON, Enum.Material.Metal, NO_TOUCH)
+		beam(porch, "LanternArm", at(0.72, 11.75), at(1.55, 12.85), 0.14, IRON, Enum.Material.Metal, NO_TOUCH)
+		ball(porch, "LanternArm", 0.32, CFrame.new(at(2.1, 12.85)), IRON, Enum.Material.Metal, NO_TOUCH)
+		part(porch, "LanternArm", Vector3.new(0.08, 0.55, 0.08), face * CFrame.new(x + s * 1.85, 12.58, FRONT), IRON, Enum.Material.Metal, NO_TOUCH)
+		local hung = make("Model", { Name = "SmallLantern" }, porch)
+		local _, named = propFrom(hung, "lantern", face * CFrame.new(x + s * 1.85, 10.4, FRONT), 1.4)
+		light(named.Lantern, rgb(255, 206, 140), 16, 0.5)
 	end
 	part(porch, "FrontBeam", Vector3.new(W * 2 + 1.6, 1.2, 1.2), face * CFrame.new(0, 15.7, FRONT), FRAME, Enum.Material.Metal, NO_TOUCH)
 	part(porch, "FrontBeamTrim", Vector3.new(W * 2 + 1.7, 0.25, 1.3), face * CFrame.new(0, 15.05, FRONT), GOLD_TRIM, Enum.Material.Metal, NO_TOUCH)
@@ -2179,6 +2166,13 @@ local function gate(root, name, angle, title, color, promptName, action)
 	-- the marquee sign over the porch, ringed with bulbs that light up after dark
 	local sign = part(porch, "Sign", Vector3.new(13, 3, 0.5), face * CFrame.new(0, 19.6, FRONT - 0.1), rgb(30, 26, 40), Enum.Material.Metal)
 	part(porch, "SignFrame", Vector3.new(14, 4, 0.35), face * CFrame.new(0, 19.6, FRONT + 0.15), GOLD_TRIM, Enum.Material.Metal, NO_TOUCH)
+	-- a gold crest on top: a half-round with the door's own colour set in it like a gem
+	part(porch, "SignCrest", Vector3.new(0.3, 3.2, 3.2), face * CFrame.new(0, 21.6, FRONT + 0.15) * CFrame.Angles(0, math.rad(90), 0), GOLD_TRIM, Enum.Material.Metal, merge(NO_TOUCH, { Shape = Enum.PartType.Cylinder }))
+	part(porch, "SignCrest", Vector3.new(0.36, 2.2, 2.2), face * CFrame.new(0, 21.6, FRONT + 0.1) * CFrame.Angles(0, math.rad(90), 0), rgb(30, 26, 40), Enum.Material.Metal, merge(NO_TOUCH, { Shape = Enum.PartType.Cylinder }))
+	ball(porch, "SignGem", 0.8, face * CFrame.new(0, 22.05, FRONT - 0.12), color, Enum.Material.Neon, NO_TOUCH)
+	for _, x in ipairs({ -7, 7 }) do -- (and a gold ball on each top corner)
+		ball(porch, "SignCrest", 0.7, face * CFrame.new(x, 21.6, FRONT + 0.15), GOLD_TRIM, Enum.Material.Metal, NO_TOUCH)
+	end
 	local sg = make("SurfaceGui", { Face = Enum.NormalId.Front, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 40, LightInfluence = 0 }, sign)
 	local label = make("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = title, TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 236, 190) }, sg)
 	make("UIStroke", { Color = color:Lerp(rgb(0, 0, 0), 0.4), Thickness = 3 }, label)
@@ -2199,17 +2193,10 @@ local function gate(root, name, angle, title, color, promptName, action)
 			ball(porch, "Bulb", 0.36, face * CFrame.new(x, y, FRONT - 0.15), rgb(255, 238, 206), Enum.Material.Glass, merge(NO_TOUCH, { Transparency = 0.15, CastShadow = false }))
 		end
 	end
-	-- a big stone planter each side, with a clipped spiral topiary
+	-- a big stone urn each side (ParkPropData "porchurn"), with a clipped spiral topiary
 	for _, x in ipairs({ -W - 3.2, W + 3.2 }) do
-		local at = face * CFrame.new(x, 0, FRONT - 1)
 		local pot = make("Model", { Name = "Topiary" }, porch)
-		cylinder(pot, "Plinth", 3.2, 0.8, at * CFrame.new(0, 0.4, 0), LIMESTONE, Enum.Material.Limestone)
-		cylinder(pot, "Urn", 2.6, 2.4, at * CFrame.new(0, 2, 0), LIMESTONE:Lerp(rgb(255, 255, 255), 0.15), Enum.Material.Marble)
-		cylinder(pot, "UrnLip", 3.1, 0.4, at * CFrame.new(0, 3.3, 0), GOLD_TRIM, Enum.Material.Metal, NO_TOUCH)
-		for k = 0, 4 do
-			ball(pot, "Leaves", 2.6 - k * 0.42, at * CFrame.new(math.sin(k * 1.9) * 0.25, 4.4 + k * 1.25, math.cos(k * 1.9) * 0.25), rgb(58, 108, 54):Lerp(rgb(90, 140, 70), k * 0.1), Enum.Material.Grass, NO_TOUCH)
-		end
-		ball(pot, "TopiaryStar", 0.5, at * CFrame.new(0, 10.6, 0), GOLD_TRIM, Enum.Material.Neon, NO_TOUCH)
+		propFrom(pot, "porchurn", face * CFrame.new(x, 0, FRONT - 1))
 	end
 	prompt(portal, promptName, action, title, 14)
 	return m, portal
@@ -2225,7 +2212,7 @@ end
 local function buildTradingPost(root)
 	local m = make("Model", { Name = "TradingPost" }, root)
 	local cf = CFrame.lookAt(TRADING, Vector3.new(0, 0, 0)) -- (its front, -Z, faces the pond)
-	local wood, plaster, board = rgb(92, 68, 50), rgb(236, 226, 204), rgb(150, 112, 78)
+	local wood, plaster = rgb(92, 68, 50), rgb(236, 226, 204)
 	part(m, "Plinth", Vector3.new(23.2, 0.8, 15.2), cf * CFrame.new(0, 0.4, 0), STONE, Enum.Material.Slate)
 	part(m, "Step", Vector3.new(9, 0.4, 1.8), cf * CFrame.new(0, 0.2, -8.4), STONE, Enum.Material.Slate)
 	for _, x in ipairs({ -10.6, -4.2, 4.2, 10.6 }) do
@@ -2250,15 +2237,19 @@ local function buildTradingPost(root)
 	-- what stands inside and around it
 	local inside = make("Model", { Name = "Inside" }, m)
 	for _, x in ipairs({ -5.4, 5.4 }) do
-		cylinder(inside, "TableTop", 4.2, 0.3, cf * CFrame.new(x, 3.55, 1.2), board, Enum.Material.WoodPlanks)
-		cylinder(inside, "TableLeg", 0.7, 2.6, cf * CFrame.new(x, 2.1, 1.2), wood, Enum.Material.Wood)
+		propFrom(inside, "tptable", cf * CFrame.new(x, 0.8, 1.2)) -- (a round card table and two stools: gen_park.py)
 		for _, z in ipairs({ -2, 4.4 }) do
-			cylinder(inside, "Stool", 1.7, 0.3, cf * CFrame.new(x, 2.55, z), board, Enum.Material.WoodPlanks)
-			cylinder(inside, "StoolLeg", 0.45, 1.6, cf * CFrame.new(x, 1.6, z), wood, Enum.Material.Wood)
 			seat(inside, cf * CFrame.new(x, 2.75, z) * CFrame.Angles(0, z < 1.2 and math.pi or 0, 0)) -- (facing the table)
 		end
 	end
 	local sign = part(inside, "Sign", Vector3.new(8, 1.7, 0.3), cf * CFrame.new(0, 8.75, -7.15), rgb(44, 70, 52), Enum.Material.Wood)
+	part(inside, "SignTrim", Vector3.new(8.2, 2.1, 0.16), cf * CFrame.new(0, 8.75, -7.03), GOLD, Enum.Material.Metal)
+	for _, sx in ipairs({ -1, 1 }) do -- (round ends, rimmed in gold)
+		local e = part(inside, "SignEnd", Vector3.new(0.3, 1.7, 1.7), cf * CFrame.new(sx * 4, 8.75, -7.15) * CFrame.Angles(0, math.rad(90), 0), rgb(44, 70, 52), Enum.Material.Wood)
+		e.Shape = Enum.PartType.Cylinder
+		local r = part(inside, "SignTrim", Vector3.new(0.16, 2.1, 2.1), cf * CFrame.new(sx * 4, 8.75, -7.03) * CFrame.Angles(0, math.rad(90), 0), GOLD, Enum.Material.Metal)
+		r.Shape = Enum.PartType.Cylinder
+	end
 	local sg = make("SurfaceGui", { Face = Enum.NormalId.Front, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 40, LightInfluence = 0 }, sign)
 	make("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "🤝 Trading Post", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 236, 170) }, sg)
 	local rng = Random.new(77)

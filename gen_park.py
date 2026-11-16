@@ -575,7 +575,324 @@ def basket():
     return m
 
 
-PROPS = [shrine, altar, lantern, bollard, lanternpost, birdbath, litter_bin, topiary, cat, logseat, firepit, dueltable, basket]
+# ------------------------------------------------------------------------------------------------
+# The Hall of Pulls and the leaderboards: green painted notice boards under shingled gable roofs
+# (the Board parts the client draws on, and the lanterns, are made in ParkBuilder)
+# ------------------------------------------------------------------------------------------------
+BOARD_G = (56, 84, 60)
+BOARD_G_D = (40, 62, 44)
+BOARD_G_L = (72, 104, 76)
+FRAME_W = (110, 74, 46)
+SHINGLE = (122, 62, 52)
+SHINGLE_2 = (138, 72, 58)
+FASCIA = (236, 226, 204)
+COPPER = (186, 120, 74)
+BRASS_P = (226, 184, 84)
+
+
+def gable_roof(m, width, z_front, z_back, y_eave, y_ridge, thick, rows=3, gable_color=BOARD_G):
+    """A gabled roof along x: two slabs from the eaves (at z_front and z_back) up to the ridge, rows of
+    shingles, a copper ridge cap with finials, cream fascia boards and two gable ends."""
+    z_r = (z_front + z_back) / 2
+    for z_e in (z_front, z_back):
+        a = V(0, y_eave, z_e)
+        b = V(0, y_ridge, z_r)
+        v = b - a
+        L = float(np.linalg.norm(v))
+        up = norm(v)
+        out = norm(np.cross(V(1, 0, 0), up) if z_e > z_r else np.cross(up, V(1, 0, 0)))
+        if out[1] < 0:
+            out = -out
+        R = np.column_stack([V(1, 0, 0), up, np.cross(V(1, 0, 0), up)])
+        mid = (a + b) / 2 + out * (thick / 2)
+        m.blk("Roof", (width, L + 0.3, thick), mid, (104, 56, 46), "WoodPlanks", R=R)
+        for k in range(rows):
+            t = (k + 0.5) / rows
+            p = a + v * t + out * (thick + 0.06)
+            m.blk("Shingles", (width + 0.3, L / rows + 0.2, 0.16), p, SHINGLE if k % 2 == 0 else SHINGLE_2, "Slate", R=R)
+        m.cyl("Fascia", width + 0.4, 0.34, a + V(0, -0.05, 0), FASCIA, "x", "Wood")
+    m.cyl("RoofRidge", width + 0.6, 0.56, (0, y_ridge + thick * 0.75, z_r), COPPER, "x", "Metal")
+    for sx in (-1, 1):
+        m.ball("RoofRidge", 0.62, (sx * (width / 2 + 0.3), y_ridge + thick * 0.75, z_r), BRASS_P, "Metal")
+        x = sx * (width / 2 - 0.4)
+        tri(m, "Gable", (x, y_eave, z_front), (x, y_eave, z_back), (x, y_ridge, z_r), 0.3, gable_color, "Wood",
+            inside=(0, (y_eave + y_ridge) / 2, z_r))
+
+
+def board_frame(m, w, h, cy, z, rail, frame_color=FRAME_W, rosette=BRASS_P):
+    """A carved frame round a w x h board centred at height cy (its face at z): round rails, gold beads
+    inside them and gold rosettes on the corners."""
+    hw, hh = w / 2 + rail / 2, h / 2 + rail / 2
+    m.cyl("Frame", w + rail * 2, rail, (0, cy + hh, z), frame_color, "x", "Wood")
+    m.cyl("Frame", w + rail * 2, rail, (0, cy - hh, z), frame_color, "x", "Wood")
+    m.cyl("Frame", h + rail * 2, rail, (-hw, cy, z), frame_color, "y", "Wood")
+    m.cyl("Frame", h + rail * 2, rail, (hw, cy, z), frame_color, "y", "Wood")
+    bead = rail * 0.24
+    m.cyl("FrameBead", w, bead, (0, cy + h / 2 + bead / 2, z - rail * 0.18), rosette, "x", "Metal")
+    m.cyl("FrameBead", w, bead, (0, cy - h / 2 - bead / 2, z - rail * 0.18), rosette, "x", "Metal")
+    m.cyl("FrameBead", h, bead, (-w / 2 - bead / 2, cy, z - rail * 0.18), rosette, "y", "Metal")
+    m.cyl("FrameBead", h, bead, (w / 2 + bead / 2, cy, z - rail * 0.18), rosette, "y", "Metal")
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            c = (sx * hw, cy + sy * hh, z - rail * 0.32)
+            m.cyl("Rosette", rail * 0.3, rail * 1.35, c, rosette, "z", "Metal")
+            m.ball("Rosette", rail * 0.62, (c[0], c[1], c[2] - rail * 0.14), rosette, "Metal")
+
+
+def hall():
+    """The Hall of Pulls (the client draws on its 24 x 14 Board, at y 4 to 18 just in front of z = 0):
+    a stone platform with a step, two thick green pillars on stone bases with gold bands, a carved
+    frame with gold beads and rosettes, a frieze with a gold pack medallion, a shingled gable roof
+    with a copper ridge, and iron hooks for two lanterns under the eaves."""
+    m = PModel("hall")
+    m.solid_names = {"HallBase", "Pillar", "PillarBase"}
+    m.rbox("HallBase", (32.0, 0.8, 7.0), (0, 0.4, 0.4), STONE, 0.7, "Slate")
+    m.rbox("HallBase", (22.0, 0.4, 2.2), (0, 0.2, -3.9), STONE_L, 0.5, "Slate")
+    m.blk("HallBase", (31.0, 0.08, 6.0), (0, 0.82, 0.4), STONE_L, "Slate")
+    for sx in (-1, 1):
+        x = sx * 14.2
+        m.blk("PillarBase", (3.0, 1.2, 3.0), (x, 1.4, 0), STONE_D, "Slate")
+        m.blk("PillarBase", (2.7, 0.3, 2.7), (x, 2.15, 0), STONE_L, "Slate")
+        m.rbox("Pillar", (2.3, 18.4, 2.3), (x, 11.5, 0), BOARD_G, 0.45, "Wood")
+        m.blk("Pillar", (1.3, 14.6, 0.1), (x, 11.2, -1.16), BOARD_G_L, "Wood")
+        for y in (4.4, 17.4):
+            m.blk("PillarBand", (2.5, 0.32, 2.5), (x, y, 0), BRASS_P, "Metal")
+        m.blk("PillarBand", (2.7, 0.5, 2.7), (x, 20.45, 0), BOARD_G_D, "Wood")
+    m.blk("Frame", (26.0, 16.0, 0.8), (0, 11.0, 0.1), BOARD_G, "Wood")
+    board_frame(m, 24.0, 14.0, 11.0, -0.75, 0.9)
+    # the frieze under the roof, with a gold medallion and a little pack in it
+    m.blk("Frieze", (31.0, 1.7, 0.7), (0, 19.75, 0.0), BOARD_G_D, "Wood")
+    m.cyl("Frieze", 30.6, 0.2, (0, 18.96, -0.38), BRASS_P, "x", "Metal")
+    m.cyl("Medallion", 0.24, 2.2, (0, 19.75, -0.42), BRASS_P, "z", "Metal")
+    m.blk("Medallion", (0.86, 1.2, 0.12), (0, 19.75, -0.58), (110, 70, 200), R=Rz(-8))
+    m.ball("Medallion", 0.3, (0, 19.75, -0.66), (255, 236, 160), "Neon")
+    gable_roof(m, 33.0, -3.6, 3.2, 20.7, 23.6, 0.5)
+    # hooks for the lanterns, under the front eave
+    for sx in (-1, 1):
+        x = sx * 9.0
+        m.rod("LanternHook", (x, 20.65, -3.4), (x, 19.8, -3.4), 0.12, IRON, "Metal")
+        m.ring("LanternHook", (x, 19.7, -3.4), 0.16, 0.08, IRON, "x", 6, "Metal")
+    return m
+
+
+def leaderboard():
+    """A leaderboard (the client draws on its 12 x 12 Board, at y 1 to 13 just in front of z = 0): two
+    green posts on stone feet, a carved frame, a small shingled gable roof, and an iron bracket on
+    the right post for the lantern."""
+    m = PModel("leaderboard")
+    m.solid_names = {"Post", "PostFoot"}
+    for sx in (-1, 1):
+        x = sx * 6.9
+        m.blk("PostFoot", (1.9, 0.8, 1.9), (x, 0.4, 0), STONE_D, "Slate")
+        m.blk("PostFoot", (1.6, 0.2, 1.6), (x, 0.9, 0), STONE_L, "Slate")
+        m.rbox("Post", (1.2, 13.6, 1.2), (x, 7.6, 0), BOARD_G, 0.3, "Wood")
+        m.blk("PostBand", (1.36, 0.24, 1.36), (x, 2.2, 0), BRASS_P, "Metal")
+    m.blk("Frame", (13.2, 13.2, 0.6), (0, 7.0, 0.1), BOARD_G, "Wood")
+    board_frame(m, 12.0, 12.0, 7.0, -0.7, 0.66)
+    m.blk("Frieze", (15.0, 0.9, 0.5), (0, 14.1, 0.0), BOARD_G_D, "Wood")
+    gable_roof(m, 16.4, -2.2, 1.9, 14.5, 16.4, 0.36, rows=2)
+    # the lantern bracket: an arm out from the right post with a curl, and a hook
+    m.rod("LanternHook", (7.5, 12.4, 0), (8.9, 12.4, 0), 0.14, IRON, "Metal")
+    m.rod("LanternHook", (7.5, 11.5, 0), (8.3, 12.4, 0), 0.1, IRON, "Metal")
+    arc_rods(m, "LanternHook", (8.9, 12.7, 0), 0.3, -90, 150, 5, 0.1, IRON, mat="Metal")
+    m.rod("LanternHook", (8.9, 12.4, 0), (8.9, 11.85, 0), 0.08, IRON, "Metal")
+    return m
+
+
+# ------------------------------------------------------------------------------------------------
+# The Top Collector's terrace: the round terrace and its reeded pedestal, the easels, the lectern
+# and the sign's frame (the cards, the plaque, the sign, the avatar spot are made in ParkBuilder)
+# ------------------------------------------------------------------------------------------------
+PAVING = (219, 216, 207)
+PAVING_D = (196, 192, 182)
+MARBLE_W = (244, 238, 228)
+MARBLE_D = (214, 206, 192)
+
+
+def tcterrace():
+    """The Top Collector's terrace (y = 0 is the lawn; the stand is at y 4.36): two round stone steps,
+    the terrace with a rounded edge and a star mosaic round the pedestal, and a marble pedestal with
+    gold-capped reeds, a gold band and a rimmed cap."""
+    m = PModel("tcterrace")
+    m.solid_names = {"Step", "Terrace", "PedestalBase", "Pedestal", "PedestalCap"}
+    m.cyl("Step", 0.34, 29.6, (0, 0.17, 0), PAVING_D, mat="Slate")
+    m.cyl("Step", 0.67, 28.2, (0, 0.335, 0), shade(PAVING, 0.98), mat="Slate")
+    m.cyl("Terrace", 1.0, 26.8, (0, 0.5, 0), PAVING, mat="Slate")
+    m.trim_ring("TerraceEdge", (0, 0.93, 0), 13.3, 0.36, PAVING_D, "y", 28, "Slate")
+    m.cyl("Inlay", 0.04, 12.2, (0, 1.02, 0), (150, 140, 126), mat="Slate")
+    m.cyl("Inlay", 0.06, 11.2, (0, 1.03, 0), shade(PAVING, 1.06), mat="Marble")
+    m.trim_ring("Inlay", (0, 1.06, 0), 5.5, 0.12, GOLD, "y", 20, "Metal")
+    for k in range(8):
+        long = k % 2 == 0
+        m.blk("InlayStar", (0.5, 0.06, 4.4 if long else 3.0), (0, 1.07, 0), GOLD if long else (176, 150, 110), "Marble", R=Ry(k * 22.5))
+    # the pedestal
+    m.cyl("PedestalBase", 0.5, 6.4, (0, 1.25, 0), MARBLE_D, mat="Marble")
+    m.trim_ring("PedestalBase", (0, 1.55, 0), 2.85, 0.4, MARBLE_W, "y", 18, "Marble")
+    m.cyl("Pedestal", 2.4, 4.4, (0, 2.8, 0), MARBLE_W, mat="Marble")
+    for k in range(14):
+        a = k * 360 / 14
+        p = polar(a, 2.2, 2.75)
+        m.cyl("PedestalReed", 2.1, 0.42, p, MARBLE_W, mat="Marble")
+        m.ball("PedestalReed", 0.42, p + V(0, 1.05, 0), GOLD, "Metal")
+    m.cyl("PedestalBand", 0.3, 5.0, (0, 1.85, 0), GOLD, mat="Metal")
+    m.cyl("PedestalBand", 0.28, 4.95, (0, 3.6, 0), GOLD, mat="Metal")
+    m.cyl("PedestalCap", 0.36, 5.6, (0, 4.18, 0), shade(MARBLE_W, 1.04), mat="Marble")
+    m.trim_ring("PedestalCap", (0, 4.2, 0), 2.8, 0.2, GOLD, "y", 20, "Metal")
+    return m
+
+
+EASEL_WOOD = (176, 136, 70)
+EASEL_WOOD_D = (140, 104, 52)
+
+
+def easel():
+    """An easel for a card (y = 0 at its feet; the card, 3.1 x 4.34, faces -z with its middle at
+    (0, 3.85, 0.37), leaning back 10 degrees against the front legs): turned legs with brass feet
+    leaning back at the same angle, a cross bar, a round-nosed ledge with brass ends the card
+    stands on, and a gold frame behind the card with corner balls and a crest."""
+    m = PModel("easel")
+    legs = [((-1.3, 0, -0.1), (-0.6, 6.6, 1.05)), ((1.3, 0, -0.1), (0.6, 6.6, 1.05)), ((0, 0, 2.3), (0, 6.4, 1.2))]
+    for a, b in legs:
+        m.rod("Leg", a, b, 0.26, EASEL_WOOD, "Wood")
+        m.ball("LegFoot", 0.34, a, GOLD, "Metal")
+    m.ball("Leg", 0.46, (0, 6.62, 1.12), EASEL_WOOD_D, "Wood")
+    m.ball("Leg", 0.26, (0, 6.95, 1.12), GOLD, "Metal")
+    m.rod("Leg", (-1.12, 1.1, 0.13), (1.12, 1.1, 0.13), 0.16, EASEL_WOOD_D, "Wood")
+    m.blk("Ledge", (3.9, 0.26, 0.6), (0, 1.6, 0.06), EASEL_WOOD, "Wood")
+    m.cyl("Ledge", 3.9, 0.3, (0, 1.6, -0.24), EASEL_WOOD_D, "x", "Wood")
+    for sx in (-1, 1):
+        m.cyl("Ledge", 0.08, 0.36, (sx * 1.99, 1.6, -0.24), GOLD, "x", "Metal")
+    with m.group(R=Rx(10), t=(0, 3.85, 0.37)):
+        m.blk("Frame", (3.45, 4.75, 0.1), (0, 0, 0.1), GOLD, "Metal")
+        for y in (2.32, -2.32):
+            m.cyl("Frame", 3.5, 0.2, (0, y, 0.0), GOLD, "x", "Metal")
+        for x in (1.69, -1.69):
+            m.cyl("Frame", 4.84, 0.2, (x, 0, 0.0), GOLD, "y", "Metal")
+            for y in (2.32, -2.32):
+                m.ball("Frame", 0.34, (x, y, -0.02), GOLD, "Metal")
+        m.ball("Frame", 0.44, (0, 2.62, 0.0), GOLD, "Metal")
+    return m
+
+
+def lectern():
+    """The plaque's lectern (y = 0 at its foot, facing -z; the plaque, 5.5 x 2.6, sits at (0, 1.75,
+    -0.2) tilted back 48 degrees): a marble plinth, a tapered body with a gold band, and a gold frame
+    with rounded corners behind the plaque on a marble bracket."""
+    m = PModel("lectern")
+    m.solid_names = {"Lectern"}
+    m.rbox("Lectern", (2.9, 0.3, 1.5), (0, 0.15, 0), MARBLE_D, 0.25, "Marble")
+    m.blk("Lectern", (2.2, 1.1, 0.9), (0, 0.85, 0), MARBLE_W, "Marble")
+    m.blk("Lectern", (2.5, 0.16, 1.1), (0, 0.35, 0), MARBLE_D, "Marble")
+    m.blk("LecternBand", (2.28, 0.14, 0.98), (0, 1.25, 0), GOLD, "Metal")
+    with m.group(R=Rx(48), t=(0, 1.75, -0.2)):
+        m.rbox("PlaqueFrame", (5.9, 3.0, 0.2), (0, 0, 0.08), GOLD, 0.3, "Metal", axis="z")
+        m.blk("PlaqueBack", (4.6, 2.2, 0.5), (0, 0, 0.4), MARBLE_W, "Marble")
+        for sx in (-1, 1):
+            m.ball("PlaqueFrame", 0.3, (sx * 2.9, 0, -0.02), GOLD, "Metal")
+    return m
+
+
+def tcsign():
+    """The frame round the TOP COLLECTOR sign (the 9 x 1.8 sign board itself is made in ParkBuilder,
+    its middle at y = 0, facing -z): gold trim with round ends, a crown on top and scroll brackets
+    down to the arch."""
+    m = PModel("tcsign")
+    m.blk("SignTrim", (9.4, 2.2, 0.2), (0, 0, 0.12), GOLD, "Metal")
+    for sx in (-1, 1):
+        m.cyl("SignTrim", 0.2, 2.2, (sx * 4.5, 0, 0.12), GOLD, "z", "Metal")
+        m.cyl("SignEnd", 0.3, 1.8, (sx * 4.5, 0, 0.0), (36, 64, 48), "z", "Wood")
+    # a little gold crown on top
+    m.cyl("Crown", 0.3, 1.5, (0, 1.25, 0), GOLD, "y", "Metal")
+    for k in range(5):
+        x = -0.6 + 0.3 * k
+        m.blk("Crown", (0.2, 0.55 if k % 2 == 0 else 0.4, 0.2), (x, 1.6 + (0.07 if k % 2 == 0 else 0), 0), GOLD, "Metal", R=Rz(45 if k % 2 else 0))
+    m.ball("Crown", 0.24, (0, 1.95, -0.05), (255, 90, 120), "Neon")
+    # scroll brackets from the arch's top up to the sign
+    for sx in (-1, 1):
+        x = sx * 2.5
+        m.rod("SignPost", (x, -2.6, 0), (x, -1.1, 0), 0.2, WHITE_IRON, "Metal")
+        arc_rods(m, "SignPost", (x + sx * 0.38, -1.8, 0), 0.38, 0, 270, 6, 0.12, WHITE_IRON, mat="Metal")
+    return m
+
+
+# ------------------------------------------------------------------------------------------------
+# The Trading Post's tables (inside it: the building itself is a Blender model)
+# ------------------------------------------------------------------------------------------------
+def tptable():
+    """A round café table with two stools (y = 0 is the Trading Post's floor; the stools at z = -3.2
+    and 3.2): a top with a rim and a check card mat, a turned pedestal on a cross foot, and stools
+    on three splayed legs with a foot ring and a cushion."""
+    m = PModel("tptable")
+    m.solid_names = {"TableTop", "TableLeg", "Stool"}
+    wood, dark = (150, 112, 78), (92, 68, 50)
+    m.cyl("TableTop", 0.3, 4.2, (0, 2.75, 0), wood, mat="WoodPlanks")
+    m.trim_ring("TableTop", (0, 2.66, 0), 2.08, 0.22, dark, "y", 16, "Wood")
+    m.blk("TableMat", (2.2, 0.03, 1.6), (0, 2.915, 0), (40, 92, 70), "Fabric")
+    m.blk("TableMat", (2.36, 0.025, 1.76), (0, 2.91, 0), (236, 214, 150), "Fabric")
+    m.cyl("TableLeg", 2.2, 0.5, (0, 1.5, 0), dark, mat="Wood")
+    m.ell("TableLeg", (0.9, 0.7, 0.9), (0, 1.15, 0), wood, "Wood")
+    m.cyl("TableLeg", 0.2, 1.1, (0, 2.5, 0), dark, mat="Wood")
+    for a in (0, 90):
+        m.blk("TableFoot", (2.6, 0.24, 0.42), (0, 0.12, 0), dark, "Wood", R=Ry(a + 45))
+    for z in (-3.2, 3.2):
+        m.cyl("Stool", 0.3, 1.7, (0, 1.75, z), wood, mat="WoodPlanks")
+        m.ell("StoolCushion", (1.5, 0.34, 1.5), (0, 1.98, z), (176, 64, 52), "Fabric")
+        for k in range(3):
+            a = 30 + 120 * k
+            m.rod("StoolLeg", polar(a, 0.45, 1.62) + V(0, 0, z), polar(a, 0.75, 0.0) + V(0, 0, z), 0.18, dark, "Wood")
+        m.trim_ring("StoolLeg", (0, 0.6, z), 0.62, 0.08, (60, 60, 58), "y", 9, "Metal")
+    return m
+
+
+# ------------------------------------------------------------------------------------------------
+# The gate porches: marble columns and stone urns with spiral topiary
+# ------------------------------------------------------------------------------------------------
+PORCH_MARBLE = (238, 238, 232)
+PORCH_FLUTE = (204, 204, 198)
+PORCH_GOLD = (222, 178, 84)
+LIMESTONE_P = (206, 198, 180)
+
+
+def porchcolumn():
+    """A porch column (y = 0 is the porch floor, the top at 14.7): a square plinth, two round mouldings,
+    a shaft with eight flutes all the way round, a gold necking ring, a round echinus and a square
+    abacus."""
+    m = PModel("porchcolumn")
+    m.solid_names = {"Column", "ColumnBase"}
+    m.blk("ColumnBase", (2.0, 0.5, 2.0), (0, 0.25, 0), PORCH_MARBLE, "Marble")
+    m.cyl("ColumnBase", 0.3, 1.82, (0, 0.65, 0), PORCH_MARBLE, mat="Marble")
+    m.cyl("ColumnBase", 0.22, 1.56, (0, 0.91, 0), shade(PORCH_MARBLE, 0.97), mat="Marble")
+    m.cyl("Column", 12.9, 1.3, (0, 7.45, 0), PORCH_MARBLE, mat="Marble")
+    for k in range(8):
+        p = polar(k * 45 + 22.5, 0.63, 7.4)
+        m.blk("Flute", (0.1, 12.3, 0.1), p, PORCH_FLUTE, "Marble", R=Ry(k * 45 + 22.5))
+    m.cyl("ColumnCap", 0.2, 1.5, (0, 13.9, 0), PORCH_GOLD, mat="Metal")
+    m.cyl("ColumnCap", 0.3, 1.86, (0, 14.15, 0), PORCH_MARBLE, mat="Marble")
+    m.blk("ColumnCap", (2.1, 0.4, 2.1), (0, 14.5, 0), PORCH_MARBLE, "Marble")
+    m.blk("ColumnCap", (2.2, 0.08, 2.2), (0, 14.32, 0), PORCH_GOLD, "Metal")
+    return m
+
+
+def porchurn():
+    """A stone urn with a clipped spiral topiary and a gold star (y = 0 is the ground): a square plinth,
+    a turned foot, a round bowl with a gold lip, the topiary in five shrinking balls."""
+    m = PModel("porchurn")
+    m.solid_names = {"Plinth", "Urn"}
+    m.blk("Plinth", (3.2, 0.7, 3.2), (0, 0.35, 0), LIMESTONE_P, "Slate")
+    m.blk("Plinth", (2.9, 0.12, 2.9), (0, 0.76, 0), shade(LIMESTONE_P, 1.06), "Slate")
+    m.cyl("UrnFoot", 0.5, 1.5, (0, 1.07, 0), shade(LIMESTONE_P, 1.08), mat="Marble")
+    m.ell("UrnFoot", (1.9, 0.5, 1.9), (0, 1.35, 0), shade(LIMESTONE_P, 1.04), "Marble")
+    m.ell("Urn", (3.0, 2.3, 3.0), (0, 2.45, 0), shade(LIMESTONE_P, 1.1), "Marble")
+    m.cyl("UrnLip", 0.34, 2.9, (0, 3.45, 0), PORCH_GOLD, mat="Metal")
+    m.cyl("Soil", 0.1, 2.5, (0, 3.6, 0), (70, 54, 40), mat="Ground")
+    for k in range(5):
+        d = 2.6 - k * 0.42
+        m.ball("Leaves", d, (math.sin(k * 1.9) * 0.25, 4.4 + k * 1.25, math.cos(k * 1.9) * 0.25), shade((58, 108, 54), 1 + k * 0.06), "Grass")
+    m.ball("TopiaryStar", 0.5, (0, 10.6, 0), PORCH_GOLD, "Neon")
+    return m
+
+
+PROPS = [shrine, altar, lantern, bollard, lanternpost, birdbath, litter_bin, topiary, cat, logseat, firepit, dueltable, basket, hall, leaderboard, tcterrace, easel, lectern, tcsign, tptable, porchcolumn, porchurn]
 
 
 def emit(models):
