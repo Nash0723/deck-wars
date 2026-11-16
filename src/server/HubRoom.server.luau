@@ -78,6 +78,8 @@ station("Campaign", {
 	PaintingSun = true,
 	PaintingCastle = true,
 	PaintingTower = true,
+	PaintingTrim = true, -- (the gilded frame's mouldings and corner roses)
+	PaintingDetail = true, -- (clouds, road, trees and castle details in the picture)
 }, "CAMPAIGN", Vector3.new(0, 14, -22.2))
 
 -- A soft gold glow round the painting, so it reads as something to click.
