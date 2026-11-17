@@ -7,6 +7,8 @@
 -- Free Roll: plays a real Pack Brawl pull of the chosen rarity (or true odds) without spending
 -- Gems. The normal "Open" buttons at the Pack Party stay as they are (they cost Gems and roll
 -- the real odds), so you can still test true probability.
+-- Enchanting: gives or clears Shards (the enchant currency), and picks the rarity every enchant
+-- lands on (Random = the real odds), to see each rarity's enchant scene at the crystal.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -69,7 +71,7 @@ local tab = button(gui, "DEV", rgb(255, 120, 60), function() end, {
 	Size = UDim2.fromOffset(46, 74),
 	TextSize = 16,
 })
-local panel = make("Frame", { Name = "Panel", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 54, 0.5, 0), Size = UDim2.fromOffset(330, 470), BackgroundColor3 = PANEL, BackgroundTransparency = 0.04, Visible = false }, gui)
+local panel = make("Frame", { Name = "Panel", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 54, 0.5, 0), Size = UDim2.fromOffset(330, 590), BackgroundColor3 = PANEL, BackgroundTransparency = 0.04, Visible = false }, gui)
 corner(panel, 14)
 make("UIStroke", { Thickness = 3, Color = rgb(255, 120, 60) }, panel)
 make("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 10) }, panel)
@@ -144,6 +146,44 @@ button(wallet, "🍀 10 lucky", rgb(140, 220, 120), function()
 	DevAction:FireServer("Luck", 10)
 end, { Name = "Luck", Size = UDim2.new(1 / 3, -4, 1, 0) })
 
+-- Enchanting: Shards (the enchant currency) and the rarity the next enchants land on
+label(panel, "Enchanting", { Font = Enum.Font.FredokaOne, TextSize = 17, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = nextOrder() })
+local SHARD = rgb(214, 140, 255)
+local shardRow = row()
+for i, n in ipairs({ 20, 100, 1000 }) do
+	button(shardRow, "+" .. ShopCatalog.format(n) .. (i == 1 and " Shards" or ""), SHARD, function()
+		DevAction:FireServer("GiveShards", n)
+	end, { Name = "GiveShards" .. n, Size = UDim2.new(i == 1 and 0.31 or 0.21, -5, 1, 0) })
+end
+button(shardRow, "No Shards", rgb(200, 190, 215), function()
+	DevAction:FireServer("ClearShards")
+end, { Name = "ClearShards", Size = UDim2.new(0.27, -5, 1, 0), TextSize = 13 })
+label(panel, "Every enchant lands on (Random: real odds)", { Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = DIM, LayoutOrder = nextOrder() })
+local forceGrid = make("Frame", { Name = "ForceEnchant", Size = UDim2.new(1, 0, 0, 70), BackgroundTransparency = 1, LayoutOrder = nextOrder() }, panel)
+make("UIGridLayout", { CellSize = UDim2.new(0.25, -5, 0, 32), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, forceGrid)
+local forceButtons = {}
+-- the rarity that's on now gets a bright outline; the others step back
+local function showForced()
+	local now = player:GetAttribute("DevEnchantRarity") or "Random"
+	for tier, b in pairs(forceButtons) do
+		local on = tier == now
+		b.BackgroundTransparency = on and 0 or 0.45
+		local st = b:FindFirstChildOfClass("UIStroke")
+		if st then
+			st.Color = on and rgb(255, 255, 255) or INK
+			st.Thickness = on and 3.5 or 2
+		end
+	end
+end
+for i, tier in ipairs({ "Random", "Common", "Rare", "Epic", "Mythic", "Legendary", "Secret" }) do
+	local light = tier == "Rare" or tier == "Epic" or tier == "Mythic"
+	forceButtons[tier] = button(forceGrid, tier, TIER_COLOR[tier] or rgb(255, 214, 102), function()
+		DevAction:FireServer("ForceEnchant", tier)
+	end, { Name = "Force_" .. tier, LayoutOrder = i, TextSize = 12, TextColor3 = light and rgb(255, 255, 255) or INK })
+end
+player:GetAttributeChangedSignal("DevEnchantRarity"):Connect(showForced)
+showForced()
+
 label(panel, "Shop and save", { Font = Enum.Font.FredokaOne, TextSize = 17, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = nextOrder() })
 local shopRow = row()
 button(shopRow, "New shop day", rgb(200, 180, 255), function()
@@ -167,12 +207,21 @@ reset = button(shopRow, "Reset my save", rgb(255, 110, 110), function()
 	DevAction:FireServer("ResetSave")
 end, { Name = "ResetSave", Size = UDim2.new(0.5, -3, 1, 0) })
 
-local balance = label(panel, "", { Name = "Balance", Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = DIM, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = nextOrder() })
+local balance = label(panel, "", { Name = "Balance", Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = DIM, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = nextOrder() })
 local function showBalance()
-	balance.Text = string.format("%s %s   %s %s   (F7 shows/hides this panel)", ShopCatalog.Icon.Gems, ShopCatalog.format(player:GetAttribute("Gems") or 0), ShopCatalog.Icon.Coins, ShopCatalog.format(player:GetAttribute("Coins") or 0))
+	balance.Text = string.format(
+		"%s %s   %s %s   %s %s\n(F7 shows/hides this panel)",
+		ShopCatalog.Icon.Gems,
+		ShopCatalog.format(player:GetAttribute("Gems") or 0),
+		ShopCatalog.Icon.Coins,
+		ShopCatalog.format(player:GetAttribute("Coins") or 0),
+		ShopCatalog.Icon.Shards,
+		ShopCatalog.format(player:GetAttribute("Shards") or 0)
+	)
 end
 player:GetAttributeChangedSignal("Gems"):Connect(showBalance)
 player:GetAttributeChangedSignal("Coins"):Connect(showBalance)
+player:GetAttributeChangedSignal("Shards"):Connect(showBalance)
 showBalance()
 
 EconomyEvent.OnClientEvent:Connect(function(kind, payload)

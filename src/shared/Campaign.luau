@@ -165,7 +165,7 @@ Campaign.StarText = { "Win", "Win with half your hit points left", "Win within %
 Campaign.FirstClearGems = { 60, 70, 90, 110, 140, 200 }
 Campaign.HardGems = 1.5
 -- Rune Shards (the Enchanting Crystal's currency, 20 an enchant): a first clear pays these by act
--- (Hard: HardShards times as much, rounded). A world's Normal mode pays 110, its Hard mode 165.
+-- (Hard: HardShards times as much, rounded). A world's Normal mode pays 110, its Hard mode 166.
 Campaign.FirstClearShards = { 10, 10, 15, 15, 20, 40 }
 Campaign.HardShards = 1.5
 -- Replays: every win on a stage you've cleared before pays ReplayShards, for the first
