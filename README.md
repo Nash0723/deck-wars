@@ -148,7 +148,26 @@ There is no step-by-step tutorial any more. The first time you open a menu, a sh
 
 ## Enchants: runes on your cards
 
-The **Enchanting Crystal** floats in the middle of the Park, on the island (the Pull Altar moved to the lawn in front of the Hall of Pulls). Walk up and press **E**, pick a creature or spell you own, and press **Enchant** (250 Coins) or **Lucky** (60 Gems: no Commons, better odds). The rune is rolled at random; the card's rim flickers through the colours, slows down and lands on the rarity, with a bigger burst for rarer runes.
+The **Enchanting Crystal** floats in the middle of the Park, on the island (the Pull Altar moved to the lawn in front of the Hall of Pulls). Walk up and press **E**, pick a creature or spell you own, and press **Enchant** (20 Shards) or **Lucky** (60 Gems: no Commons, better odds). The rune is rolled at random.
+
+The enchant plays in front of everything (`src/shared/EnchantStage.luau`): the card flies forward to the middle of the screen, every menu steps away (the Park's HUD and windows, the room's bars, chat and the player list, the E prompts; you stop walking), the world behind blurs and darkens and the camera leans in. A rune circle turns behind the card, runes circle it and light streams in while its rim flickers through the rarity colours, slowing down onto the result (longer for rarer runes; Legendary and Secret seem to stop on Epic or Mythic, then crack through). The rune lands with a **pop and a screen shake that grow with its rarity** (`EnchantStage.Land`; the Screen shake setting still counts), a painted burst in the rune's colour, rays from Epic up, stars from Mythic, wings and confetti from Legendary, and the whole stage runs through the rainbow for a Secret. Then: Enchant again / Lucky / Done (or Keep new / Keep old). Click anywhere to hurry it; Escape or Done flies the card back and everything returns.
+
+### Shards: the enchant currency
+Shards are earned only by playing, never bought. Everyone starts with 40 (old saves get them once). They're saved with the rest of your profile, shown in the crystal's window, the enchant scene and the dev panel.
+
+| Where | Shards |
+|---|---|
+| Campaign first clears | by act 10, 10, 15, 15, 20, 40 (110 a world); Hard pays 1.5x (166 a world) |
+| Campaign star chests | 30 / 60 / 100 at 6 / 12 / 18 stars, every world |
+| Campaign replay wins | 4 a win, the first 10 replay wins of the day |
+| The hourly Challenge | 30 a win |
+| Trophy Road | 10 new Shard stops between the old ones: 20, 30, 40, 50, 60, 70, 80, 100, 120, 200 (770 in all) |
+| Achievements | First Blood 20, Level Ten 40, Lucky Pull 30, Six Flavours 60, Cup Champion 80, Full Set 100 |
+| Quests (Quest Hall) | whatever the quest says, through `EconomyManager.grantShards(player, amount, reason)` |
+
+- Numbers live in `Campaign.FirstClearShards / HardShards / ReplayShards / ReplayShardWins / Chests / Challenge.shards`, `Progression.Achievements` and `Progression.TrophyRoad`, the price in `Enchants.Cost`, the start in `ShopCatalog.StartingShards`.
+- Trophy Road stops are now saved by a stable key (old stops keep their old numbers, new Shard stops are `s1`..`s10`), so a player who is already past a new stop can claim it at once.
+- Dev panel (F7): +20 / +100 / +1,000 Shards, No Shards, and the rarity every enchant lands on (Random = the real odds) to see each reveal.
 
 | Rarity | Odds | Lucky | Colour | Creature runes | Spell runes |
 |---|---|---|---|---|---|
@@ -163,8 +182,8 @@ The **Enchanting Crystal** floats in the middle of the Park, on the island (the 
 - Bad luck protection: after 8 enchants in a row below Epic, the next one is Epic or better (the window counts down).
 - Enchanting a card that already has a rune asks you to keep the new one or the old one.
 - Like card levels, enchant powers count against bots and in the Campaign. In duels against players the rune glows but cards play at their printed numbers (`Enchants.InDuels`).
-- What you see: a glowing rim and a rune gem on the card (hand, Deck Shelf, the window), a slow aura in the rune's colour under the creature on the table (ring, light, rising motes), a rune circle when it lands, and painted effects when Thorns, Leech, Phoenix or a spell rune fires.
-- Code: `src/shared/Enchants.luau` (runes, odds, colours: change numbers here), `EnchantFx.luau` (the look, on top of LayerFx), `EnchantUI.luau` (the window), `EconomyManager.enchantCard/chooseEnchant` (the save), hooks in `MatchEngine`, `MatchScreen`, `ParkBuilder` (`buildShrine`) and `ParkClient`. Tests: `tests/enchant_tests.luau`, `mock_roblox/enchantharness.luau`.
+- What you see: a glowing rim and a rune gem on the card's top-right corner, clear of the cost (hand, Deck Shelf, the window), a slow aura in the rune's colour under the creature on the table (ring, light, rising motes), a rune circle when it lands, and painted effects when Thorns, Leech, Phoenix or a spell rune fires.
+- Code: `src/shared/Enchants.luau` (runes, odds, colours: change numbers here), `EnchantFx.luau` (the look, on top of LayerFx), `EnchantUI.luau` (the window), `EnchantStage.luau` (the enchant scene), `EconomyManager.enchantCard/chooseEnchant` (the save), hooks in `MatchEngine`, `MatchScreen`, `ParkBuilder` (`buildShrine`) and `ParkClient`. Tests: `tests/enchant_tests.luau`, `mock_roblox/enchantharness.luau`.
 
 ## Painted effects: four layers per picture
 Hits, slashes, spells, summons, knock-outs, heals, wards, the pack slash, card reveals and Pack Brawl's blows are now painted effects. Each one is a picture drawn as four layers (a soft **glow**, the dark **rim**, the bright **middle** and the white-hot **core**) that the game stacks and moves a little apart in time: the core snaps out first, the rim arrives last and lingers. The pictures are white, so each card family fights in its own colours (Snack orange, Weather blue, Spooky purple, Critter green, Junk rust, Robo steel) and pack reveals use the rarity's colour.

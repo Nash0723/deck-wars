@@ -86,7 +86,7 @@ MenuBriefs.Briefs = {
 		beats = {
 			{ "Your decks, their rules", "Every act is a match against a named opponent, played with a deck you built." },
 			{ "Three stars an act", "★ win · ★ keep half your hit points · ★ finish inside the turn limit." },
-			{ "Push further", "Beat a boss to open the next world and its Hard mode. First clears pay Gems and a card." },
+			{ "Push further", "Beat a boss to open the next world and its Hard mode. First clears pay Gems, Shards and a card." },
 		},
 		tip = "Star chests open at 6, 12 and 18 stars in every world.",
 	},
@@ -181,7 +181,7 @@ MenuBriefs.Briefs = {
 		accent = rgb(214, 120, 255),
 		beats = {
 			{ "Pick a card", "Any creature or spell you own. Buildings can't hold a rune." },
-			{ "Enchant or Lucky", "Coins for a normal roll, or Gems for Lucky: no Common runes and better odds." },
+			{ "Shards or Lucky", "20 Shards a roll, or Gems for Lucky: no Common runes and better odds. Earn Shards in the Campaign, the hourly Challenge, on the Trophy Road and from achievements." },
 			{ "It sticks", "The rune rides on every copy in every deck. It powers up against bots and in the Campaign; in duels it only glows." },
 		},
 		tip = "8 enchants in a row below Epic and the next one is Epic or better.",

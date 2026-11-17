@@ -1,11 +1,14 @@
 -- EconomyManager: the player's saved profile and everything that changes it. Server only.
 --
---   Gems  (premium, for packs)   Coins (earned by playing, for the Shop)
+--   Gems   (premium, for packs)   Coins (earned by playing, for the Shop)
+--   Shards (rune shards for the Enchanting Crystal: earned in the Campaign, the hourly Challenge,
+--          on the Trophy Road, from achievements and quests; never sold)
 --
 -- Other server scripts find it with ServerStorage:FindFirstChild("EconomyManager", true) and use:
---   EconomyManager.getBalance(player, "Gems" | "Coins") -> number
+--   EconomyManager.getBalance(player, "Gems" | "Coins" | "Shards") -> number
 --   EconomyManager.trySpend(player, currency, amount, reason) -> boolean  (checks and pays in one go)
 --   EconomyManager.grant(player, currency, amount, reason) -> boolean
+--   EconomyManager.grantShards(player, amount, reason) -> boolean  (the same, for Shards)
 --   EconomyManager.grantCards(player, { cardId, ... }) -> isNew { bool }, counts { number }, uniqueOwned
 --   EconomyManager.getCollection(player) -> { [cardId] = count } (a copy)
 --   EconomyManager.ownsCard(player, cardId) -> count
@@ -17,7 +20,7 @@
 --   EconomyManager.waitForData(player) -> the live saved table (or nil); then markDirty(player)
 --   EconomyManager.matchReward(player, { result, difficulty, seconds, turns }) -> reward summary
 -- Every function that needs the save yields (up to LoadTimeout seconds) until it has loaded.
--- Balances are also mirrored as Player attributes "Gems", "Coins" and "Level" for client UIs.
+-- Balances are also mirrored as Player attributes "Gems", "Coins", "Shards" and "Level" for client UIs.
 --
 -- EconomyServer.server.luau calls EconomyManager.init(...) and handles joining/leaving, the Shop
 -- remote and Robux receipts. The tests call init with a fake clock and a memory store.
@@ -46,7 +49,7 @@ EconomyManager.LoadTimeout = 15
 EconomyManager.MaxCardCopies = 999
 EconomyManager.ReceiptHistory = 100 -- PurchaseIds kept to make Robux purchases idempotent
 
-local FIELD = { Gems = "gems", Coins = "coins" }
+local FIELD = { Gems = "gems", Coins = "coins", Shards = "shards" }
 
 -- The save of a brand new player. New fields can be added here at any time: older saves get
 -- them filled in on load (ProfileStore.reconcile).
@@ -54,6 +57,7 @@ EconomyManager.Template = {
 	version = 1,
 	gems = ShopCatalog.StartingGems,
 	coins = ShopCatalog.StartingCoins,
+	shards = ShopCatalog.StartingShards, -- (old saves get these the first time they load)
 	xp = 0,
 	level = 1,
 	collection = {}, -- [cardId] = copies owned (all levels together)
@@ -79,7 +83,7 @@ EconomyManager.Template = {
 		paidMatches = 0,
 		firstWin = false,
 	},
-	stats = { wins = 0, losses = 0, draws = 0, packsOpened = 0, cardsPulled = 0, gemsSpent = 0, coinsSpent = 0, coinsEarned = 0, robuxSpent = 0 },
+	stats = { wins = 0, losses = 0, draws = 0, packsOpened = 0, cardsPulled = 0, gemsSpent = 0, coinsSpent = 0, coinsEarned = 0, shardsEarned = 0, shardsSpent = 0, robuxSpent = 0 },
 	receipts = {}, -- recent Robux PurchaseIds, oldest first
 	created = 0,
 }
@@ -104,6 +108,7 @@ local deps = {
 }
 local store = nil -- ProfileStore
 local profiles = {} -- [player] = profile
+local forcedEnchant = setmetatable({}, { __mode = "k" }) -- [player] = rarity (dev panel; this server only)
 local loading = {} -- [player] = true while loading
 local failed = {} -- [player] = reason when loading failed
 
@@ -158,6 +163,7 @@ local function mirror(player)
 		pcall(function()
 			player:SetAttribute("Gems", d.gems)
 			player:SetAttribute("Coins", d.coins)
+			player:SetAttribute("Shards", d.shards or 0)
 			player:SetAttribute("Level", d.level)
 			-- the pack screen shows the boosted odds while lucky pulls remain (Roblox asks for it)
 			player:SetAttribute("LuckCharges", d.boosts and d.boosts.luckCharges or 0)
@@ -292,6 +298,12 @@ function EconomyManager.getBalance(player, currency)
 	return d and d[f] or 0
 end
 
+-- Keeps the lifetime totals in d.stats (gemsSpent, coinsSpent, shardsSpent).
+local function noteSpent(d, currency, amount)
+	local key = (currency == "Gems" and "gemsSpent") or (currency == "Shards" and "shardsSpent") or "coinsSpent"
+	d.stats[key] = (tonumber(d.stats[key]) or 0) + amount
+end
+
 -- Pays `amount` of `currency` if the player has it. Returns true when paid.
 -- The check and the payment happen together without yielding, so two requests at the same
 -- time can't both spend the same Gems.
@@ -301,15 +313,11 @@ function EconomyManager.trySpend(player, currency, amount, reason)
 		return false
 	end
 	local d = EconomyManager.waitForData(player)
-	if not d or d[f] < amount then
+	if not d or (d[f] or 0) < amount then
 		return false
 	end
 	d[f] -= amount
-	if currency == "Gems" then
-		d.stats.gemsSpent += amount
-	else
-		d.stats.coinsSpent += amount
-	end
+	noteSpent(d, currency, amount)
 	changed(player, reason or "spend")
 	return true
 end
@@ -324,12 +332,20 @@ function EconomyManager.grant(player, currency, amount, reason)
 	if not d then
 		return false
 	end
-	d[f] = math.min(ShopCatalog.MaxBalance, d[f] + amount)
+	d[f] = math.min(ShopCatalog.MaxBalance, (d[f] or 0) + amount)
 	if currency == "Coins" then
 		d.stats.coinsEarned += amount
+	elseif currency == "Shards" then
+		d.stats.shardsEarned = (tonumber(d.stats.shardsEarned) or 0) + amount
 	end
 	changed(player, reason or "grant")
 	return true
+end
+
+-- Gives rune shards (the enchant currency). For quests, the Campaign and anything else that pays
+-- them: EconomyManager.grantShards(player, 25, "quest"). Returns true when given.
+function EconomyManager.grantShards(player, amount, reason)
+	return EconomyManager.grant(player, "Shards", amount, reason or "shards")
 end
 
 -- Pays a price table like { Coins = 600 } (no yielding: call after waitForData).
@@ -339,15 +355,11 @@ local function payPrice(d, price)
 		return false, "This item has no price."
 	end
 	local f = FIELD[cur]
-	if d[f] < amount then
+	if (d[f] or 0) < amount then
 		return false, "Not enough " .. cur .. "."
 	end
 	d[f] -= amount
-	if cur == "Gems" then
-		d.stats.gemsSpent += amount
-	else
-		d.stats.coinsSpent += amount
-	end
+	noteSpent(d, cur, amount)
 	return true
 end
 
@@ -483,7 +495,8 @@ local function rand01()
 	return enchantRng:NextNumber()
 end
 
--- Rolls an enchant on a card the player owns. mode "lucky" pays Gems for better odds.
+-- Rolls an enchant on a card the player owns. It costs Shards (Enchants.Cost); mode "lucky"
+-- pays Gems for better odds (Enchants.LuckyCost) instead.
 -- Returns ok, then { card, enchant, rarity, old, pending, pity } or the reason it didn't work.
 -- If the card already had an enchant, the new one waits (pending) until chooseEnchant.
 function EconomyManager.enchantCard(player, id, mode)
@@ -505,13 +518,20 @@ function EconomyManager.enchantCard(player, id, mode)
 	end
 	local lucky = mode == "lucky"
 	local price = lucky and Enchants.LuckyCost or Enchants.Cost
+	local cur, amount = ShopCatalog.priceOf(price)
+	if cur and (d[FIELD[cur]] or 0) < amount then
+		if cur == "Shards" then
+			return false, "Not enough Shards: you need " .. amount .. ". Earn them in the Campaign, the hourly Challenge and on the Trophy Road."
+		end
+		return false, "Not enough " .. cur .. ": you need " .. amount .. "."
+	end
+	local eid, rarity, pity = Enchants.roll(id, rand01, lucky, d.enchantPity or 0, forcedEnchant[player])
+	if not eid then
+		return false, "No enchant fits that card."
+	end
 	local ok, why = payPrice(d, price)
 	if not ok then
 		return false, why
-	end
-	local eid, rarity, pity = Enchants.roll(id, rand01, lucky, d.enchantPity or 0)
-	if not eid then
-		return false, "No enchant fits that card."
 	end
 	d.enchantPity = pity
 	d.stats.enchants = (d.stats.enchants or 0) + 1
@@ -954,6 +974,7 @@ function EconomyManager.snapshot(player)
 	return {
 		gems = d.gems,
 		coins = d.coins,
+		shards = d.shards or 0,
 		xp = d.xp,
 		level = d.level,
 		xpNeed = ShopCatalog.xpForLevel(d.level),
@@ -1043,6 +1064,30 @@ end
 
 function EconomyManager.devGive(player, currency, amount)
 	return EconomyManager.grant(player, currency, amount, "dev")
+end
+
+-- Takes a currency away (down to 0), to try what "not enough" looks like.
+function EconomyManager.devClear(player, currency)
+	local f = FIELD[currency]
+	local d = f and EconomyManager.waitForData(player)
+	if not d then
+		return false
+	end
+	d[f] = 0
+	changed(player, "dev")
+	return true
+end
+
+-- Every enchant this player rolls lands on `rarity` (nil or "Random": the real odds again).
+-- Only in this server, never saved: for seeing each rarity's reveal.
+function EconomyManager.devForceEnchant(player, rarity)
+	forcedEnchant[player] = (type(rarity) == "string" and Enchants.Rank[rarity]) and rarity or nil
+	if typeof(player) == "Instance" then
+		pcall(function()
+			player:SetAttribute("DevEnchantRarity", forcedEnchant[player])
+		end)
+	end
+	return true
 end
 
 -- Pretend it's a new day: daily cards, exchanges, match limit and the login reward reset.

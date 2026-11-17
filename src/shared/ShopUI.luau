@@ -167,7 +167,7 @@ function ShopUI.toast(message, kind, opts)
 	}, state.toastHolder)
 	corner(t, 14)
 	stroke(t, TOAST_COLORS[kind or "info"] or GOLD, 3)
-	if opts.icon == "Coins" or opts.icon == "Gems" then
+	if opts.icon == "Coins" or opts.icon == "Gems" or opts.icon == "Shards" then
 		local px = big and 40 or 26
 		UIKit.icon(t, opts.icon, px, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 8 + (big and 31 or 20), 0.5, 0) })
 	else

@@ -20,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
 
 local here = script.Parent
 local Park = require(here:WaitForChild("Park"))
@@ -511,6 +512,53 @@ local function controls(on)
 			c:Disable()
 		end
 	end)
+end
+
+-- The enchant scene (EnchantStage) puts everything else away while it plays: every other screen
+-- (the Park's HUD and windows, the banners, the room's bars, the party buttons, anything newer),
+-- the chat and the player list, the E prompts out here and your walking. hidden = false gives
+-- back exactly what it took. The toasts, the briefs, the fade and the loading screen stay.
+local KEEP_SCREENS = { EnchantStage = true, DeckWarsToasts = true, MenuBriefs = true, ParkFade = true, LoadingScreen = true, DeckWarsFocus = true }
+local function hideForEnchant(hidden)
+	if hidden then
+		if S.enchantHid then
+			return
+		end
+		local took = { screens = {}, core = {}, prompts = ProximityPromptService.Enabled }
+		S.enchantHid = took
+		for _, g in ipairs(player:WaitForChild("PlayerGui"):GetChildren()) do
+			if g:IsA("ScreenGui") and g.Enabled and not KEEP_SCREENS[g.Name] then
+				g.Enabled = false
+				table.insert(took.screens, g)
+			end
+		end
+		for _, kind in ipairs({ Enum.CoreGuiType.Chat, Enum.CoreGuiType.PlayerList }) do
+			local ok, on = pcall(StarterGui.GetCoreGuiEnabled, StarterGui, kind)
+			if ok and on and pcall(StarterGui.SetCoreGuiEnabled, StarterGui, kind, false) then
+				table.insert(took.core, kind)
+			end
+		end
+		ProximityPromptService.Enabled = false
+		controls(false)
+		return
+	end
+	local took = S.enchantHid
+	if not took then
+		return
+	end
+	S.enchantHid = nil
+	for _, g in ipairs(took.screens) do
+		if g.Parent then
+			g.Enabled = true
+		end
+	end
+	for _, kind in ipairs(took.core) do
+		pcall(StarterGui.SetCoreGuiEnabled, StarterGui, kind, true)
+	end
+	ProximityPromptService.Enabled = took.prompts
+	if S.inside then
+		controls(true)
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -1944,7 +1992,7 @@ function ParkClient.init(ctx)
 	S.ctx = ctx
 	buildGui()
 	TradeUI.init({ gui = S.gui, action = ParkAction, makeCard = ctx.makeCard, toast = toast })
-	EnchantUI.init({ gui = S.gui, makeCard = ctx.makeCard, toast = toast })
+	EnchantUI.init({ gui = S.gui, makeCard = ctx.makeCard, toast = toast, hideMenus = hideForEnchant })
 	ParkEvent.OnClientEvent:Connect(function(e)
 		if type(e) ~= "table" then
 			return
@@ -2006,12 +2054,15 @@ function ParkClient.init(ctx)
 			ParkClient.leave(false, "DuelTable")
 		end
 	end)
-	-- Escape closes the "My look" editor and the altar panel.
+	-- Escape puts the enchant scene away, or closes the "My look" editor and the panels.
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or not S.inside then
 			return
 		end
 		if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB then
+			if EnchantUI.escape() then
+				return -- (the enchant scene goes first: the card flies back, the window stays)
+			end
 			closeEditor()
 			closePacks()
 			EnchantUI.close()

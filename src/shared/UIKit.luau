@@ -5,6 +5,7 @@
 -- manager, which keeps one thing on screen at a time:
 --
 --   UIKit.coinIcon(parent, 20)                      -- a gold coin, 20 px
+--   UIKit.shardIcon(parent, 20)                     -- a rune shard (the enchant currency), 20 px
 --   UIKit.currency(parent, "Coins", "300", opts)    -- [coin] 300, as one row that sizes itself
 --   UIKit.caption(button, "Coins", "120")           -- a button that shows [coin] 120 in the middle
 --   UIKit.closeButton(parent, onClick, props)       -- a round button with a drawn ✕ (Name "Close")
@@ -53,6 +54,7 @@ UIKit.Color = {
 	bad = rgb(220, 80, 80),
 	gem = rgb(110, 200, 255),
 	coin = rgb(255, 200, 70),
+	shard = rgb(236, 150, 255),
 	close = rgb(120, 58, 72),
 }
 local C = UIKit.Color
@@ -137,11 +139,56 @@ function UIKit.gemIcon(parent, px, props)
 	return g
 end
 
+-- A rune shard: a tall violet crystal (two diamonds, the lower one deeper, which draws the facet
+-- line), a dark outline round both, and a glint. Its parts keep above it whatever ZIndex it gets.
+function UIKit.shardIcon(parent, px, props)
+	px = px or 20
+	local c = make("Frame", { Name = "ShardIcon", Size = UDim2.fromOffset(px, px), BackgroundTransparency = 1 }, parent)
+	local d = math.floor(px * 0.5 + 0.5) -- one diamond's side
+	local edge = math.max(2, math.floor(px * 0.12 + 0.5)) -- the outline
+	local parts = {}
+	local function diamond(name, y, side, color, k)
+		local f = make("Frame", {
+			Name = name,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, y, 0),
+			Size = UDim2.fromOffset(side, side),
+			Rotation = 45,
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+		}, c)
+		make("UICorner", { CornerRadius = UDim.new(0, math.max(1, math.floor(side * 0.12))) }, f)
+		parts[f] = k
+		return f
+	end
+	diamond("EdgeTop", 0.36, d + edge, rgb(70, 22, 104), 1)
+	diamond("EdgeLow", 0.64, d + edge, rgb(70, 22, 104), 1)
+	diamond("Top", 0.36, d, rgb(246, 178, 255), 2)
+	diamond("Low", 0.64, d, rgb(170, 78, 236), 3)
+	local glint = diamond("Glint", 0.3, math.max(2, math.floor(px * 0.14 + 0.5)), Color3.new(1, 1, 1), 4)
+	glint.Position = UDim2.new(0.42, 0, 0.3, 0)
+	glint.BackgroundTransparency = 0.15
+	for k, v in pairs(props or {}) do
+		c[k] = v
+	end
+	for f, k in pairs(parts) do
+		f.ZIndex = c.ZIndex + k
+	end
+	return c
+end
+
 function UIKit.icon(parent, cur, px, props)
 	if cur == "Gems" then
 		return UIKit.gemIcon(parent, px, props)
+	elseif cur == "Shards" then
+		return UIKit.shardIcon(parent, px, props)
 	end
 	return UIKit.coinIcon(parent, px, props)
+end
+
+-- The text colour of a currency.
+function UIKit.currencyColor(cur)
+	return (cur == "Gems" and C.gem) or (cur == "Shards" and C.shard) or C.coin
 end
 
 -- [icon] value, as one row that grows to fit. opts: size (text size, default 18), color, font,
@@ -172,7 +219,7 @@ function UIKit.currency(parent, cur, value, opts)
 		Text = tostring(value),
 		Font = opts.font or UIKit.TITLE_FONT,
 		TextSize = size,
-		TextColor3 = opts.color or (cur == "Gems" and C.gem or C.coin),
+		TextColor3 = opts.color or UIKit.currencyColor(cur),
 		LayoutOrder = 2,
 	}, row)
 	if opts.stroke then
@@ -182,8 +229,8 @@ function UIKit.currency(parent, cur, value, opts)
 end
 
 -- A button (or label) that shows an icon and a caption together, centered: the caption moves
--- into a child TextLabel. cur is "Coins", "Gems" or nil (just the text). The full caption is kept
--- in the "Caption" attribute (with "Coins " / "Gems " in front) so scripts can read it.
+-- into a child TextLabel. cur is "Coins", "Gems", "Shards" or nil (just the text). The full
+-- caption is kept in the "Caption" attribute (with "Coins " / "Gems " in front) so scripts can read it.
 function UIKit.caption(obj, cur, text)
 	local holder = obj:FindFirstChild("Caption")
 	if not holder then
@@ -211,8 +258,8 @@ function UIKit.caption(obj, cur, text)
 	t.TextStrokeTransparency = obj.TextStrokeTransparency
 	t.TextStrokeColor3 = obj.TextStrokeColor3
 	t.Text = text
-	local icon = holder:FindFirstChild("CoinIcon") or holder:FindFirstChild("GemIcon")
-	local want = cur == "Gems" and "GemIcon" or (cur == "Coins" and "CoinIcon" or nil)
+	local icon = holder:FindFirstChild("CoinIcon") or holder:FindFirstChild("GemIcon") or holder:FindFirstChild("ShardIcon")
+	local want = (cur == "Gems" and "GemIcon") or (cur == "Coins" and "CoinIcon") or (cur == "Shards" and "ShardIcon") or nil
 	if icon and icon.Name ~= want then
 		icon:Destroy()
 		icon = nil
