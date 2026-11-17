@@ -6,6 +6,8 @@
 -- The collection has two tabs: My cards (what you own, with each card's best level as pips and a
 -- FUSE tag when two copies can fuse) and All cards (everything, the ones still to find dark).
 -- Tapping an owned card opens its copies: one row per level with Fuse 2 -> next level and Sell.
+-- Tapping the big card there (or Inspect under it) opens CardInspect: its 3D model up close.
+-- Cards you haven't found yet (All cards) open straight in CardInspect.
 --
 --   DeckBuilderUI.init(kit)          -- once, from DeckWarsClient (its make/label/button/... helpers)
 --   DeckBuilderUI.request()          -- ask the server for a fresh snapshot
@@ -330,6 +332,29 @@ local function cardAction(what, options)
 	end)
 end
 
+-- The card's 3D model up close (CardInspect). The shelf's big left panel steps away while it's open.
+local function openInspect(id)
+	local CardInspect = require(here:WaitForChild("CardInspect"))
+	local have = ownedCount(id)
+	Juice.sound("tick", 1.3, 0.35)
+	if state.left then
+		state.left.Visible = false
+	end
+	CardInspect.open(id, {
+		makeCard = kit.makeCard,
+		buildModel = kit.buildModel,
+		level = have > 0 and bestLevel(id) or nil,
+		enchant = have > 0 and state.snap and state.snap.enchants and state.snap.enchants[id] or nil,
+		owned = have,
+		onClose = function()
+			-- (back to the shelf, unless it was closed meanwhile)
+			if state.left and state.body and state.body.Parent then
+				state.left.Visible = true
+			end
+		end,
+	})
+end
+
 local function showGrid()
 	local left = state.left
 	local total = collectibleTotal()
@@ -424,6 +449,12 @@ local function showGrid()
 				cell.Activated:Connect(function()
 					openDetail(id)
 				end)
+			elseif not secret then
+				-- not found yet: a look at what you're hunting for
+				Juice.button(cell, { grow = 1.03 })
+				cell.Activated:Connect(function()
+					openInspect(id)
+				end)
 			end
 		end
 	end
@@ -472,6 +503,44 @@ local function showDetail()
 	big.Name = "BigCard"
 	local enchant = state.snap and state.snap.enchants and state.snap.enchants[id]
 	EnchantFx.decorateCard(big, enchant, { gem = 28 })
+	-- tap the big card (or Inspect under it) to see the model up close; it leans in on hover
+	do
+		local lean = make("UIScale", { Name = "HoverScale", Scale = 1 }, stage)
+		local tap = make("TextButton", { Name = "InspectTap", Text = "", AutoButtonColor = false, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 40 }, stage)
+		local tag = make("TextLabel", {
+			Name = "InspectHint",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.34),
+			Size = UDim2.fromOffset(150, 30),
+			BackgroundColor3 = INK,
+			BackgroundTransparency = 1,
+			Text = "🔍  Inspect",
+			Font = Enum.Font.FredokaOne,
+			TextSize = 16,
+			TextColor3 = WHITE,
+			TextTransparency = 1,
+			ZIndex = 41,
+		}, stage)
+		make("UICorner", { CornerRadius = UDim.new(1, 0) }, tag)
+		tap.MouseEnter:Connect(function()
+			UIKit.tween(lean, 0.25, { Scale = 1.03 }, Enum.EasingStyle.Back)
+			UIKit.tween(tag, 0.2, { TextTransparency = 0, BackgroundTransparency = 0.25 })
+		end)
+		tap.MouseLeave:Connect(function()
+			UIKit.tween(lean, 0.25, { Scale = 1 })
+			UIKit.tween(tag, 0.2, { TextTransparency = 1, BackgroundTransparency = 1 })
+		end)
+		tap.Activated:Connect(function()
+			openInspect(id)
+		end)
+		local inspect = kit.button(root, "🔍  Inspect", rgb(110, 80, 150), function()
+			openInspect(id)
+		end, { Name = "Inspect", Size = UDim2.fromOffset(220, 36), Position = UDim2.fromOffset(24, 380) })
+		inspect.TextScaled = false
+		inspect.TextSize = 16
+		inspect.Font = Enum.Font.FredokaOne
+		inspect.TextColor3 = WHITE
+	end
 	-- the right column
 	local col = make("ScrollingFrame", {
 		Name = "Info",
@@ -1254,6 +1323,11 @@ function DeckBuilderUI.showShelf(body)
 end
 
 function DeckBuilderUI.hide()
+	-- (leaving the shelf closes a card being inspected too)
+	local inspect = here:FindFirstChild("CardInspect")
+	if inspect then
+		require(inspect).close()
+	end
 	state.view = nil
 	state.detail = nil
 	state.anim = nil
