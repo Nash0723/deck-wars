@@ -70,7 +70,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "VfxAssets", "LayerFx", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Park", "ParkClient", "IdleTable", "BackdropPicker", "TrophyRoadUI", "CardLevels", "CozyTheme", "RoomTour", "Trade", "TradeUI" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "VfxAssets", "LayerFx", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Park", "ParkClient", "IdleTable", "BackdropPicker", "TrophyRoadUI", "CardLevels", "CozyTheme", "RoomTour", "Trade", "TradeUI", "Quests", "QuestHallUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
@@ -202,6 +202,7 @@ moduleFrom(SRC .. "park/ParkBuilder.luau", "ParkBuilder", ServerScriptService)
 moduleFrom(SRC .. "park/ParkKit.luau", "ParkKit", ServerScriptService)
 moduleFrom(SRC .. "park/ParkPropData.luau", "ParkPropData", ServerScriptService)
 moduleFrom(SRC .. "server/TradeDesk.luau", "TradeDesk", ServerScriptService)
+moduleFrom(SRC .. "server/QuestBook.luau", "QuestBook", ServerScriptService)
 runScript(SRC .. "server/HubRoom.server.luau", scriptIn(ServerScriptService, "Script", "HubRoom"), serverCache)
 runScript(SRC .. "server/MatchServer.server.luau", scriptIn(ServerScriptService, "Script", "MatchServer"), serverCache)
 runScript(SRC .. "server/MenuServer.server.luau", scriptIn(ServerScriptService, "Script", "MenuServer"), serverCache)

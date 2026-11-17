@@ -1,8 +1,17 @@
--- Reasons to come back: your level and XP, the daily reward and its streak, three daily quests,
--- the first win of the day and win streaks. The server (PlayerData) keeps the real numbers;
--- the screens use this module for the names, the rewards and the level curve.
+-- Reasons to come back: your level and XP, the daily reward and its streak, the first win of the
+-- day, win streaks, achievements and the Trophy Road. The server (PlayerData) keeps the real
+-- numbers; the screens use this module for the names, the rewards and the level curve.
+-- (Daily, weekly and Journey quests are in Quests: they're claimed at the Quest Hall in the Park.)
 --
 -- Change the numbers here and both sides follow.
+
+local function req(name)
+	if script then
+		return require(script.Parent:WaitForChild(name))
+	end
+	return require(name)
+end
+local Quests = req("Quests")
 
 local Progression = {}
 
@@ -70,33 +79,13 @@ function Progression.streakBonus(streak)
 	return math.min(50, 10 * (streak - 1))
 end
 
--- Daily quests: three a day, picked from this list (at most one "win with a deck" quest).
--- kind: what counts. win, match (any match), creature / spell / building (cards played),
--- spark, damage (to enemy heroes), pop (enemy creatures popped), winHard (beat a Hard bot),
--- winDeck (win with the deck in `deck`).
-Progression.QuestXP = 30
-Progression.Quests = {
-	{ id = "win2", text = "Win 2 matches", kind = "win", target = 2, gems = 80 },
-	{ id = "play3", text = "Play 3 matches", kind = "match", target = 3, gems = 60 },
-	{ id = "creatures10", text = "Play 10 creatures", kind = "creature", target = 10, gems = 60 },
-	{ id = "spells4", text = "Cast 4 spells", kind = "spell", target = 4, gems = 60 },
-	{ id = "buildings3", text = "Build 3 buildings", kind = "building", target = 3, gems = 60 },
-	{ id = "sparks6", text = "Spark 6 times", kind = "spark", target = 6, gems = 60 },
-	{ id = "damage30", text = "Deal 30 damage to enemy heroes", kind = "damage", target = 30, gems = 80 },
-	{ id = "pops8", text = "Pop 8 enemy creatures", kind = "pop", target = 8, gems = 70 },
-	{ id = "hard1", text = "Beat a Hard bot", kind = "winHard", target = 1, gems = 120 },
-	{ id = "deckSnack", text = "Win with a Snack deck", kind = "winDeck", deck = "Snack", target = 1, gems = 90 },
-	{ id = "deckJunk", text = "Win with a Junk deck", kind = "winDeck", deck = "Junk", target = 1, gems = 90 },
-	{ id = "deckWeather", text = "Win with a Weather deck", kind = "winDeck", deck = "Weather", target = 1, gems = 90 },
-	{ id = "deckCritter", text = "Win with a Critter deck", kind = "winDeck", deck = "Critter", target = 1, gems = 90 },
-	{ id = "deckSpooky", text = "Win with a Spooky deck", kind = "winDeck", deck = "Spooky", target = 1, gems = 90 },
-	{ id = "deckRobo", text = "Win with a Robo deck", kind = "winDeck", deck = "Robo", target = 1, gems = 90 },
-}
-Progression.QuestById = {}
-for _, q in ipairs(Progression.Quests) do
-	Progression.QuestById[q.id] = q
-end
-Progression.QuestsPerDay = 3
+-- Quests (Quests.luau): daily, weekly and Journey quests, claimed at the Quest Hall in the Park.
+-- These names stay for the screens that show a quest by its id (the result screen):
+-- QuestById holds every quest (daily, weekly and Journey), each with .text and .target.
+Progression.QuestXP = Quests.XP.daily
+Progression.Quests = Quests.Daily
+Progression.QuestById = Quests.ById
+Progression.QuestsPerDay = Quests.DailyCount
 
 -- Achievements: one-time goals on the Trophy Wall, claimed once each.
 -- kind: win (matches won), level (level reached), luckyPull (a Legendary or Secret pulled),
@@ -168,49 +157,12 @@ function Progression.secondsToReset(now)
 	return (Progression.today(now) + 1) * 86400 - now
 end
 
--- The three quest ids for a player on a day. The same player gets the same quests all day, on
--- every server.
+-- The three daily quest ids for a player on a day (Easy, Medium, Hard): see Quests.rollDaily.
 function Progression.questsFor(userId, day)
-	-- A small LCG seeded from the player and the day.
-	local state = (math.abs(math.floor(tonumber(userId) or 0)) * 7919 + day * 104729) % 2147483647
-	if state == 0 then
-		state = 12345
-	end
-	local function nextInt(n)
-		state = (state * 48271) % 2147483647
-		return state % n + 1
-	end
-	local picked, used, deckQuest = {}, {}, false
-	local guard = 0
-	while #picked < Progression.QuestsPerDay and guard < 200 do
-		guard += 1
-		local q = Progression.Quests[nextInt(#Progression.Quests)]
-		local isDeck = q.kind == "winDeck"
-		if not used[q.id] and not (isDeck and deckQuest) then
-			used[q.id] = true
-			deckQuest = deckQuest or isDeck
-			table.insert(picked, q.id)
-		end
-	end
-	return picked
+	return Quests.rollDaily(userId, day)
 end
 
--- How much one match moves a quest along. `m` is what PlayerData.recordMatch gets.
-function Progression.questGain(q, m)
-	local stats = m.stats or {}
-	local won = m.result == "win"
-	if q.kind == "win" then
-		return won and 1 or 0
-	elseif q.kind == "match" then
-		return 1
-	elseif q.kind == "winHard" then
-		return (won and m.beatHard) and 1 or 0
-	elseif q.kind == "winDeck" then
-		-- a practice deck by its key, or one of your own decks that uses this theme
-		local themed = m.deck == q.deck or (type(m.themes) == "table" and table.find(m.themes, q.deck) ~= nil)
-		return (won and themed) and 1 or 0
-	end
-	return stats[q.kind] or 0
-end
+-- How much one match moves a quest along: see Quests.gain.
+Progression.questGain = Quests.gain
 
 return Progression

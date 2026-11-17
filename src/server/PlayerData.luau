@@ -1,16 +1,18 @@
--- Player progress for the merged game: level and XP, the daily reward, three daily quests,
--- achievements, the first win of the day and win streaks.
+-- Player progress for the merged game: level and XP, the daily reward, achievements, the Trophy
+-- Road, the first win of the day and win streaks, and the Quest Hall's quests (QuestBook).
 --
 -- There is ONE save: Nash's profile (ServerStorage.DeckWarsServer.EconomyManager, ProfileStore
 -- "DeckWarsPlayer_v1") with Gems, Coins, the card collection and saved decks. This module keeps
 -- the friend's progress rules (Progression in ReplicatedStorage.DeckWars) on that same save:
 --   d.level, d.xp           the level (the friend's curve: 80 XP, +20 per level, up to 400)
 --   d.progress              win streak, quests, daily claim, achievements, counters
+--   d.questBook             daily, weekly and Journey quests, Renown and the Quest Chests (QuestBook)
 -- and shows them to the player's screen as attributes (Level, XP, XPNeeded, WinStreak,
--- FirstWinReady, DailyReady, DailyDay, Quest1Id..., QuestsReady, Ach_<id>...).
+-- FirstWinReady, DailyReady, DailyDay, Ach_<id>..., TrophiesReady, QuestsReady, QuestRev, Shards).
 --
--- MatchServer calls recordMatch after every match. The Trophy Wall claims the daily reward,
--- quests and achievements through MenuAction (ClaimDaily, ClaimQuest, ClaimAchievement).
+-- MatchServer calls recordMatch after every match. The Trophy Wall in the room claims the daily
+-- reward and achievements through MenuAction (ClaimDaily, ClaimAchievement); quests are claimed
+-- at the Quest Hall in the Park (QuestServer: claimQuest, swapQuest, openQuestChest).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,6 +23,10 @@ local CardData = require(Shared:WaitForChild("CardData"))
 local Progression = require(Shared:WaitForChild("Progression"))
 local ShopCatalog = require(Shared:WaitForChild("ShopCatalog"))
 local EconomyManager = require(ServerStorage:WaitForChild("DeckWarsServer"):WaitForChild("EconomyManager"))
+-- The Quest Hall's quests (QuestBook, next to this module). Optional, so this module also runs
+-- without it (like in the simulated Studio some tests use).
+local questBookModule = script.Parent:FindFirstChild("QuestBook")
+local QuestBook = questBookModule and require(questBookModule)
 
 local PlayerData = {}
 
@@ -42,7 +48,6 @@ local function newProgress()
 		cupsWon = 0,
 		firstWinDay = nil, -- the day the first-win bonus was last paid
 		daily = { lastClaimDay = nil, streak = 0 },
-		quests = { day = nil, list = {} },
 		achievements = {}, -- [id] = { progress = n, claimed = bool }
 		themesWon = {}, -- [family] = true once you've won with a deck using it
 		luckyPulls = 0,
@@ -52,7 +57,8 @@ local function newProgress()
 	}
 end
 
--- Fills in anything missing and rolls today's quests when the day changed.
+-- Fills in anything missing; the quest book rolls today's and this week's quests when the day or
+-- the week changed.
 local function ensure(d, userId)
 	d.progress = type(d.progress) == "table" and d.progress or newProgress()
 	local p = d.progress
@@ -63,13 +69,10 @@ local function ensure(d, userId)
 	end
 	d.level = math.max(1, math.floor(tonumber(d.level) or 1))
 	d.xp = math.max(0, math.floor(tonumber(d.xp) or 0))
-	local today = Progression.today()
-	if p.quests.day ~= today then
-		local list = {}
-		for _, id in ipairs(Progression.questsFor(userId, today)) do
-			table.insert(list, { id = id, progress = 0, claimed = false })
-		end
-		p.quests = { day = today, list = list }
+	if QuestBook then
+		-- (the old Trophy Wall quests, if they're today's, carry over into the quest book once)
+		QuestBook.ensure(d, userId, nil, p.quests)
+		p.quests = nil
 	end
 	return p
 end
@@ -147,17 +150,8 @@ local function publish(player)
 		local ready, day = dailyState(p)
 		player:SetAttribute("DailyReady", ready)
 		player:SetAttribute("DailyDay", day)
+		-- what's ready on the Trophy Wall (achievements and Trophy Road stops)
 		local claimable = 0
-		for i = 1, Progression.QuestsPerDay do
-			local q = p.quests.list[i]
-			player:SetAttribute("Quest" .. i .. "Id", q and q.id or nil)
-			player:SetAttribute("Quest" .. i .. "Progress", q and q.progress or nil)
-			player:SetAttribute("Quest" .. i .. "Claimed", if q then q.claimed else nil)
-			local def = q and Progression.QuestById[q.id]
-			if def and not q.claimed and q.progress >= def.target then
-				claimable += 1
-			end
-		end
 		for _, a in ipairs(Progression.Achievements) do
 			local entry = p.achievements[a.id]
 			local progress = math.min(a.target, achievementProgress(d, p, a))
@@ -178,7 +172,14 @@ local function publish(player)
 		end
 		player:SetAttribute("Trophies", p.trophies)
 		player:SetAttribute("RoadClaimed", table.concat(claimed, ","))
-		player:SetAttribute("QuestsReady", claimable)
+		player:SetAttribute("TrophiesReady", claimable)
+		-- the Quest Hall: how much is ready to claim there (quests and Quest Chests), and a number
+		-- that changes with every quest change (the hall's window asks for a fresh copy then)
+		if QuestBook then
+			player:SetAttribute("QuestsReady", QuestBook.readyCount(d, player.UserId))
+			player:SetAttribute("QuestRev", d.questBook and d.questBook.rev or 0)
+		end
+		player:SetAttribute("Shards", math.floor(tonumber(d.shards) or 0))
 		for key, value in pairs(p.prefs or {}) do
 			player:SetAttribute("Pref" .. key, value)
 		end
@@ -252,8 +253,9 @@ function PlayerData.setPrefs(player, prefs)
 	return true
 end
 
--- A pull result (PullServer): counts Lucky Pull. forced = a dev forced-tier roll (doesn't count).
-function PlayerData.notePull(player, rarity, forced)
+-- A pull result (PullServer): counts Lucky Pull, and `packs` (the packs paid for) for the
+-- "open packs" quests. forced = a dev forced-tier roll (doesn't count).
+function PlayerData.notePull(player, rarity, forced, packs)
 	local d = data(player)
 	if not d then
 		return
@@ -262,7 +264,25 @@ function PlayerData.notePull(player, rarity, forced)
 	if not forced and (rarity == "Legendary" or rarity == "Secret") then
 		p.luckyPulls += 1
 	end
+	if QuestBook and not forced and (tonumber(packs) or 0) > 0 then
+		QuestBook.note(d, player.UserId, "pack", packs)
+	end
 	changed(player, "pull")
+end
+
+-- Something for the Quest Hall's quests done outside a match: kind = "enchant" (MenuServer, the
+-- Enchanting Crystal) or "fuse" (the Deck Shelf). Returns the quests it moved.
+function PlayerData.noteQuest(player, kind, n)
+	local d = data(player)
+	if not d or not QuestBook or (kind ~= "enchant" and kind ~= "fuse" and kind ~= "pack") then
+		return nil
+	end
+	ensure(d, player.UserId)
+	local moved = QuestBook.note(d, player.UserId, kind, n)
+	if #moved > 0 then
+		changed(player, "quest")
+	end
+	return moved
 end
 
 -- Coins for a match (Nash's rates), with Nash's anti-farming rules for every mode: the match
@@ -290,10 +310,12 @@ local function matchCoins(d, m)
 end
 
 -- After a match. m = { result = "win" | "loss" | "draw", winGems, deck, themes, beatHard, mode,
--- difficulty, seconds, turns, cupWon, stats = { creature, spell, building, spark, damage, pop } }.
+-- difficulty, seconds, turns, cupWon, stats = { creature, spell, building, spark, damage, pop },
+-- campaign = the Campaign stage (or nil), heroHp, heroMaxHp (your hero at the end) }.
 -- Returns what the result screen shows:
 --   { gems = { { label, amount }... }, totalGems, coins, xp, levelBefore, xpBefore, levelAfter,
---     xpAfter, levelUps, streak, quests = { { id, before, progress, target } }, note }
+--     xpAfter, levelUps, streak, quests = { { id, type, before, progress, target } } (at most 4,
+--     finished ones first), note }
 function PlayerData.recordMatch(player, m)
 	local d = data(player)
 	if not d or type(m) ~= "table" then
@@ -354,16 +376,9 @@ function PlayerData.recordMatch(player, m)
 		d.stats.coinsEarned = (d.stats.coinsEarned or 0) + coins
 		out.coins = coins
 	end
-	for _, q in ipairs(p.quests.list) do
-		local def = Progression.QuestById[q.id]
-		if def and not q.claimed and q.progress < def.target then
-			local gain = Progression.questGain(def, m)
-			if gain > 0 then
-				local before = q.progress
-				q.progress = math.min(def.target, q.progress + gain)
-				table.insert(out.quests, { id = q.id, before = before, progress = q.progress, target = def.target })
-			end
-		end
+	-- The Quest Hall's quests (a match too short to count doesn't move them, like the Trophy Road).
+	if QuestBook and note ~= "too short" then
+		out.quests = QuestBook.sortMoved(QuestBook.noteMatch(d, player.UserId, m), 4)
 	end
 	out.xp = paying and (Progression.MatchXP[m.result] or 0) or 0
 	local before = d.gems
@@ -371,6 +386,15 @@ function PlayerData.recordMatch(player, m)
 	out.totalGems += d.gems - before
 	out.levelAfter, out.xpAfter = d.level, d.xp
 	changed(player, "match")
+	if QuestBook and type(m.campaign) == "table" then
+		-- (CampaignData records a Campaign battle right after this: publish again once it has, so
+		-- the Quest Hall's count includes the Journey quests the battle finished)
+		task.delay(1, function()
+			if player.Parent then
+				publish(player)
+			end
+		end)
+	end
 	return out
 end
 
@@ -413,28 +437,73 @@ function PlayerData.claimDaily(player)
 	return gems, day, coins, potion and potion.name, potion and potion.charges
 end
 
-function PlayerData.claimQuest(player, index)
+---------------------------------------------------------------------------
+-- The Quest Hall (QuestServer calls these once it has checked you're standing at the hall)
+---------------------------------------------------------------------------
+
+-- Everything the hall's window shows (QuestBook.snapshot), or nil.
+function PlayerData.questSnapshot(player)
 	local d = data(player)
-	if not d then
-		return nil, "data not loaded"
+	if not d or not QuestBook then
+		return nil
 	end
-	local p = ensure(d, player.UserId)
-	local q = type(index) == "number" and p.quests.list[index]
-	local def = q and Progression.QuestById[q.id]
-	if not def then
-		return nil, "no such quest"
+	ensure(d, player.UserId)
+	return QuestBook.snapshot(d, player.UserId)
+end
+
+-- Claims a finished quest by its key ("d1".."d3", "w1".."w5", "j:<id>", "x<n>": see QuestBook).
+-- Pays its Gems, Shards, XP and Renown. Returns { id, type, gems, shards, coins, xp, renown,
+-- renownBefore, renownAfter, chestsReady, levelUps } or nil and why.
+function PlayerData.claimQuest(player, key)
+	local d = data(player)
+	if not d or not QuestBook then
+		return nil, "Your save isn't loaded yet."
 	end
-	if q.claimed then
-		return nil, "already claimed"
+	ensure(d, player.UserId)
+	local r, why = QuestBook.claim(d, player.UserId, key)
+	if not r then
+		return nil, why
 	end
-	if q.progress < def.target then
-		return nil, "not done yet"
-	end
-	q.claimed = true
-	d.gems = math.min(MAX, d.gems + def.gems)
-	local ups = addXP(d, Progression.QuestXP)
+	local gemsBefore = d.gems
+	r.levelUps = addXP(d, r.xp)
+	r.levelGems = d.gems - gemsBefore
 	changed(player, "quest")
-	return { gems = def.gems, xp = Progression.QuestXP, levelUps = ups }
+	return r
+end
+
+-- One free swap a day (daily quests) and one a week (weekly quests). Returns { key, old, new }
+-- or nil and why.
+function PlayerData.swapQuest(player, key)
+	local d = data(player)
+	if not d or not QuestBook then
+		return nil, "Your save isn't loaded yet."
+	end
+	ensure(d, player.UserId)
+	local r, why = QuestBook.swap(d, player.UserId, key)
+	if r then
+		changed(player, "questSwap")
+	end
+	return r, why
+end
+
+-- Opens this week's Quest Chest `index` and grants its card. Returns { index, name, gems, coins,
+-- shards, potion, charges, card, rarity, isNew } or nil and why.
+function PlayerData.openQuestChest(player, index)
+	local d = data(player)
+	if not d or not QuestBook then
+		return nil, "Your save isn't loaded yet."
+	end
+	ensure(d, player.UserId)
+	local r, why = QuestBook.openChest(d, player.UserId, index)
+	if not r then
+		return nil, why
+	end
+	if r.card then
+		local ok, isNew = pcall(EconomyManager.grantCards, player, { r.card }, "quest")
+		r.isNew = ok and type(isNew) == "table" and isNew[1] == true
+	end
+	changed(player, "questChest")
+	return r
 end
 
 function PlayerData.claimAchievement(player, id)
@@ -484,8 +553,8 @@ function PlayerData.claimRoad(player, index)
 	return out
 end
 
--- Developer tools (Nash's dev panel "New day"): the daily reward, quests and the first-win
--- bonus come back.
+-- Developer tools (Nash's dev panel "New day"): the daily reward, fresh daily quests and the
+-- first-win bonus come back.
 function PlayerData.debugNewDay(player)
 	local d = data(player)
 	if not d then
@@ -497,11 +566,23 @@ function PlayerData.debugNewDay(player)
 		p.daily.lastClaimDay = today - 1
 	end
 	p.firstWinDay = nil
-	p.quests = { day = today, list = {} }
-	for _, qid in ipairs(Progression.questsFor(player.UserId + math.random(1, 100000), today)) do
-		table.insert(p.quests.list, { id = qid, progress = 0, claimed = false })
+	if QuestBook then
+		QuestBook.debugNewDay(d, player.UserId)
 	end
 	changed(player, "newday")
+	return true
+end
+
+-- Developer tools (the Quest Hall's "New week" button, for developers only): new weekly quests,
+-- Renown back to 0 and this week's Quest Chests closed again.
+function PlayerData.debugNewWeek(player)
+	local d = data(player)
+	if not d or not QuestBook then
+		return false
+	end
+	ensure(d, player.UserId)
+	QuestBook.debugNewWeek(d, player.UserId)
+	changed(player, "newweek")
 	return true
 end
 

@@ -443,8 +443,8 @@ function Match:finish(reason)
 	end
 end
 
--- Pays out Gems and XP, moves daily quests along, and shows everyone their result, then sends
--- them back to the room.
+-- Pays out Gems and XP, moves the Quest Hall's quests along, and shows everyone their result,
+-- then sends them back to the room.
 function Match:finishIfOver()
 	local m = self.engine
 	if not m.over then
@@ -496,6 +496,11 @@ function Match:finishIfOver()
 				seconds = now() - (self.startedAt or now()),
 				turns = math.floor((m.seats[s].turns or 0)),
 				stats = stats,
+				-- (for the Quest Hall's quests: Campaign wins, new stars, bosses, the Challenge, and
+				-- "win with half your hit points left")
+				campaign = self.opts.campaign,
+				heroHp = m.teams[team].hp,
+				heroMaxHp = m.teams[team].maxHp,
 			})
 			-- A campaign stage: stars, first-clear rewards, drops and chests (CampaignData).
 			local camp = nil
@@ -1742,11 +1747,8 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 			LobbyEvent:FireClient(player, { kind = "claimed", what = "daily", ok = gems ~= nil, gems = gems, day = day, coins = coins, potion = potion, charges = charges })
 		end
 	elseif what == "ClaimQuest" then
-		if PlayerData and PlayerData.claimQuest then
-			local index = whole(options.index)
-			local r = index and PlayerData.claimQuest(player, index)
-			LobbyEvent:FireClient(player, { kind = "claimed", what = "quest", ok = r ~= nil, index = index, gems = r and r.gems, xp = r and r.xp, levelUps = r and r.levelUps })
-		end
+		-- Quests are claimed at the Quest Hall in the Park now (QuestServer), not from the room.
+		LobbyEvent:FireClient(player, { kind = "toast", text = "📜 Quests are claimed at the Quest Hall in the Park." })
 	elseif what == "LeaveMatch" then
 		local match = matches[player]
 		if match then

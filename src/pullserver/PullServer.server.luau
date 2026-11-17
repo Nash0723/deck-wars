@@ -278,7 +278,8 @@ PullRequest.OnServerEvent:Connect(function(player, count, forcedTier, packId, fr
 						end
 					end
 				end
-				require(pd).notePull(player, rarity, forcedTier ~= nil)
+				-- (and the packs paid for count for the Quest Hall's "open packs" quests)
+				require(pd).notePull(player, rarity, forcedTier ~= nil, paid and count or 0)
 			end)
 		end
 	end)
