@@ -1668,7 +1668,7 @@ end
 -- Player, and PlayerData saves them with the cards.
 ---------------------------------------------------------------------------
 
-local PREF_KINDS = { Deck = "deck", Difficulty = "difficulty", Backdrop = "word", ActionCam = "bool", Fast = "bool", SeenHelp = "bool", Sound = "bool", SeenDaily = "bool", SeenTour = "bool" }
+local PREF_KINDS = { Deck = "deck", Difficulty = "difficulty", Backdrop = "word", ActionCam = "bool", Fast = "bool", SeenHelp = "bool", Sound = "bool", SeenDaily = "bool", SeenTour = "bool", SeenBriefs = "list" }
 
 savePrefs = function(player, raw)
 	local clean = {}
@@ -1681,6 +1681,9 @@ savePrefs = function(player, raw)
 		elseif kind == "difficulty" and DIFFICULTIES[v] then
 			clean[key] = v
 		elseif kind == "word" and type(v) == "string" and #v <= 16 and string.match(v, "^%a+$") then
+			clean[key] = v
+		elseif kind == "list" and type(v) == "string" and #v <= 400 and string.match(v, "^[%w,]*$") then
+			-- (the menu briefs you've seen: "DuelTable,Campaign,...")
 			clean[key] = v
 		end
 	end

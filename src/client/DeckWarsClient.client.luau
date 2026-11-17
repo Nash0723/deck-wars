@@ -1401,6 +1401,14 @@ do
 				end)
 			end, { Name = "TourAgain", Size = UDim2.new(1, -10, 0, 42), LayoutOrder = 9999, TextScaled = false, TextSize = 17 })
 			again.TextColor3 = Color3.fromRGB(255, 236, 200)
+			-- the first-time briefs of every menu, back on
+			local briefs
+			briefs = button(list, "💡  Show menu briefs again", Color3.fromRGB(70, 56, 104), function()
+				ui.briefs.resetAll()
+				briefs.Text = "✓  Every menu will brief you again"
+				Juice.pop(briefs, 1.08, 0.4)
+			end, { Name = "BriefsAgain", Size = UDim2.new(1, -10, 0, 42), LayoutOrder = 10000, TextScaled = false, TextSize = 17 })
+			briefs.TextColor3 = Color3.fromRGB(255, 236, 200)
 		end
 	end
 
@@ -1429,6 +1437,8 @@ do
 		{ key = "ParkDoor", name = "Park", show = showParkPanel },
 		{ key = "Radio", name = "Settings", show = showSettingsPanel },
 	}
+	-- A short brief the first time you open each station (MenuBriefs), and a ? to see it again.
+	ui.briefs = require(Shared:WaitForChild("MenuBriefs"))
 	local stationByKey = {}
 	for _, s in ipairs(STATIONS) do
 		stationByKey[s.key] = s
@@ -1466,14 +1476,23 @@ do
 			ui.stationPanel.Position = UDim2.new(1, 60, ui.STATION_POS.Y.Scale, ui.STATION_POS.Y.Offset)
 			TweenService:Create(ui.stationPanel, TweenInfo.new(0.45, Enum.EasingStyle.Back), { Position = ui.STATION_POS }):Play()
 		end
+		if ui.briefs.current() and ui.briefs.current() ~= key then
+			ui.briefs.close()
+		end
 		currentStation = key
 		markNav()
 		moveCamera(key)
 		ui.stationPanel.Visible = true
 		s.show()
+		ui.briefs.maybe(key, {
+			still = function()
+				return mode == "menu" and currentStation == key and ui.stationPanel.Visible
+			end,
+		})
 	end
 
 	local function goBack()
+		ui.briefs.cancelPending()
 		currentStation = nil
 		markNav()
 		ui.stationPanel.Visible = false
@@ -1486,6 +1505,10 @@ do
 	ui.goBack = goBack
 	-- a drawn ✕ in the panel's corner goes back to the room, like S or Backspace
 	UIKit.closeButton(ui.stationPanel, goBack, { Name = "CloseStation", Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -12, 0, 12), AnchorPoint = Vector2.new(1, 0), ZIndex = 5 })
+	-- and a ? beside it: this station's brief again
+	ui.briefs.helpButton(ui.stationPanel, function()
+		return currentStation
+	end, { Name = "StationBrief", Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -54, 0, 12), AnchorPoint = Vector2.new(1, 0), ZIndex = 5 })
 
 	-- (dock order: PLAY in the middle; Settings has no dock button, it's the ⚙ up top)
 	local DOCK = { Campaign = 1, DeckShelf = 2, PackParty = 3, DuelTable = 4, ShopCounter = 5, TrophyWall = 6, ParkDoor = 7 }
@@ -2478,6 +2501,16 @@ function prefs.set(key, value)
 	end
 end
 
+-- Which menu briefs you've seen (MenuBriefs), saved with your other prefs.
+ui.briefs.init({
+	get = function()
+		return prefs.get("SeenBriefs")
+	end,
+	set = function(list)
+		prefs.set("SeenBriefs", list)
+	end,
+})
+
 LobbyScreen.init({
 	ui = ui,
 	gui = gui,
@@ -2573,6 +2606,17 @@ MatchScreen.init({
 		return Settings.get("sfx") / 8
 	end,
 	onEnterMatch = function(payload)
+		-- your first match: a small brief in the corner (it blocks nothing; ? has the full rules)
+		if ui.briefs.current() then
+			ui.briefs.close(true)
+		end
+		ui.briefs.maybe("Match", {
+			place = "match",
+			delay = 3,
+			still = function()
+				return mode == "match"
+			end,
+		})
 		ui.cancelBackdropPreview()
 		ui.idleTable.setVisible(false) -- (the match board rises in its place)
 		-- Pulled into a match from the Park (a party or a Cup): back inside first.
@@ -3204,7 +3248,7 @@ do
 			local station = stationAt(mouse)
 			local packHover = ui.onMenuHover and ui.onMenuHover(mouse)
 			-- while a station's panel (or any window) is open, nothing in the room gets the hover outline
-			local uiOpen = currentStation ~= nil or Backdrops.current() ~= nil or UIKit.Focus.anyOpen()
+			local uiOpen = currentStation ~= nil or Backdrops.current() ~= nil or UIKit.Focus.anyOpen() or ui.briefs.isOpen()
 			-- ...except the open station's own props (the trophies, the balloons: LIVE_PROPS)
 			local liveScope = uiOpen and ui.liveScope() or nil
 			RoomLife.setOnly(liveScope)
@@ -3305,8 +3349,9 @@ do
 					Juice.popIn(b, 0.35 + b.LayoutOrder % 20 * 0.06, { twist = 0, pitch = 0.9 + (b.LayoutOrder % 20) * 0.05 })
 				end
 			end
-			-- The first time you play: a short tour of the room. (The daily reward waits until it's
-			-- over; your saved settings, which say whether you've seen it, arrive with your progress.)
+			-- The first time you play: a short brief of the room (not a tour: every menu then briefs
+			-- you itself the first time you open it). The daily reward waits until it's put away;
+			-- your saved settings, which say whether you've seen it, arrive with your progress.
 			ui.touring = prefs.get("SeenTour") ~= true
 			task.spawn(function()
 				local waited = os.clock()
@@ -3314,14 +3359,29 @@ do
 					task.wait(0.2)
 				end
 				task.wait(1.4)
-				if prefs.get("SeenTour") == true or mode ~= "menu" or currentStation ~= nil then
+				if prefs.get("SeenTour") == true or ui.briefs.seen("Room") or mode ~= "menu" or currentStation ~= nil then
 					ui.touring = false
 					if ui.checkDaily then
 						ui.checkDaily()
 					end
 					return
 				end
-				ui.startTour()
+				ui.briefs.show("Room", {
+					place = "center",
+					firstTime = true,
+					onClose = function()
+						ui.touring = false
+						prefs.set("SeenTour", true)
+						-- the daily reward comes up once you're back in the room (not over a station)
+						task.wait(0.8)
+						while mode == "menu" and currentStation ~= nil do
+							task.wait(0.5)
+						end
+						if ui.checkDaily then
+							ui.checkDaily()
+						end
+					end,
+				})
 			end)
 			if not ui.touring and ui.checkDaily then
 				ui.checkDaily()

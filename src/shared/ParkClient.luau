@@ -30,6 +30,7 @@ local Settings = require(here:WaitForChild("Settings")) -- (Graphics: Low turns 
 local TradeUI = require(here:WaitForChild("TradeUI")) -- (trading cards at the Trading Post)
 local EnchantUI = require(here:WaitForChild("EnchantUI")) -- (the Enchanting Crystal on the island)
 local EnchantFx = require(here:WaitForChild("EnchantFx"))
+local MenuBriefs = require(here:WaitForChild("MenuBriefs")) -- (a short brief the first time you open each window here)
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -1559,6 +1560,10 @@ local function openEditor()
 	stroke(f, GOLD, 2)
 	text(f, "⭐ My look", { Font = TITLE_FONT, TextSize = 24, Size = UDim2.new(1, -60, 0, 32), Position = UDim2.fromOffset(16, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = GOLD })
 	UIKit.closeButton(f, closeEditor, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 10) })
+	MenuBriefs.helpButton(f, "MyLook", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -90, 0, 10) }, "center")
+	MenuBriefs.maybe("MyLook", { place = "center", still = function()
+		return f.Parent ~= nil
+	end })
 	UIKit.Focus.watch(f, { dim = 0.4, blur = 8 })
 	if not st or st.loading then
 		text(f, "Loading your cards...", { Position = UDim2.fromOffset(16, 60), Size = UDim2.new(1, -32, 0, 20), TextColor3 = DIM })
@@ -1667,6 +1672,10 @@ local function openPacks()
 	stroke(f, GOLD, 2)
 	text(f, "✨ Pull Altar", { Font = TITLE_FONT, TextSize = 24, Size = UDim2.new(1, -60, 0, 30), Position = UDim2.fromOffset(14, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = GOLD })
 	UIKit.closeButton(f, closePacks, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 8) })
+	MenuBriefs.helpButton(f, "PullAltar", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -90, 0, 8) })
+	MenuBriefs.maybe("PullAltar", { still = function()
+		return f.Parent ~= nil and S.packPanel == f
+	end })
 	local area = make("Frame", { Name = "PackArea", Size = UDim2.new(1, -24, 1, -62), Position = UDim2.fromOffset(12, 52), BackgroundTransparency = 1 }, f)
 	PackParty.mount(area, {
 		noDive = true, -- (the Dive starts from the room's pack corner)

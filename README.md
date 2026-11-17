@@ -138,6 +138,14 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 ## Use your own models
 Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
 
+## Menu briefs instead of a tutorial
+There is no step-by-step tutorial any more. The first time you open a menu, a short brief glides in beside it: an icon, the menu's name, one line on what it's for, three numbered beats on how it works and a tip. **Got it** (or Enter) puts it away for good, and the round **?** next to the menu's ✕ brings it back any time. **Skip all briefs** turns them off; Settings > **Show menu briefs again** turns them back on.
+
+- Briefs: your room (the first time you play, instead of the old room tour), every station (Duel Table, Campaign, Deck Shelf, Pack Party, Shop, Trophy Wall, Park door, Settings), the Park's Pull Altar, Enchanting Crystal, Trading Post and My look, and your first match (a small card in the corner that blocks nothing, since the turn clock runs; ? still has the full rules).
+- The room tour is still there from Settings > "Take the room tour again".
+- Which briefs you've seen is saved with your account (the `SeenBriefs` pref).
+- Change the words, icons and colours in `MenuBriefs.Briefs` at the top of `src/shared/MenuBriefs.luau`. To add one for a new menu: add an entry there, call `MenuBriefs.maybe("Key")` when the menu opens and `MenuBriefs.helpButton(frame, "Key", props)` for its ?.
+
 ## Enchants: runes on your cards
 
 The **Enchanting Crystal** floats in the middle of the Park, on the island (the Pull Altar moved to the lawn in front of the Hall of Pulls). Walk up and press **E**, pick a creature or spell you own, and press **Enchant** (250 Coins) or **Lucky** (60 Gems: no Commons, better odds). The rune is rolled at random; the card's rim flickers through the colours, slows down and lands on the rarity, with a bigger burst for rarer runes.
