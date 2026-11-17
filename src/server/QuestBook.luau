@@ -364,15 +364,23 @@ local function find(b, key)
 	return nil
 end
 
+-- (keeps the lifetime totals EconomyManager.grant keeps too: stats.coinsEarned, stats.shardsEarned)
 local function pay(d, gems, coins, shards)
+	local stats = type(d.stats) == "table" and d.stats or nil
 	if gems > 0 then
 		d.gems = math.min(MAX, whole(d.gems) + gems)
 	end
 	if coins > 0 then
 		d.coins = math.min(MAX, whole(d.coins) + coins)
+		if stats then
+			stats.coinsEarned = whole(stats.coinsEarned) + coins
+		end
 	end
 	if shards > 0 then
 		d.shards = math.min(MAX, whole(d.shards) + shards)
+		if stats then
+			stats.shardsEarned = whole(stats.shardsEarned) + shards
+		end
 	end
 end
 
