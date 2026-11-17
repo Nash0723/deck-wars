@@ -94,7 +94,7 @@ GitHub runs the rules, deck, Pack Brawl, economy, Campaign and Plaza tests and t
 - **Spark and Shift:** click one of your creatures. 🌀 **Spark** uses the purple ability on its card; ↕ **Shift** (1 ✨, once a turn) swaps it to the other row of its lane (trading places with your creature there). Either way that creature skips its attack this turn.
 - **BATTLE:** Front creatures hit the first enemy in their lane (Front first, then Back), or the hero if the lane is empty. Back creatures wait unless they're **Ranged** (they shoot the weakest enemy in their lane or the lanes next to it) and step up to the Front when it's free. **Overkill**: damage left over after a creature falls rolls on to the next one in the lane, then the hero.
 - **Big Move:** deal enough damage and your hero's ★ Big Move is ready, once a match. You win when the other side's hit points reach 0.
-- **Trophy Wall:** your level, the daily reward, today's three quests and the achievements (claim each once for Gems).
+- **Trophy Wall:** your level, the daily reward, the Trophy Road and the achievements (claim each once for Gems and Shards). Quests are claimed out in the Park at the **Quest Hall** (see below); a card on the Trophy Wall shows today's three and walks you there.
 
 ## Change the speed
 | Setting | Where | Default |
@@ -141,7 +141,7 @@ Put a Model in ReplicatedStorage > CreatureModels and name it after the card id,
 ## Menu briefs instead of a tutorial
 There is no step-by-step tutorial any more. The first time you open a menu, a short brief glides in beside it: an icon, the menu's name, one line on what it's for, three numbered beats on how it works and a tip. **Got it** (or Enter) puts it away for good, and the round **?** next to the menu's ✕ brings it back any time. **Skip all briefs** turns them off; Settings > **Show menu briefs again** turns them back on.
 
-- Briefs: your room (the first time you play, instead of the old room tour), every station (Duel Table, Campaign, Deck Shelf, Pack Party, Shop, Trophy Wall, Park door, Settings), the Park's Pull Altar, Enchanting Crystal, Trading Post and My look, and your first match (a small card in the corner that blocks nothing, since the turn clock runs; ? still has the full rules).
+- Briefs: your room (the first time you play, instead of the old room tour), every station (Duel Table, Campaign, Deck Shelf, Pack Party, Shop, Trophy Wall, Park door, Settings), the Park's Pull Altar, Enchanting Crystal, Trading Post, Quest Hall and My look, and your first match (a small card in the corner that blocks nothing, since the turn clock runs; ? still has the full rules).
 - The room tour is still there from Settings > "Take the room tour again".
 - Which briefs you've seen is saved with your account (the `SeenBriefs` pref).
 - Change the words, icons and colours in `MenuBriefs.Briefs` at the top of `src/shared/MenuBriefs.luau`. To add one for a new menu: add an entry there, call `MenuBriefs.maybe("Key")` when the menu opens and `MenuBriefs.helpButton(frame, "Key", props)` for its ?.
@@ -163,7 +163,7 @@ Shards are earned only by playing, never bought. Everyone starts with 40 (old sa
 | The hourly Challenge | 30 a win |
 | Trophy Road | 10 new Shard stops between the old ones: 20, 30, 40, 50, 60, 70, 80, 100, 120, 200 (770 in all) |
 | Achievements | First Blood 20, Level Ten 40, Lucky Pull 30, Six Flavours 60, Cup Champion 80, Full Set 100 |
-| Quests (Quest Hall) | whatever the quest says, through `EconomyManager.grantShards(player, amount, reason)` |
+| Quests (Quest Hall) | daily 6 / 8 / 10 (Easy / Medium / Hard), weekly 30 to 50, Journey 15 to 25, Quest Chests 5 / 10 / 15 / 25 (see "The Quest Hall") |
 
 - Numbers live in `Campaign.FirstClearShards / HardShards / ReplayShards / ReplayShardWins / Chests / Challenge.shards`, `Progression.Achievements` and `Progression.TrophyRoad`, the price in `Enchants.Cost`, the start in `ShopCatalog.StartingShards`.
 - Trophy Road stops are now saved by a stable key (old stops keep their old numbers, new Shard stops are `s1`..`s10`), so a player who is already past a new stop can claim it at once.
@@ -184,6 +184,26 @@ Shards are earned only by playing, never bought. Everyone starts with 40 (old sa
 - Like card levels, enchant powers count against bots and in the Campaign. In duels against players the rune glows but cards play at their printed numbers (`Enchants.InDuels`).
 - What you see: a glowing rim and a rune gem on the card's top-right corner, clear of the cost (hand, Deck Shelf, the window), a slow aura in the rune's colour under the creature on the table (ring, light, rising motes), a rune circle when it lands, and painted effects when Thorns, Leech, Phoenix or a spell rune fires.
 - Code: `src/shared/Enchants.luau` (runes, odds, colours: change numbers here), `EnchantFx.luau` (the look, on top of LayerFx), `EnchantUI.luau` (the window), `EnchantStage.luau` (the enchant scene), `EconomyManager.enchantCard/chooseEnchant` (the save), hooks in `MatchEngine`, `MatchScreen`, `ParkBuilder` (`buildShrine`) and `ParkClient`. Tests: `tests/enchant_tests.luau`, `mock_roblox/enchantharness.luau`.
+
+## The Quest Hall: quests out in the Park
+
+Trophies stay in your room; quests moved out to the Park, so there's a reason to go outside. The **Quest Hall** is a timber guild hall on the north lawn of the Park, with its own path from the plaza, a porch with a hanging sign, a cupola with a Beacon, a fire inside and a forecourt with a compass rose and a turning armillary sphere. **Quill the owl** keeps the counter. Quests are finished anywhere, but they're claimed only here: walk up to the counter and press **E**, or press **📜 Quests** on the Park's buttons (from far away it lays a glowing guide light from you to the porch).
+
+| Kind | How many | Each pays | New quests |
+| --- | --- | --- | --- |
+| Daily | 3: an Easy, a Medium and a Hard one | 50 / 80 / 110 Gems, 6 / 8 / 10 Shards, 30 XP, 10 Renown | every day at 00:00 UTC |
+| Weekly | 5: "claim 9 daily quests", two battle goals, a Campaign goal, a collection goal (packs, enchants, fusing) | 150 to 250 Gems, 30 to 50 Shards, 80 XP, 25 Renown | every Monday at 00:00 UTC |
+| Journey | 4 in every Campaign world: clear acts 1 to 3, beat the boss, earn 12 stars, beat the boss on Hard | 50 to 150 Gems, 15 to 25 Shards, 50 XP, 15 Renown | never: once each, and worlds you cleared before count |
+
+- **Renown** fills the week's track of four **Quest Chests**: Wooden (40 Renown: 200 Coins, 5 Shards), Silver (100: 100 Gems, 10 Shards), Gold (180: 300 Coins, 15 Shards, a random Rare card) and Crystal (280: 200 Gems, 25 Shards, a random Epic card and a small Luck Potion). Renown and the chests start again every Monday.
+- **Swaps:** one free swap a day for a daily quest and one a week for a weekly quest you haven't finished (you get another of the same tier or group). **Nothing is lost:** quests finished before a reset wait at the hall until you claim them.
+- **What counts:** matches at the Duel Table and in the Campaign (wins, cards played, Sparks, damage, enemy creatures popped, Hard bots, healthy wins, themes), Campaign wins, stars, bosses and the hourly Challenge, packs opened (Pack Party or Pull Altar), enchants and fusing. The match result screen shows how your quests moved.
+- **The window:** Daily, Weekly and Journey tabs with a badge for what's ready, a word from Quill, and a card per quest. Claiming slams a wax seal onto the card, the rewards fly into your Coins, Shards, Gems and level badge, Renown runs along the track, and a chest it reaches starts to glow. A chest opens in its own scene: it drops in, shakes, bursts open in its colour and its prizes rise out one by one.
+- **The hall answers you:** Quill turns his head to watch you (owls turn a long way), blinks, hops when you claim and nods when you swap. While rewards wait, the Beacon glows gold and a 📜 marker with the count floats over the hall, seen from anywhere in the Park. The boards on the walls show your own daily, weekly and Journey quests in ink (everyone sees their own).
+- **In the room:** the Trophy Wall's Quest Hall card ("Walk to the Quest Hall"), a gold 📜 count on the Park button while rewards wait, and the front door's panel puts the hall first.
+- **Dev panel (F7):** a Quests row with *New quest day*, *New quest week* and *Finish my quests* (every daily and weekly quest finished, not claimed, to try the claim scene). Developers also get the same buttons in the hall's window.
+- **Code:** `src/shared/Quests.luau` (every quest, number and chest: change them here), `src/server/QuestBook.luau` (the save and the rules), `src/server/QuestServer.server.luau` (`ReplicatedStorage.QuestRemotes`; claims only work in the Park within `Quests.ClaimDistance` of the counter), `src/shared/QuestHallUI.luau` (the window, the boards and the Trophy Wall card), `ParkClient` (Quill, the Beacon, the marker and the guide light), and the hall itself: the `questhall` and `questowl` props in `gen_park.py` and `ParkBuilder` (`buildQuestHall`).
+- Not opened in real Roblox Studio yet. If something looks off (Quill's head turning the wrong way, a board's text too big), tell me.
 
 ## Painted effects: four layers per picture
 Hits, slashes, spells, summons, knock-outs, heals, wards, the pack slash, card reveals and Pack Brawl's blows are now painted effects. Each one is a picture drawn as four layers (a soft **glow**, the dark **rim**, the bright **middle** and the white-hot **core**) that the game stacks and moves a little apart in time: the core snaps out first, the rim arrives last and lingers. The pictures are white, so each card family fights in its own colours (Snack orange, Weather blue, Spooky purple, Critter green, Junk rust, Robo steel) and pack reveals use the rarity's colour.
