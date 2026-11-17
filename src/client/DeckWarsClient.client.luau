@@ -1298,7 +1298,7 @@ do
 			local f = box(10 + i, 60, "Ach_" .. a.id)
 			local r = { def = a }
 			r.text = label(f, "", { Size = UDim2.new(1, -124, 0, 20), Position = UDim2.fromOffset(10, 5), TextScaled = false, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left })
-			r.sub = label(f, a.text, { Size = UDim2.new(1, -124, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
+			r.sub = label(f, a.text .. ((a.shards or 0) > 0 and ("  ·  also +" .. a.shards .. " Shards") or ""), { Size = UDim2.new(1, -124, 0, 14), Position = UDim2.fromOffset(10, 25), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.fill = bar(f, UDim2.fromOffset(10, 43), UDim2.new(1, -184, 0, 8))
 			r.count = label(f, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 38), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
 			r.button = button(f, "", READY, function()
@@ -1821,7 +1821,8 @@ Remotes:WaitForChild("LobbyEvent").OnClientEvent:Connect(function(payload)
 		end
 	elseif payload.what == "achievement" then
 		local def = Progression.AchievementById[tostring(payload.id)]
-		LobbyScreen.toast("🏆 " .. (def and def.name or "Achievement") .. ": +" .. tostring(payload.gems) .. " 💎")
+		local shards = (tonumber(payload.shards) or 0) > 0 and ("  +" .. tostring(payload.shards) .. " Shards") or ""
+		LobbyScreen.toast("🏆 " .. (def and def.name or "Achievement") .. ": +" .. tostring(payload.gems) .. " 💎" .. shards)
 		chime(1.3)
 		Juice.confetti(gui, 0.5, 0.35, 40)
 	elseif payload.what == "quest" then

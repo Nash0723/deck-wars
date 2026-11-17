@@ -1,10 +1,11 @@
 -- The Trophy Road box at the Trophy Wall. Client only.
 --
 -- Every match you finish earns trophies (Progression.trophiesFor; a win against a Hard bot or
--- people earns the most) and they never go down. The road is a row of stops: Coins, Gems and
--- three match backgrounds you can't buy (Sunset Grasslands, Ember Caldera, Cosmic Void). Reach a
--- stop, tap it to claim. The server keeps the count (PlayerData: attributes "Trophies" and
--- "RoadClaimed" = "1,2,5") and pays out (MenuAction "ClaimRoad").
+-- people earns the most) and they never go down. The road is a row of stops: Coins, Gems, rune
+-- Shards for the Enchanting Crystal and three match backgrounds you can't buy (Sunset Grasslands,
+-- Ember Caldera, Cosmic Void). Reach a stop, tap it to claim. The server keeps the count
+-- (PlayerData: attributes "Trophies" and "RoadClaimed" = "1,2,5", places on the road) and pays
+-- out (MenuAction "ClaimRoad").
 --
 --   TrophyRoadUI.render(parent, layoutOrder, kit) -> the box (kit: { BODY_FONT, MenuAction })
 
@@ -58,6 +59,9 @@ function TrophyRoadUI.reward(stop)
 		return info and info.emoji or "🎁", c and c.name or "Reward", info and info.colors or nil
 	elseif stop.gems then
 		return "💎", "+" .. ShopCatalog.format(stop.gems) .. " Gems", nil
+	elseif stop.shards then
+		-- "Shards" means the drawn UIKit shard (the toast draws it too)
+		return "Shards", "+" .. ShopCatalog.format(stop.shards) .. " Shards", nil
 	end
 	-- "Coins" means the drawn UIKit coin (the toast draws it too)
 	return "Coins", "+" .. ShopCatalog.format(stop.coins or 0) .. " Coins", nil
@@ -131,6 +135,9 @@ function TrophyRoadUI.render(parent, order, kit)
 		if icon == "Coins" then
 			bubble.Text = ""
 			UIKit.coinIcon(bubble, 28, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		elseif icon == "Shards" then
+			bubble.Text = ""
+			UIKit.shardIcon(bubble, 30, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = bubble.ZIndex })
 		end
 		corner(bubble)
 		make("UIPadding", { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, bubble)

@@ -281,15 +281,24 @@ DevAction.OnServerEvent:Connect(function(player, what, a)
 		return
 	end
 	local ok, msg = false, "Unknown dev action."
-	if what == "GiveGems" or what == "GiveCoins" then
+	if what == "GiveGems" or what == "GiveCoins" or what == "GiveShards" then
 		local n = tonumber(a)
 		if n and EconomyManager.validAmount(n) and n <= DEV_GIVE_MAX then
-			local cur = what == "GiveGems" and "Gems" or "Coins"
+			local cur = (what == "GiveGems" and "Gems") or (what == "GiveShards" and "Shards") or "Coins"
 			ok = EconomyManager.devGive(player, cur, n)
 			msg = ok and ("+" .. ShopCatalog.format(n) .. " " .. cur) or "Couldn't give that."
 		else
 			msg = "Pick an amount from 1 to " .. ShopCatalog.format(DEV_GIVE_MAX) .. "."
 		end
+	elseif what == "ClearShards" then
+		ok = EconomyManager.devClear(player, "Shards")
+		msg = ok and "Shards set to 0." or "Save not loaded."
+	elseif what == "ForceEnchant" then
+		-- every enchant lands on this rarity until it's set back to Random (this server only)
+		local rarity = type(a) == "string" and a or nil
+		ok = EconomyManager.devForceEnchant(player, rarity ~= "Random" and rarity or nil)
+		local now = player:GetAttribute("DevEnchantRarity")
+		msg = now and ("Every enchant now lands on " .. now .. " (set it back to Random when you're done).") or "Enchants roll the real odds again."
 	elseif what == "NewDay" then
 		ok = EconomyManager.devNewDay(player)
 		msg = ok and "New shop day: daily cards, exchanges and the login reward reset." or "Save not loaded."

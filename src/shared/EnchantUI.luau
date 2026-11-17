@@ -3,26 +3,29 @@
 -- (EconomyManager.enchantCard / chooseEnchant through MenuServer's "Enchant" and
 -- "EnchantChoose", answered by "CardResult" and a fresh "Decks" snapshot).
 --
---   EnchantUI.init(ctx)   once (ctx: gui, makeCard, toast)
+--   EnchantUI.init(ctx)   once (ctx: gui, makeCard, toast, hideMenus(hidden) for the enchant scene)
 --   EnchantUI.open()      the crystal's prompt
---   EnchantUI.close()     Escape, leaving the park
+--   EnchantUI.close()     closes the window (and the enchant scene, at once): leaving the Park
+--   EnchantUI.escape()    Escape: puts the enchant scene away and keeps the window; true if it did
 --   EnchantUI.isOpen()
 --
--- The window: your cards on the left (enchanted ones glow in their enchant's colour), the card you
--- picked big on the right with its enchant, Enchant (Coins) and Lucky (Gems) buttons, the odds and
--- how close the next sure Epic is. The roll: the card's rim flickers through the colours, slows
--- down and lands on the enchant's rarity with a painted burst (bigger for rarer). Rolling a card
--- that already has an enchant asks: keep the new one or the old one.
+-- The window: your cards on the left (enchanted ones glow in their rune's colour), the card you
+-- picked big on the right with its rune, Enchant (Shards) and Lucky (Gems) buttons, the odds, how
+-- close the next sure Epic is and where Shards come from; your Shards at the top. Enchant and
+-- Lucky play the enchant itself in front of everything (EnchantStage): the card comes forward,
+-- every menu steps away, the world blurs, and the rune lands with a pop and a shake that grow with
+-- its rarity. Rolling a card that already wears a rune asks: keep the new one or the old one.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 
 local here = script.Parent
 local CardData = require(here:WaitForChild("CardData"))
 local Enchants = require(here:WaitForChild("Enchants"))
 local EnchantFx = require(here:WaitForChild("EnchantFx"))
+local EnchantStage = require(here:WaitForChild("EnchantStage"))
 local DeckRules = require(here:WaitForChild("DeckRules"))
+local ShopCatalog = require(here:WaitForChild("ShopCatalog"))
 local Juice = require(here:WaitForChild("Juice"))
 local UIKit = require(here:WaitForChild("UIKit"))
 
@@ -39,6 +42,9 @@ local BAD = rgb(235, 110, 110)
 local CRYSTAL = rgb(150, 210, 255)
 local TITLE_FONT = Enum.Font.FredokaOne
 local BODY_FONT = Enum.Font.GothamMedium
+local BOLD_FONT = Enum.Font.GothamBold
+
+local EARN_SHARDS = "Shards come from the Campaign, the hourly Challenge, the Trophy Road and achievements."
 
 local EnchantUI = {}
 
@@ -47,9 +53,10 @@ local S = {
 	win = nil,
 	snap = nil, -- the latest "Decks" snapshot (cards, enchants, enchantPity, enchantPending)
 	pick = nil, -- the card picked
-	rolling = false, -- the roll animation is playing
 	busy = false, -- a request is on its way
-	result = nil, -- the last roll, for the choice panel
+	busyToken = nil,
+	stage = nil, -- the enchant scene while it's up (EnchantStage)
+	shards = nil, -- the Shards number at the top of the window
 	note = nil,
 }
 EnchantUI.S = S -- (for the tests)
@@ -94,6 +101,24 @@ local function fire(what, options)
 	end
 end
 
+-- A request is on its way: no second one until it's answered (or a while has passed).
+local function setBusy()
+	S.busy = true
+	local token = {}
+	S.busyToken = token
+	task.delay(EnchantStage.Timeout + 2, function()
+		if S.busyToken == token then
+			S.busy = false
+			S.busyToken = nil
+		end
+	end)
+end
+
+local function clearBusy()
+	S.busy = false
+	S.busyToken = nil
+end
+
 local function fit(frame, width, height)
 	local cam = workspace.CurrentCamera
 	local view = cam and cam.ViewportSize or Vector2.new(1280, 720)
@@ -103,7 +128,8 @@ local function fit(frame, width, height)
 	end
 end
 
-local function face(parent, id, enchant)
+-- A card face that ignores clicks (its cell or holder takes them). gem: the rune gem's size.
+local function face(parent, id, enchant, gem)
 	if not (S.ctx and S.ctx.makeCard) then
 		return nil
 	end
@@ -115,7 +141,7 @@ local function face(parent, id, enchant)
 			end
 		end
 		if enchant then
-			EnchantFx.decorateCard(card, enchant)
+			EnchantFx.decorateCard(card, enchant, { gem = gem })
 		end
 	end
 	return card
@@ -131,6 +157,11 @@ end
 
 local function rarityColor(r)
 	return EnchantFx.color(r)
+end
+
+-- Is the enchant scene up (or still flying the card back)?
+local function staged()
+	return S.stage ~= nil
 end
 
 -- The cards you could enchant, best first: enchanted ones, then by rarity, then by name.
@@ -178,9 +209,9 @@ local function enchantLine(parent, eid, props)
 		local col = rarityColor(e.rarity)
 		stroke(box, col, 2)
 		text(box, "◆ " .. e.name, { Name = "Name", Font = TITLE_FONT, TextSize = 19, TextColor3 = col, Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0, 22), TextXAlignment = Enum.TextXAlignment.Left })
-		text(box, e.rarity .. " enchant · " .. e.text, { Name = "Text", TextSize = 13, Position = UDim2.fromOffset(12, 29), Size = UDim2.new(1, -24, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top })
+		text(box, e.rarity .. " rune · " .. e.text, { Name = "Text", TextSize = 13, Position = UDim2.fromOffset(12, 29), Size = UDim2.new(1, -24, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top })
 	else
-		text(box, "Not enchanted yet", { Name = "Name", Font = TITLE_FONT, TextSize = 18, TextColor3 = DIM, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 22), TextXAlignment = Enum.TextXAlignment.Left })
+		text(box, "No rune yet", { Name = "Name", Font = TITLE_FONT, TextSize = 18, TextColor3 = DIM, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, 22), TextXAlignment = Enum.TextXAlignment.Left })
 		text(box, "Touch the crystal: a rune of a random rarity goes on every copy of this card.", { TextSize = 13, TextColor3 = DIM, Position = UDim2.fromOffset(12, 31), Size = UDim2.new(1, -24, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top })
 	end
 	return box
@@ -207,14 +238,14 @@ local function drawGrid(list)
 	local ids = myCards()
 	for i, id in ipairs(ids) do
 		local cell = make("TextButton", { Name = "Cell_" .. id, Text = "", BackgroundTransparency = 1, AutoButtonColor = false, Size = UDim2.fromOffset(84, 118), LayoutOrder = i }, list)
-		face(cell, id, en[id])
+		face(cell, id, en[id], 14)
 		if S.pick == id then
 			local sel = make("Frame", { Name = "Picked", BackgroundTransparency = 1, Size = UDim2.new(1, 6, 1, 6), Position = UDim2.fromOffset(-3, -3), ZIndex = 40 }, cell)
 			corner(sel, 12)
 			stroke(sel, GOLD, 3)
 		end
 		cell.Activated:Connect(function()
-			if S.rolling or pending() then
+			if staged() or pending() then
 				return
 			end
 			S.pick = id
@@ -242,7 +273,7 @@ local function drawSide(side)
 	local d = CardData.Cards[id]
 	local en = enchantsMap()
 	local stage = make("Frame", { Name = "Stage", Size = UDim2.fromOffset(150, 210), Position = UDim2.new(0.5, 0, 0, 4), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1 }, side)
-	local big = face(stage, id, en[id])
+	local big = face(stage, id, en[id], 20)
 	if big then
 		big.Name = "BigCard"
 	end
@@ -250,14 +281,14 @@ local function drawSide(side)
 	enchantLine(side, en[id], { Position = UDim2.fromOffset(0, 246) })
 	local p = pending()
 	if p then
-		-- the choice: keep the new rune or the old one
+		-- the choice (when the enchant scene was put away before it): the new rune or the old one
 		local new, old = Enchants.get(p.enchant), Enchants.get(en[p.card])
 		text(side, "Which rune stays on " .. (CardData.Cards[p.card] and CardData.Cards[p.card].name or "the card") .. "?", { Name = "Ask", Font = TITLE_FONT, TextSize = 16, Position = UDim2.fromOffset(0, 316), Size = UDim2.new(1, 0, 0, 22) })
 		local keepNew = button(side, "Keep new: " .. (new and new.name or "?"), new and rarityColor(new.rarity):Lerp(INK, 0.35) or TILE, function()
 			if S.busy then
 				return
 			end
-			S.busy = true
+			setBusy()
 			fire("EnchantChoose", { keep = "new" })
 		end, { Name = "KeepNew", Size = UDim2.new(1, 0, 0, 40), Position = UDim2.fromOffset(0, 342), TextSize = 16 })
 		keepNew.TextTruncate = Enum.TextTruncate.AtEnd
@@ -265,149 +296,196 @@ local function drawSide(side)
 			if S.busy then
 				return
 			end
-			S.busy = true
+			setBusy()
 			fire("EnchantChoose", { keep = "old" })
 		end, { Name = "KeepOld", Size = UDim2.new(1, 0, 0, 40), Position = UDim2.fromOffset(0, 388), TextSize = 16 })
 		keepOld.TextTruncate = Enum.TextTruncate.AtEnd
 		if new then
 			text(side, new.rarity .. " · " .. new.text, { TextSize = 12, TextColor3 = rarityColor(new.rarity), Position = UDim2.fromOffset(0, 432), Size = UDim2.new(1, 0, 0, 30) })
 		end
+		if S.note then
+			text(side, S.note[1], { Name = "Note", TextSize = 13, Font = BOLD_FONT, TextColor3 = S.note[2], Position = UDim2.fromOffset(0, 468), Size = UDim2.new(1, 0, 0, 34) })
+		end
 		return
 	end
-	-- the buttons
-	local coins = Enchants.Cost.Coins or 0
-	local gems = Enchants.LuckyCost.Gems or 0
-	local go = button(side, "", rgb(96, 70, 170), function()
+	-- the buttons: Enchant (Shards) and Lucky (Gems), darker when you can't afford them (pressing
+	-- one still says where to get more)
+	local cur, cost = ShopCatalog.priceOf(Enchants.Cost)
+	local lcur, lcost = ShopCatalog.priceOf(Enchants.LuckyCost)
+	local go = button(side, "", rgb(124, 72, 206), function()
 		EnchantUI.roll(false)
-	end, { Name = "EnchantButton", Size = UDim2.new(0.5, -4, 0, 44), Position = UDim2.fromOffset(0, 318) })
-	UIKit.caption(go, "Coins", "Enchant  " .. coins)
-	local lucky = button(side, "Lucky  " .. gems .. " 💎", rgb(50, 120, 170), function()
+	end, { Name = "EnchantButton", Size = UDim2.new(0.5, -4, 0, 44), Position = UDim2.fromOffset(0, 316) })
+	UIKit.caption(go, cur, "Enchant  " .. cost)
+	local lucky = button(side, "", rgb(50, 120, 170), function()
 		EnchantUI.roll(true)
-	end, { Name = "LuckyButton", Size = UDim2.new(0.5, -4, 0, 44), Position = UDim2.new(0.5, 4, 0, 318), TextSize = 16 })
-	lucky.TextTruncate = Enum.TextTruncate.AtEnd
+	end, { Name = "LuckyButton", Size = UDim2.new(0.5, -4, 0, 44), Position = UDim2.new(0.5, 4, 0, 316) })
+	UIKit.caption(lucky, lcur, "Lucky  " .. lcost)
+	if cur and (player:GetAttribute(cur) or 0) < cost then
+		go.BackgroundColor3 = rgb(70, 56, 96)
+	end
+	if lcur and (player:GetAttribute(lcur) or 0) < lcost then
+		lucky.BackgroundColor3 = rgb(48, 64, 86)
+	end
+	-- everything under the buttons, one line after another
+	local y = 366
+	local function line(str, props, height)
+		local t = text(side, str, props)
+		t.Position = UDim2.fromOffset(0, y)
+		t.Size = UDim2.new(1, 0, 0, height)
+		y += height + 4
+		return t
+	end
+	if S.note then
+		line(S.note[1], { Name = "Note", TextSize = 13, Font = BOLD_FONT, TextColor3 = S.note[2] }, 34)
+	end
 	local pity = (S.snap and S.snap.enchantPity) or 0
 	local left = Enchants.untilPity(pity)
-	text(side, left <= 1 and "★ Your next enchant is Epic or better!" or ("★ Epic or better within " .. left .. " enchants"), { Name = "Pity", TextSize = 13, TextColor3 = left <= 1 and GOLD or TEXT, Position = UDim2.fromOffset(0, 368), Size = UDim2.new(1, 0, 0, 18) })
-	text(side, "Odds: " .. oddsText(false), { Name = "Odds", TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(0, 388), Size = UDim2.new(1, 0, 0, 28) })
-	text(side, "Lucky: no Commons · " .. oddsText(true), { TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(0, 414), Size = UDim2.new(1, 0, 0, 28) })
-	text(side, "Enchants count against bots and in the Campaign. In duels with players they glow but cards play their printed numbers.", { TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(0, 442), Size = UDim2.new(1, 0, 0, 28) })
-	if S.note then
-		text(side, S.note[1], { Name = "Note", TextSize = 13, TextColor3 = S.note[2], Position = UDim2.fromOffset(0, 472), Size = UDim2.new(1, 0, 0, 20) })
+	line(left <= 1 and "★ Your next enchant is Epic or better!" or ("★ Epic or better within " .. left .. " enchants"), { Name = "Pity", TextSize = 13, TextColor3 = left <= 1 and GOLD or TEXT }, 18)
+	line(EARN_SHARDS, { Name = "EarnShards", TextSize = 12, TextColor3 = UIKit.Color.shard:Lerp(TEXT, 0.35) }, 30)
+	line("Odds: " .. oddsText(false), { Name = "Odds", TextSize = 11, TextColor3 = DIM }, 28)
+	line("Lucky: no Commons · " .. oddsText(true), { Name = "LuckyOdds", TextSize = 11, TextColor3 = DIM }, 28)
+	line("Runes count against bots and in the Campaign. In duels with players they glow, but cards play their printed numbers.", { Name = "DuelNote", TextSize = 11, TextColor3 = DIM }, 28)
+end
+
+local function drawShards()
+	if S.shards and S.shards.Parent then
+		S.shards.Text = ShopCatalog.format(player:GetAttribute("Shards") or 0)
 	end
 end
 
 function render()
 	local win = S.win
-	if not win or S.rolling then
+	if not win then
 		return
 	end
 	local p = pending()
 	if p and S.pick ~= p.card then
 		S.pick = p.card
 	end
+	drawShards()
 	drawGrid(win.Body.Cards)
 	drawSide(win.Body.Side)
 end
 
 ---------------------------------------------------------------------------
--- The roll
+-- The enchant
 ---------------------------------------------------------------------------
 
+-- Not enough Shards (or Gems): say where they come from.
+local function cantAfford(cur, cost)
+	local msg = cur == "Shards" and ("You need " .. cost .. " Shards. " .. EARN_SHARDS) or ("Lucky needs " .. cost .. " " .. tostring(cur) .. ".")
+	Juice.sound("thud", 1.2, 0.3)
+	local stage = S.stage
+	if stage and stage.alive then
+		stage:note(msg)
+		return
+	end
+	S.note = { msg, BAD }
+	render()
+	local side = S.win and S.win.Body.Side
+	local b = side and side:FindFirstChild(cur == "Shards" and "EnchantButton" or "LuckyButton")
+	if b then
+		Juice.shake(b, 5, 0.3)
+	end
+end
+
+-- Opens the enchant scene for the picked card (the request is already on its way).
+local function openStage(lucky)
+	local id = S.pick
+	local side = S.win and S.win.Body.Side
+	local holder = side and side:FindFirstChild("Stage")
+	local stage
+	stage = EnchantStage.open({
+		cardId = id,
+		enchant = enchantsMap()[id],
+		lucky = lucky,
+		makeCard = S.ctx.makeCard,
+		hideMenus = S.ctx.hideMenus,
+		from = holder and holder:FindFirstChild("BigCard"),
+		onAgain = function(again)
+			EnchantUI.roll(again)
+		end,
+		onChoose = function(keep)
+			setBusy()
+			fire("EnchantChoose", { keep = keep })
+		end,
+		onClosed = function()
+			if S.stage == stage then
+				S.stage = nil
+			end
+			render()
+		end,
+	})
+	S.stage = stage
+end
+
+-- Enchant (lucky = false, Shards) or Lucky (Gems) the picked card: from the window, or again
+-- from the enchant scene's own buttons.
 function EnchantUI.roll(lucky)
-	if S.busy or S.rolling or not S.pick or pending() then
+	if S.busy or not S.pick or pending() or not S.ctx then
 		return
 	end
-	S.busy = true
+	local stage = S.stage
+	if stage and not (stage.alive and stage.phase == "result") then
+		return -- (mid-roll, or still flying the card back)
+	end
+	local cur, cost = ShopCatalog.priceOf(lucky and Enchants.LuckyCost or Enchants.Cost)
+	if cur and (player:GetAttribute(cur) or 0) < cost then
+		cantAfford(cur, cost)
+		return
+	end
+	setBusy()
 	S.note = nil
-	fire("Enchant", { id = S.pick, mode = lucky and "lucky" or "coins" })
-	task.delay(5, function()
-		S.busy = false
-	end)
+	fire("Enchant", { id = S.pick, mode = lucky and "lucky" or "shards" })
+	if stage then
+		stage:again(lucky)
+	else
+		openStage(lucky)
+	end
 end
 
--- The rim flickers through the colours, slows down and lands on the result.
-local function playRoll(r, after)
-	local win = S.win
-	local stage = win and win.Body.Side:FindFirstChild("Stage")
-	local big = stage and stage:FindFirstChild("BigCard")
-	if not big then
-		after()
-		return
-	end
-	S.rolling = true
-	local rank = Enchants.Rank[r.rarity] or 1
-	local rim = make("Frame", { Name = "RollRim", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 14, 1, 14), ZIndex = 45 }, big)
-	corner(rim, 14)
-	local rs = stroke(rim, TEXT, 6)
-	local word = text(stage, "", { Name = "RollWord", Font = TITLE_FONT, TextSize = 30, TextStrokeTransparency = 0.2, Size = UDim2.new(1.6, 0, 0, 36), Position = UDim2.new(-0.3, 0, 0.5, -18), ZIndex = 60, TextXAlignment = Enum.TextXAlignment.Center })
-	Juice.sound("swish", 0.9, 0.4)
-	-- flicker: fast, then slower; rarer results keep going a little longer (suspense)
-	local ticks = 14 + rank * 2
-	local idx = math.random(1, #Enchants.Rarities)
-	for i = 1, ticks do
-		idx = idx % #Enchants.Rarities + 1
-		local show = (i == ticks) and r.rarity or Enchants.Rarities[idx]
-		rs.Color = EnchantFx.color(show)
-		word.Text = show
-		word.TextColor3 = EnchantFx.color(show)
-		Juice.sound("tick", 0.9 + (i / ticks) * 0.6, 0.25)
-		task.wait(0.04 + (i / ticks) ^ 2 * 0.22)
-		if not big.Parent then
-			break
-		end
-	end
-	-- land
-	if big.Parent then
-		local col = EnchantFx.color(r.rarity)
-		word.Text = string.upper(r.rarity)
-		word.TextColor3 = col
-		EnchantFx.screenBurst(stage, UDim2.fromScale(0.5, 0.5), 240 + rank * 30, r.rarity)
-		Juice.flash(win, col, 0.5 + rank * 0.05, 0.55)
-		if rank >= 4 then
-			Juice.shake(win, 4 + rank, 0.4)
-			Juice.stars(stage, 0.5, 0.5, 6 + rank * 3)
-		end
-		if rank >= 5 then
-			Juice.confetti(win, 0.5, 0.35, 30 + rank * 6)
-		end
-		Juice.sound(rank >= 4 and "fanfare" or "chime", 1, 0.55)
-		Juice.pop(big, 1.15, 0.35)
-		task.wait(1.1 + rank * 0.15)
-	end
-	if rim.Parent then
-		rim:Destroy()
-	end
-	if word.Parent then
-		TweenService:Create(word, TweenInfo.new(0.4), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-		task.delay(0.45, function()
-			word:Destroy()
-		end)
-	end
-	S.rolling = false
-	after()
-end
-
+-- The server's answer to Enchant / EnchantChoose: to the enchant scene while it's up, else a line
+-- in the window. (A fresh "Decks" snapshot follows it.)
 local function onResult(data)
 	if data.what ~= "Enchant" and data.what ~= "EnchantChoose" then
 		return false
 	end
-	S.busy = false
-	if not data.ok then
-		S.note = { tostring(data.why or "That didn't work"), BAD }
-		Juice.sound("thud", 1.2, 0.3)
-		render()
+	clearBusy()
+	-- keep the snapshot in step until the fresh one arrives (so "Enchant again" works at once)
+	local snap = S.snap
+	if data.ok and snap and type(data.id) == "string" then
+		snap.enchants = snap.enchants or {}
+		if data.what == "Enchant" then
+			if data.pending then
+				snap.enchantPending = { card = data.id, enchant = data.enchant }
+			else
+				snap.enchants[data.id] = data.enchant
+			end
+			snap.enchantPity = tonumber(data.pity) or snap.enchantPity
+		else
+			snap.enchantPending = nil
+			snap.enchants[data.id] = data.enchant
+		end
+	end
+	local stage = S.stage
+	if stage and stage.alive then
+		if data.what == "Enchant" then
+			stage:result(data)
+		else
+			stage:chosen(data)
+		end
 		return true
 	end
-	if data.what == "Enchant" then
+	if not data.ok then
+		S.note = { tostring(data.why or "That didn't work."), BAD }
+		Juice.sound("thud", 1.2, 0.3)
+	elseif data.what == "Enchant" then
 		local e = Enchants.get(data.enchant)
-		playRoll({ rarity = data.rarity or (e and e.rarity) or "Common" }, function()
-			S.note = data.pending and { "A " .. (data.rarity or "") .. " rune! Keep it, or keep the old one?", GOLD } or { "◆ " .. (e and e.name or "Enchanted") .. "!", rarityColor(data.rarity) }
-			render()
-		end)
+		S.note = data.pending and { "A " .. (data.rarity or "new") .. " rune! Keep it, or keep the old one?", GOLD } or { "◆ " .. (e and e.name or "A rune") .. " is on!", rarityColor(data.rarity) }
 	else
 		S.note = { data.kept == "new" and "The new rune is on." or "The old rune stays.", TEXT }
-		render()
 	end
+	render()
 	return true
 end
 
@@ -420,26 +498,50 @@ function EnchantUI.isOpen()
 end
 
 function EnchantUI.close()
+	local stage = S.stage
+	if stage then
+		S.stage = nil
+		stage:close(true)
+	end
 	if S.win then
 		local w = S.win
 		S.win = nil
-		S.rolling = false
-		UIKit.close(w)
+		S.shards = nil
+		UIKit.close(w, function()
+			w:Destroy()
+		end)
 	end
+end
+
+-- Escape: the enchant scene goes first (the card flies back, the window stays open).
+function EnchantUI.escape()
+	local stage = S.stage
+	if stage and stage.alive then
+		stage:close()
+		return true
+	end
+	return false
 end
 
 function EnchantUI.open()
 	if not S.ctx or EnchantUI.isOpen() then
 		return
 	end
-	local f = make("Frame", { Name = "EnchantWindow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromOffset(760, 560), BackgroundColor3 = PANEL }, S.ctx.gui)
+	local f = make("Frame", { Name = "EnchantWindow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromOffset(760, 640), BackgroundColor3 = PANEL }, S.ctx.gui)
 	S.win = f
 	corner(f, 16)
 	stroke(f, CRYSTAL, 2)
-	fit(f, 800, 600)
-	text(f, "◆ Enchanting Crystal", { Font = TITLE_FONT, TextSize = 26, TextColor3 = CRYSTAL, Size = UDim2.new(1, -70, 0, 32), Position = UDim2.fromOffset(18, 10), TextXAlignment = Enum.TextXAlignment.Left })
+	fit(f, 800, 680)
+	text(f, "◆ Enchanting Crystal", { Font = TITLE_FONT, TextSize = 26, TextColor3 = CRYSTAL, Size = UDim2.new(1, -260, 0, 32), Position = UDim2.fromOffset(18, 10), TextXAlignment = Enum.TextXAlignment.Left })
 	text(f, "Put a rune on a card. Every rune rarity glows in its own colour.", { TextColor3 = DIM, Size = UDim2.new(1, -70, 0, 18), Position = UDim2.fromOffset(18, 42), TextXAlignment = Enum.TextXAlignment.Left })
 	UIKit.closeButton(f, EnchantUI.close, { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -48, 0, 10) })
+	-- your Shards, next to the ? and the close button
+	local pill = make("Frame", { Name = "ShardsPill", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -104, 0, 12), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = INK, BackgroundTransparency = 0.25 }, f)
+	corner(pill, 16)
+	make("UIStroke", { Color = UIKit.Color.shard, Thickness = 1.5, Transparency = 0.45 }, pill)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) }, pill)
+	local _, shards = UIKit.currency(pill, "Shards", ShopCatalog.format(player:GetAttribute("Shards") or 0), { size = 18, height = 32 })
+	S.shards = shards
 	-- a short brief the first time, and a ? to see it again (MenuBriefs)
 	local MenuBriefs = require(here:WaitForChild("MenuBriefs"))
 	MenuBriefs.helpButton(f, "Enchant", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -92, 0, 10) }, "center")
@@ -470,8 +572,23 @@ function EnchantUI.init(ctx)
 		if what == "Decks" then
 			S.snap = data
 			render()
-		elseif what == "CardResult" and EnchantUI.isOpen() then
+		elseif what == "CardResult" and (EnchantUI.isOpen() or S.stage ~= nil) then
 			onResult(data)
+		end
+	end)
+	-- your Shards at the top of the window (and the buttons' prices darken when you run out)
+	player:GetAttributeChangedSignal("Shards"):Connect(function()
+		if not EnchantUI.isOpen() then
+			return
+		end
+		if staged() then
+			drawShards() -- (the window is hidden behind the enchant scene)
+			return
+		end
+		render()
+		local pill = S.shards and S.shards.Parent and S.shards.Parent.Parent
+		if pill then
+			Juice.pop(pill, 1.12, 0.35)
 		end
 	end)
 end

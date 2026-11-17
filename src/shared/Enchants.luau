@@ -2,8 +2,10 @@
 -- the Deck Shelf, the match engine and the match screen all use these rules.
 --
 -- How you get one
---   Open a card you own on the Deck Shelf and press Enchant. It costs Coins (Cost), or Gems for a
---   Lucky Enchant (LuckyCost: no Commons, better odds). The rune is rolled at random:
+--   Pick a card you own at the Enchanting Crystal in the Park and press Enchant. It costs Shards
+--   (Cost: rune shards, earned by playing the Campaign, the hourly Challenge, the Trophy Road,
+--   achievements and quests; see ShopCatalog), or Gems for a Lucky Enchant (LuckyCost: no
+--   Commons, better odds). The rune is rolled at random:
 --     Common 46%  Rare 30%  Epic 14%  Mythic 7%  Legendary 2.5%  Secret 0.5%
 --   Bad luck protection: after PityRolls enchants in a row below Epic, the next one is Epic or
 --   better (the Deck Shelf shows how close you are).
@@ -36,7 +38,7 @@ Enchants.Rarities = { "Common", "Rare", "Epic", "Mythic", "Legendary", "Secret" 
 Enchants.Rank = { Common = 1, Rare = 2, Epic = 3, Mythic = 4, Legendary = 5, Secret = 6 }
 Enchants.Odds = { Common = 46, Rare = 30, Epic = 14, Mythic = 7, Legendary = 2.5, Secret = 0.5 }
 Enchants.LuckyOdds = { Common = 0, Rare = 48, Epic = 30, Mythic = 14, Legendary = 6.5, Secret = 1.5 }
-Enchants.Cost = { Coins = 250 }
+Enchants.Cost = { Shards = 20 } -- (Lucky: Gems, below)
 Enchants.LuckyCost = { Gems = 60 }
 Enchants.PityRolls = 8 -- this many below Epic in a row, and the next one is Epic or better
 Enchants.InDuels = false -- do enchant powers count in matches against other players?
@@ -145,25 +147,31 @@ end
 
 -- Rolls an enchant for a card. rand() returns a number in [0, 1).
 --   lucky  Lucky Enchant odds;  pity  enchants in a row below Epic so far
+--   force  a rarity to land on instead of rolling one (the dev panel's "Next enchant", for
+--          seeing every rarity's reveal; ignored when the card has no rune of that rarity)
 -- Returns enchantId, rarity, newPity.
-function Enchants.roll(cardId, rand, lucky, pity)
+function Enchants.roll(cardId, rand, lucky, pity, force)
 	pity = pity or 0
 	local odds = lucky and Enchants.LuckyOdds or Enchants.Odds
 	local floor = (pity >= Enchants.PityRolls) and 3 or 1
-	local total = 0
-	for _, r in ipairs(Enchants.Rarities) do
-		if Enchants.Rank[r] >= floor and #Enchants.pool(cardId, r) > 0 then
-			total += odds[r]
-		end
-	end
-	local x = rand() * total
 	local rarity = nil
-	for _, r in ipairs(Enchants.Rarities) do
-		if Enchants.Rank[r] >= floor and #Enchants.pool(cardId, r) > 0 and odds[r] > 0 then
-			rarity = r
-			x -= odds[r]
-			if x < 0 then
-				break
+	if type(force) == "string" and Enchants.Rank[force] and #Enchants.pool(cardId, force) > 0 then
+		rarity = force
+	else
+		local total = 0
+		for _, r in ipairs(Enchants.Rarities) do
+			if Enchants.Rank[r] >= floor and #Enchants.pool(cardId, r) > 0 then
+				total += odds[r]
+			end
+		end
+		local x = rand() * total
+		for _, r in ipairs(Enchants.Rarities) do
+			if Enchants.Rank[r] >= floor and #Enchants.pool(cardId, r) > 0 and odds[r] > 0 then
+				rarity = r
+				x -= odds[r]
+				if x < 0 then
+					break
+				end
 			end
 		end
 	end

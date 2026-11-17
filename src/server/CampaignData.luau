@@ -3,8 +3,10 @@
 --     clears = { [stageId] = { stars = 0..7 (one bit per star), wins = n } },
 --     chests = { ["<world>:<n>"] = true },          -- star chests already given
 --     drops = { day = utc day, count = n },         -- replay drops today
+--     replayShards = { day = utc day, count = n },  -- replay wins that paid Shards today
 --     challenge = { hour = n },                     -- the last Challenge hour you won
 --   }
+-- Gems go on d.gems and rune Shards (the enchant currency) on d.shards.
 -- MatchServer asks canPlay before a campaign match and calls record after it. The rules and
 -- numbers are in ReplicatedStorage.DeckWars.Campaign.
 --
@@ -41,6 +43,7 @@ function CampaignData.ensure(d)
 	c.clears = type(c.clears) == "table" and c.clears or {}
 	c.chests = type(c.chests) == "table" and c.chests or {}
 	c.drops = type(c.drops) == "table" and c.drops or { day = -1, count = 0 }
+	c.replayShards = type(c.replayShards) == "table" and c.replayShards or { day = -1, count = 0 }
 	c.challenge = type(c.challenge) == "table" and c.challenge or { hour = -1 }
 	return c
 end
@@ -83,17 +86,29 @@ end
 --   roll = function() -> a number in [0, 1)
 --   now = os.time()
 -- Returns { stars = {b,b,b}, starsBefore = mask, starsAfter = mask, newStars = n, firstClear,
---   gems = { { label, amount } }, totalGems, cards = { { id, why } }, chests = { { stars, gems, card, title } },
+--   gems = { { label, amount } }, totalGems, shards = { { label, amount } }, totalShards,
+--   cards = { { id, why } }, chests = { { stars, gems, shards, card, title } },
 --   titles = { names }, unlocked = { text } }. The caller grants the cards (they're only listed here).
 function CampaignData.apply(d, stage, r, roll, now)
 	local c = CampaignData.ensure(d)
-	local out = { stars = Campaign.starsFor(stage, r), gems = {}, totalGems = 0, cards = {}, chests = {}, titles = {}, unlocked = {}, newStars = 0 }
+	local out = { stars = Campaign.starsFor(stage, r), gems = {}, totalGems = 0, shards = {}, totalShards = 0, cards = {}, chests = {}, titles = {}, unlocked = {}, newStars = 0 }
 	local function pay(label, amount)
 		amount = math.floor(amount or 0)
 		if amount > 0 then
 			d.gems = math.min(MAX_BALANCE, (d.gems or 0) + amount)
 			out.totalGems += amount
 			table.insert(out.gems, { label = label, amount = amount })
+		end
+	end
+	local function payShards(label, amount)
+		amount = math.floor(amount or 0)
+		if amount > 0 then
+			d.shards = math.min(MAX_BALANCE, (tonumber(d.shards) or 0) + amount)
+			if type(d.stats) == "table" then
+				d.stats.shardsEarned = (tonumber(d.stats.shardsEarned) or 0) + amount
+			end
+			out.totalShards += amount
+			table.insert(out.shards, { label = label, amount = amount })
 		end
 	end
 	if r.result ~= "win" then
@@ -109,6 +124,7 @@ function CampaignData.apply(d, stage, r, roll, now)
 		if out.firstClear then
 			c.challenge.hour = stage.hour
 			pay("Challenge won", stage.firstGems)
+			payShards("Challenge won", stage.firstShards)
 			local rarity = rollRarity(Campaign.Challenge.cardOdds, roll)
 			local id = anyCard(rarity, roll)
 			if id then
@@ -132,6 +148,7 @@ function CampaignData.apply(d, stage, r, roll, now)
 
 	if first then
 		pay("First clear", stage.firstGems)
+		payShards("First clear", stage.firstShards)
 		if stage.firstCard then
 			table.insert(out.cards, { id = stage.firstCard, why = "First clear" })
 		end
@@ -148,8 +165,17 @@ function CampaignData.apply(d, stage, r, roll, now)
 			end
 		end
 	else
-		-- a replay: a chance at a family card, at most DropsPerDay a day
+		-- a replay: a few Shards (the first ReplayShardWins wins of the day) and a chance at a family
+		-- card (at most DropsPerDay a day)
 		local today = utcDay(now)
+		if c.replayShards.day ~= today then
+			c.replayShards.day = today
+			c.replayShards.count = 0
+		end
+		if c.replayShards.count < Campaign.ReplayShardWins then
+			c.replayShards.count += 1
+			payShards("Replay win", Campaign.ReplayShards)
+		end
 		if c.drops.day ~= today then
 			c.drops.day = today
 			c.drops.count = 0
@@ -181,6 +207,7 @@ function CampaignData.apply(d, stage, r, roll, now)
 			local chest = Campaign.chest(stage.world, n)
 			table.insert(out.chests, chest)
 			pay(def.stars .. "★ chest", chest.gems)
+			payShards(def.stars .. "★ chest", chest.shards)
 			if chest.card then
 				table.insert(out.cards, { id = chest.card, why = def.stars .. "★ chest" })
 			end
@@ -213,6 +240,7 @@ function CampaignData.snapshotOf(d, now)
 		challengeWon = c.challenge.hour == hour,
 		challengeOpen = Campaign.cleared(c, Campaign.Challenge.unlockAfter),
 		dropsLeft = math.max(0, Campaign.DropsPerDay - ((c.drops.day == utcDay(now)) and c.drops.count or 0)),
+		shardWinsLeft = math.max(0, Campaign.ReplayShardWins - ((c.replayShards.day == utcDay(now)) and c.replayShards.count or 0)),
 		titles = Campaign.titles(c),
 	}
 end
@@ -321,6 +349,7 @@ function CampaignData.record(player, stage, r)
 		player:SetAttribute("CampaignStars", Campaign.totalStars(CampaignData.ensure(d)))
 		if econ == nil then
 			player:SetAttribute("Gems", d.gems)
+			player:SetAttribute("Shards", d.shards or 0)
 		end
 	end)
 	out.snapshot = CampaignData.snapshotOf(d)

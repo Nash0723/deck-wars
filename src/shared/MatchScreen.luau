@@ -2821,6 +2821,17 @@ function MatchScreen.init(ctx)
 		return label(ui.resultRewards, text, { Size = UDim2.new(1, 0, 0, 22), Font = BODY_FONT, TextScaled = false, TextSize = 16, TextColor3 = color or WHITE, LayoutOrder = order, ZIndex = 31 })
 	end
 
+	-- A reward row of rune Shards (the enchant currency) with the drawn shard in front, centered
+	-- like the other rows. Returns the row and its text.
+	function F.shardRow(text, order)
+		local row = make("Frame", { Name = "ShardRow", Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, LayoutOrder = order, ZIndex = 31 }, ui.resultRewards)
+		local inner = make("Frame", { Name = "Inner", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0, 1), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, ZIndex = 31 }, row)
+		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, inner)
+		UIKit.shardIcon(inner, 18, { LayoutOrder = 1, ZIndex = 31 })
+		local l = label(inner, text, { Name = "Text", Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Font = BODY_FONT, TextScaled = false, TextSize = 16, TextColor3 = UIKit.Color.shard, LayoutOrder = 2, ZIndex = 31 })
+		return row, l
+	end
+
 	-- Your level bar on the result screen: it fills with the match's XP (and rolls over on a level up).
 	function F.xpBar(r, order)
 		local row = make("Frame", { Name = "XPRow", Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, LayoutOrder = order, ZIndex = 31 }, ui.resultRewards)
@@ -2946,6 +2957,28 @@ function MatchScreen.init(ctx)
 					if row.Parent then
 						TweenService:Create(row, TweenInfo.new(0.25), { TextTransparency = 0 }):Play()
 						F.sound("ding", { volume = 0.35, pitch = 0.9 + 0.1 * i })
+					end
+				end)
+			end
+			-- rune Shards (the Campaign and the Challenge pay them), after the Gems
+			local gemRows = #(rw.gems or {})
+			for i, g in ipairs(rw.shards or {}) do
+				order += 1
+				local row, l = F.shardRow("+" .. g.amount .. " Shards  " .. g.label, order)
+				l.TextTransparency = 1
+				local icon = row.Inner:FindFirstChild("ShardIcon")
+				if icon then
+					icon.Visible = false
+				end
+				task.delay((0.25 + 0.3 * (gemRows + i)) * PACE, function()
+					if l.Parent then
+						TweenService:Create(l, TweenInfo.new(0.25), { TextTransparency = 0 }):Play()
+						if icon then
+							icon.Visible = true
+							local sc = make("UIScale", { Scale = 1.7 }, icon)
+							TweenService:Create(sc, TweenInfo.new(0.4, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+						end
+						F.sound("ding", { volume = 0.35, pitch = 1.2 + 0.08 * i })
 					end
 				end)
 			end

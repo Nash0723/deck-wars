@@ -293,7 +293,7 @@ local function drawChallenge(scroll)
 			text(box, def.emoji .. " " .. def.name .. ": " .. def.text, { AutomaticSize = Enum.AutomaticSize.Y, TextColor3 = rgb(255, 190, 150), LayoutOrder = 4 + i })
 		end
 	end
-	local reward = "Win to get 💎 " .. Campaign.Challenge.gems .. " and a random Rare, Epic or Mythic card (once an hour)."
+	local reward = "Win to get 💎 " .. Campaign.Challenge.gems .. ", " .. (Campaign.Challenge.shards or 0) .. " rune Shards and a random Rare, Epic or Mythic card (once an hour)."
 	if snap.challengeWon and snap.challengeHour == hour then
 		reward = "✓ You won this hour's Challenge. Come back for the next one!"
 	end
@@ -349,7 +349,7 @@ local function drawMap(scroll)
 		local taken = snap.chests and snap.chests[world.key .. ":" .. n]
 		local x = def.stars / Campaign.Chests[#Campaign.Chests].stars
 		local chest = Campaign.chest(world.key, n)
-		local tip = def.stars .. "★: 💎 " .. chest.gems .. (chest.card and (" + " .. (CardData.Cards[chest.card] and CardData.Cards[chest.card].name or chest.card)) or "") .. (chest.title and (' + title "' .. chest.title .. '"') or "")
+		local tip = def.stars .. "★: 💎 " .. chest.gems .. ((chest.shards or 0) > 0 and (" + " .. chest.shards .. " Shards") or "") .. (chest.card and (" + " .. (CardData.Cards[chest.card] and CardData.Cards[chest.card].name or chest.card)) or "") .. (chest.title and (' + title "' .. chest.title .. '"') or "")
 		local pip = button(barHolder, taken and "✓" or "🎁", taken and GOOD or TILE_HI, function()
 			if S.ctx.toast then
 				S.ctx.toast((taken and "Opened. " or "") .. tip)
@@ -439,13 +439,15 @@ local function drawMap(scroll)
 	local cleared = Campaign.cleared(snap, id)
 	local reward
 	if not cleared then
-		reward = "First clear: 💎 " .. stage.firstGems
+		reward = "First clear: 💎 " .. stage.firstGems .. ((stage.firstShards or 0) > 0 and (" + " .. stage.firstShards .. " Shards") or "")
 		local card = stage.firstCard and CardData.Cards[stage.firstCard]
 		if card then
 			reward ..= " + " .. card.name .. " (" .. card.rarity .. ")"
 		end
 	else
-		reward = "Cleared ✓  Replays can drop " .. stage.family .. " cards (" .. tostring(snap.dropsLeft or Campaign.DropsPerDay) .. " drops left today)."
+		local shardWins = tonumber(snap.shardWinsLeft) or Campaign.ReplayShardWins
+		reward = "Cleared ✓  Replays can drop " .. stage.family .. " cards (" .. tostring(snap.dropsLeft or Campaign.DropsPerDay) .. " drops left today)"
+			.. (shardWins > 0 and (" and pay " .. Campaign.ReplayShards .. " Shards a win (" .. shardWins .. " wins left today).") or ". No more replay Shards today.")
 		if stage.boss and not stage.hard and stage.bossCard then
 			reward ..= " The boss may drop its Legendary."
 		end

@@ -91,13 +91,14 @@ Progression.QuestsPerDay = Quests.DailyCount
 -- kind: win (matches won), level (level reached), luckyPull (a Legendary or Secret pulled),
 -- themes (won with each of the 6 themes: a deck counts for every theme it uses), cup (Cups won),
 -- fullSet (own every card of one theme).
+-- Each pays Gems and rune Shards (the enchant currency, see ShopCatalog).
 Progression.Achievements = {
-	{ id = "first_win", name = "First Blood", text = "Win a match", kind = "win", target = 1, gems = 100 },
-	{ id = "level_10", name = "Level Ten", text = "Reach level 10", kind = "level", target = 10, gems = 200 },
-	{ id = "lucky_pull", name = "Lucky Pull", text = "Pull a Legendary or Secret card", kind = "luckyPull", target = 1, gems = 200 },
-	{ id = "six_themes", name = "Six Flavours", text = "Win with a deck of each of the 6 themes", kind = "themes", target = 6, gems = 300 },
-	{ id = "cup_champion", name = "Cup Champion", text = "Win a Cup", kind = "cup", target = 1, gems = 400 },
-	{ id = "full_set", name = "Full Set", text = "Own every card of one theme", kind = "fullSet", target = 1, gems = 500 },
+	{ id = "first_win", name = "First Blood", text = "Win a match", kind = "win", target = 1, gems = 100, shards = 20 },
+	{ id = "level_10", name = "Level Ten", text = "Reach level 10", kind = "level", target = 10, gems = 200, shards = 40 },
+	{ id = "lucky_pull", name = "Lucky Pull", text = "Pull a Legendary or Secret card", kind = "luckyPull", target = 1, gems = 200, shards = 30 },
+	{ id = "six_themes", name = "Six Flavours", text = "Win with a deck of each of the 6 themes", kind = "themes", target = 6, gems = 300, shards = 60 },
+	{ id = "cup_champion", name = "Cup Champion", text = "Win a Cup", kind = "cup", target = 1, gems = 400, shards = 80 },
+	{ id = "full_set", name = "Full Set", text = "Own every card of one theme", kind = "fullSet", target = 1, gems = 500, shards = 100 },
 }
 Progression.AchievementById = {}
 for _, a in ipairs(Progression.Achievements) do
@@ -106,7 +107,8 @@ end
 
 -- The Trophy Road: every match you finish earns trophies (more for a win, more against tougher
 -- opponents); they never go down. Each stop on the road is claimed once at the Trophy Wall.
--- Three match backgrounds can only be earned here (ShopCatalog cosmetics with road = true).
+-- Three match backgrounds can only be earned here (ShopCatalog cosmetics with road = true), and
+-- every other stop or so pays rune Shards for the Enchanting Crystal (770 along the whole road).
 -- Wins: about 6 trophies a match, so the first background comes after 8-10 wins.
 Progression.Trophies = {
 	win = { Easy = 4, Medium = 6, Hard = 9 },
@@ -114,21 +116,39 @@ Progression.Trophies = {
 	finish = 1, -- a loss or a draw that went the distance
 	cupWin = 25, -- on top of the final's win
 }
--- Each stop: trophies needed, and the reward (gems / coins / a cosmetic id).
+-- Each stop: trophies needed, and the reward (gems / coins / shards / a cosmetic id), in order of
+-- `at`. `key` is what the save remembers a claim by: never change or reuse one (a stop whose key
+-- changed could be claimed twice). New stops get new keys, anywhere on the road.
 Progression.TrophyRoad = {
-	{ at = 10, coins = 300 },
-	{ at = 25, gems = 200 },
-	{ at = 45, cosmetic = "bg_meadow" },
-	{ at = 70, coins = 600 },
-	{ at = 100, gems = 400 },
-	{ at = 140, cosmetic = "bg_fire" },
-	{ at = 190, coins = 1000 },
-	{ at = 250, gems = 600 },
-	{ at = 320, cosmetic = "bg_space" },
-	{ at = 400, gems = 1000 },
-	{ at = 500, coins = 2500 },
-	{ at = 650, gems = 1600 },
+	{ key = "s1", at = 5, shards = 20 },
+	{ key = "1", at = 10, coins = 300 },
+	{ key = "2", at = 25, gems = 200 },
+	{ key = "s2", at = 35, shards = 30 },
+	{ key = "3", at = 45, cosmetic = "bg_meadow" },
+	{ key = "4", at = 70, coins = 600 },
+	{ key = "s3", at = 85, shards = 40 },
+	{ key = "5", at = 100, gems = 400 },
+	{ key = "6", at = 140, cosmetic = "bg_fire" },
+	{ key = "s4", at = 165, shards = 50 },
+	{ key = "7", at = 190, coins = 1000 },
+	{ key = "s5", at = 220, shards = 60 },
+	{ key = "8", at = 250, gems = 600 },
+	{ key = "s6", at = 285, shards = 70 },
+	{ key = "9", at = 320, cosmetic = "bg_space" },
+	{ key = "s7", at = 360, shards = 80 },
+	{ key = "10", at = 400, gems = 1000 },
+	{ key = "s8", at = 450, shards = 100 },
+	{ key = "11", at = 500, coins = 2500 },
+	{ key = "s9", at = 575, shards = 120 },
+	{ key = "12", at = 650, gems = 1600 },
+	{ key = "s10", at = 800, shards = 200 },
 }
+
+-- The key a claim of stop `index` is saved under.
+function Progression.roadKey(index)
+	local stop = Progression.TrophyRoad[index]
+	return stop and (stop.key or tostring(index)) or nil
+end
 
 -- Trophies for one finished match. `m` is what PlayerData.recordMatch gets (plus m.pvp when no
 -- bot sat on the other side).

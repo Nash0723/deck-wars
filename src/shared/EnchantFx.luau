@@ -4,7 +4,8 @@
 --   EnchantFx.color(rarity)                 the colour right now (Secret changes every frame)
 --   EnchantFx.palette(rarity, hue)          four LayerFx colours (glow, rim, middle, core)
 --   EnchantFx.decorateCard(card, enchantId) a glowing rim round a card face and a rune gem on
---                                           its corner (hand, Deck Shelf, enchant window)
+--                                           its top-right corner (the cost is top-left), in the
+--                                           hand, on the Deck Shelf and at the Enchanting Crystal
 --   EnchantFx.aura(model, enchantId, folder, height, live)
 --                                           a slow glow under an enchanted creature on the table:
 --                                           a rune ring, a soft light and motes rising round it.
@@ -104,6 +105,10 @@ local function step(dt)
 			elseif r.kind == "gem" then
 				obj.BackgroundColor3 = EnchantFx.color(r.rarity, r.phase / 6.28)
 				obj.Rotation = 45 + math.sin(clock * 1.4 + r.phase) * 8
+			elseif r.kind == "halo" then
+				obj.BackgroundColor3 = EnchantFx.color(r.rarity, r.phase / 6.28)
+				obj.BackgroundTransparency = 0.82 - pulse * 0.3
+				obj.Rotation = 45 + math.sin(clock * 1.4 + r.phase) * 8
 			elseif r.kind == "gradient" then
 				obj.Rotation = (clock * 90 + r.phase * 57) % 360
 			end
@@ -150,8 +155,9 @@ end
 -- Cards
 ---------------------------------------------------------------------------
 
--- A glowing rim round a card face (just outside its edge) and a rune gem on its top-left corner.
--- Returns the rim frame, or nil when there's no enchant.
+-- A glowing rim round a card face (just outside its edge) and a rune gem on its top-right corner,
+-- clear of the cost (top-left); the card's name gives the gem a little room. opts.gem: the gem's
+-- size in pixels (18). Returns the rim frame, or nil when there's no enchant.
 function EnchantFx.decorateCard(card, enchantId, opts)
 	local e = Enchants.get(enchantId)
 	if not (card and e) then
@@ -162,9 +168,11 @@ function EnchantFx.decorateCard(card, enchantId, opts)
 	if old then
 		old:Destroy()
 	end
-	local oldGem = card:FindFirstChild("EnchantGem")
-	if oldGem then
-		oldGem:Destroy()
+	for _, name in ipairs({ "EnchantGem", "EnchantHalo" }) do
+		local o = card:FindFirstChild(name)
+		if o then
+			o:Destroy()
+		end
 	end
 	local rank = Enchants.Rank[e.rarity] or 1
 	local phase = math.random() * 6.28
@@ -200,30 +208,64 @@ function EnchantFx.decorateCard(card, enchantId, opts)
 		rims[g] = { rarity = e.rarity, phase = phase, kind = "gradient", rank = rank }
 	end
 	rim.Parent = card
-	-- the rune gem
-	local size = opts.gem or 20
+	-- the rune gem: a small cut gem on the top-right corner (a light crown over a darker
+	-- pavilion, a glint), glowing softly behind for Legendary and Secret runes
+	local size = opts.gem or 18
+	local inset = math.floor(size * 0.12 + 0.5)
+	local where = UDim2.new(1, -inset, 0, inset)
+	if rank >= 5 then
+		local halo = Instance.new("Frame")
+		halo.Name = "EnchantHalo"
+		halo.AnchorPoint = Vector2.new(0.5, 0.5)
+		halo.Position = where
+		halo.Size = UDim2.fromOffset(math.floor(size * 1.7), math.floor(size * 1.7))
+		halo.Rotation = 45
+		halo.BackgroundColor3 = EnchantFx.color(e.rarity)
+		halo.BackgroundTransparency = 0.7
+		halo.BorderSizePixel = 0
+		halo.ZIndex = 30
+		halo.Active = false
+		local hc = Instance.new("UICorner")
+		hc.CornerRadius = UDim.new(0, math.floor(size * 0.4))
+		hc.Parent = halo
+		halo.Parent = card
+		rims[halo] = { rarity = e.rarity, phase = phase, kind = "halo", rank = rank }
+	end
 	local gem = Instance.new("Frame")
 	gem.Name = "EnchantGem"
 	gem.AnchorPoint = Vector2.new(0.5, 0.5)
-	gem.Position = UDim2.fromOffset(4, 4)
+	gem.Position = where
 	gem.Size = UDim2.fromOffset(size, size)
 	gem.Rotation = 45
 	gem.BackgroundColor3 = EnchantFx.color(e.rarity)
+	gem.BorderSizePixel = 0
 	gem.ZIndex = 31
 	gem.Active = false
 	local gc = Instance.new("UICorner")
-	gc.CornerRadius = UDim.new(0, 4)
+	gc.CornerRadius = UDim.new(0, math.max(2, math.floor(size * 0.18)))
 	gc.Parent = gem
 	local gs = Instance.new("UIStroke")
-	gs.Thickness = 2
+	gs.Thickness = size >= 24 and 2.5 or 2
 	gs.Color = Color3.fromRGB(18, 14, 28)
 	gs.Parent = gem
+	-- the cut: the top half lighter, the bottom half deeper (the gradient runs top to bottom on
+	-- screen; the gem itself is turned 45 degrees)
+	local cut = Instance.new("UIGradient")
+	cut.Rotation = 45
+	cut.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(236, 236, 236)),
+		ColorSequenceKeypoint.new(0.52, Color3.fromRGB(168, 168, 176)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(128, 128, 140)),
+	})
+	cut.Parent = gem
 	local shine = Instance.new("Frame")
 	shine.Name = "Shine"
 	shine.BackgroundColor3 = Color3.new(1, 1, 1)
-	shine.BackgroundTransparency = 0.35
-	shine.Size = UDim2.fromScale(0.36, 0.36)
-	shine.Position = UDim2.fromScale(0.18, 0.18)
+	shine.BackgroundTransparency = 0.2
+	shine.BorderSizePixel = 0
+	shine.Size = UDim2.fromScale(0.3, 0.3)
+	shine.Position = UDim2.fromScale(0.16, 0.16)
 	shine.ZIndex = 32
 	shine.Active = false
 	local sc = Instance.new("UICorner")
@@ -231,6 +273,16 @@ function EnchantFx.decorateCard(card, enchantId, opts)
 	sc.Parent = shine
 	shine.Parent = gem
 	gem.Parent = card
+	-- the name steps back from the corner so the gem never sits on its last letters
+	local nameLabel = card:FindFirstChild("CardName")
+	if nameLabel and nameLabel:IsA("GuiObject") then
+		local base = nameLabel:GetAttribute("BaseSize")
+		if typeof(base) ~= "UDim2" then
+			base = nameLabel.Size
+			nameLabel:SetAttribute("BaseSize", base)
+		end
+		nameLabel.Size = base - UDim2.fromOffset(math.floor(size * 0.6 + 0.5), 0)
+	end
 	rims[gem] = { rarity = e.rarity, phase = phase, kind = "gem", rank = rank }
 	ensureLoop()
 	return rim

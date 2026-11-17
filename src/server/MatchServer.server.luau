@@ -530,6 +530,12 @@ function Match:finishIfOver()
 					table.insert(rw.gems, g)
 				end
 				rw.totalGems = (rw.totalGems or 0) + (camp.totalGems or 0)
+				-- rune Shards (the enchant currency) from the stage, line by line like the Gems
+				rw.shards = rw.shards or {}
+				for _, g in ipairs(camp.shards or {}) do
+					table.insert(rw.shards, g)
+				end
+				rw.totalShards = (rw.totalShards or 0) + (camp.totalShards or 0)
 				rw.campaign = camp
 				rewards[s] = rw
 				gems[s] = rw.totalGems > 0 and rw.totalGems or nil
