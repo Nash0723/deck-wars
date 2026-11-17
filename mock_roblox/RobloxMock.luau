@@ -393,6 +393,10 @@ CFMT.__index = function(cf, k)
 		return function(c, v)
 			return cfApply(c, v)
 		end
+	elseif k == "PointToObjectSpace" then
+		return function(c, v)
+			return cfApply(c:Inverse(), v)
+		end
 	elseif k == "ToObjectSpace" then
 		return function(c, other)
 			return c:Inverse() * other

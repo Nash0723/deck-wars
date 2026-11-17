@@ -2088,18 +2088,30 @@ function QuestHallUI.summary(parent, order, opts)
 	end
 	S.summary = box
 	S.summaryDraw = draw
-	local off = QuestHallUI.onBook(draw)
-	local readyConn = player:GetAttributeChangedSignal("QuestsReady"):Connect(function()
-		draw(S.book)
-	end)
-	box.AncestryChanged:Connect(function()
-		if not box.Parent then
-			off()
+	-- (both let go once the card is gone: the Trophy Wall's panel was closed)
+	local off, readyConn
+	local function gone()
+		if box.Parent then
+			return false
+		end
+		off()
+		if readyConn then
 			readyConn:Disconnect()
-			if S.summary == box then
-				S.summary = nil
-				S.summaryDraw = nil
-			end
+		end
+		if S.summary == box then
+			S.summary = nil
+			S.summaryDraw = nil
+		end
+		return true
+	end
+	off = QuestHallUI.onBook(function(book)
+		if not gone() then
+			draw(book)
+		end
+	end)
+	readyConn = player:GetAttributeChangedSignal("QuestsReady"):Connect(function()
+		if not gone() then
+			draw(S.book)
 		end
 	end)
 	draw(S.book)
