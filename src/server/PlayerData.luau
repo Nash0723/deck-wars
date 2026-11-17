@@ -48,7 +48,7 @@ local function newProgress()
 		luckyPulls = 0,
 		prefs = {},
 		trophies = 0, -- the Trophy Road (Progression.TrophyRoad); never goes down
-		road = {}, -- ["<stop index>"] = true once claimed
+		road = {}, -- [stop key] = true once claimed (Progression.roadKey; the first 12 stops' keys are "1".."12")
 	}
 end
 
@@ -170,7 +170,7 @@ local function publish(player)
 		-- the Trophy Road: trophies, which stops are claimed ("1,2,5") and how many are ready
 		local claimed = {}
 		for i, stop in ipairs(Progression.TrophyRoad) do
-			if p.road[tostring(i)] then
+			if p.road[Progression.roadKey(i)] then
 				table.insert(claimed, tostring(i))
 			elseif p.trophies >= stop.at then
 				claimable += 1
@@ -454,11 +454,16 @@ function PlayerData.claimAchievement(player, id)
 	entry.claimed = true
 	p.achievements[id] = entry
 	d.gems = math.min(MAX, d.gems + a.gems)
+	local shards = a.shards or 0
+	if shards > 0 then
+		EconomyManager.grantShards(player, shards, "achievement")
+	end
 	changed(player, "achievement")
-	return { gems = a.gems }
+	return { gems = a.gems, shards = shards }
 end
 
--- Claims stop `index` of the Trophy Road. Returns { gems, coins, cosmetic } or nil and a reason.
+-- Claims stop `index` of the Trophy Road. Returns { gems, coins, shards, cosmetic } or nil and a
+-- reason. The claim is saved under the stop's key (Progression.roadKey), not its place on the road.
 function PlayerData.claimRoad(player, index)
 	local d = data(player)
 	local stop = type(index) == "number" and Progression.TrophyRoad[index]
@@ -466,7 +471,7 @@ function PlayerData.claimRoad(player, index)
 		return nil, "no such stop"
 	end
 	local p = ensure(d, player.UserId)
-	local key = tostring(index)
+	local key = Progression.roadKey(index)
 	if p.road[key] then
 		return nil, "already claimed"
 	end
@@ -474,9 +479,12 @@ function PlayerData.claimRoad(player, index)
 		return nil, "not there yet"
 	end
 	p.road[key] = true
-	local out = { gems = stop.gems or 0, coins = stop.coins or 0, cosmetic = stop.cosmetic }
+	local out = { gems = stop.gems or 0, coins = stop.coins or 0, shards = stop.shards or 0, cosmetic = stop.cosmetic }
 	d.gems = math.min(MAX, d.gems + out.gems)
 	d.coins = math.min(MAX, d.coins + out.coins)
+	if out.shards > 0 then
+		EconomyManager.grantShards(player, out.shards, "road")
+	end
 	if stop.cosmetic and EconomyManager.grantCosmetic then
 		EconomyManager.grantCosmetic(player, stop.cosmetic)
 	end

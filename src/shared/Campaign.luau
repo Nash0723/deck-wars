@@ -164,6 +164,14 @@ Campaign.StarText = { "Win", "Win with half your hit points left", "Win within %
 -- First clear, in Gems, by act (Hard pays HardGems times as much, rounded).
 Campaign.FirstClearGems = { 60, 70, 90, 110, 140, 200 }
 Campaign.HardGems = 1.5
+-- Rune Shards (the Enchanting Crystal's currency, 20 an enchant): a first clear pays these by act
+-- (Hard: HardShards times as much, rounded). A world's Normal mode pays 110, its Hard mode 165.
+Campaign.FirstClearShards = { 10, 10, 15, 15, 20, 40 }
+Campaign.HardShards = 1.5
+-- Replays: every win on a stage you've cleared before pays ReplayShards, for the first
+-- ReplayShardWins replay wins of the day (UTC). The hourly Challenge pays Challenge.shards.
+Campaign.ReplayShards = 4
+Campaign.ReplayShardWins = 10
 -- The card a first clear gives, by act: a card of that rarity from the opponents' family.
 -- On Hard every act gives one step rarer, and the boss gives its own Legendary.
 Campaign.FirstClearRarity = { "Common", "Common", "Rare", "Rare", "Epic", "Mythic" }
@@ -174,9 +182,9 @@ Campaign.BossLegendaryChance = 0.02 -- a Normal boss replay can drop the boss's 
 Campaign.DropsPerDay = 10 -- most replay drops a player gets in a day (UTC)
 -- Star chests per world: stars from Normal and Hard together.
 Campaign.Chests = {
-	{ stars = 6, gems = 100 },
-	{ stars = 12, gems = 200, rarity = "Epic" },
-	{ stars = 18, gems = 300, title = true },
+	{ stars = 6, gems = 100, shards = 30 },
+	{ stars = 12, gems = 200, shards = 60, rarity = "Epic" },
+	{ stars = 18, gems = 300, shards = 100, title = true },
 }
 
 -- The hourly Challenge.
@@ -185,6 +193,7 @@ Campaign.Challenge = {
 	difficulty = "Hard",
 	tier = "full",
 	gems = 120,
+	shards = 30, -- (an enchant and a half, every hour you win it)
 	cardOdds = { { "Rare", 70 }, { "Epic", 25 }, { "Mythic", 5 } },
 	turnLimit = 9,
 }
@@ -360,7 +369,7 @@ local function addRule(list, id)
 end
 
 -- Everything about one stage: { id, world, act, hard, boss, name, title, difficulty, family,
--- hero, cards, rules, enemyHp, turnLimit, backdrop, firstGems, firstCard, bossCard }.
+-- hero, cards, rules, enemyHp, turnLimit, backdrop, firstGems, firstShards, firstCard, bossCard }.
 -- Returns nil for an unknown id. `now` is only used for the Challenge.
 function Campaign.stage(id, now)
 	if type(id) == "string" and string.sub(id, 1, 10) == "Challenge:" then
@@ -415,8 +424,10 @@ function Campaign.stage(id, now)
 		firstCard = Campaign.pickCard(family, rarity, world.index * 7 + act)
 	end
 	local firstGems = Campaign.FirstClearGems[act]
+	local firstShards = Campaign.FirstClearShards[act] or 0
 	if hard then
 		firstGems = math.floor(firstGems * Campaign.HardGems + 0.5)
+		firstShards = math.floor(firstShards * Campaign.HardShards + 0.5)
 	end
 	local practice = StarterDecks[family]
 	local name = boss and world.boss.name or world.opponents[act]
@@ -440,6 +451,7 @@ function Campaign.stage(id, now)
 		turnLimit = Campaign.TurnLimit[act] + (world.turnBonus or 0) + (hard and Campaign.HardTurnBonus or 0),
 		backdrop = world.backdrop,
 		firstGems = firstGems,
+		firstShards = firstShards,
 		firstCard = firstCard,
 	}
 end
@@ -490,6 +502,7 @@ function Campaign.challenge(hour)
 		turnLimit = C.turnLimit,
 		backdrop = world.backdrop,
 		firstGems = C.gems,
+		firstShards = C.shards or 0,
 		firstCard = nil, -- a random card (Campaign.Challenge.cardOdds), rolled by the server
 	}
 end
@@ -643,7 +656,7 @@ end
 
 Campaign.MaxStars = #Campaign.Worlds * Campaign.Acts * 3 * 2
 
--- What a world's star chest n holds: { stars, gems, card (id or nil), title (or nil) }.
+-- What a world's star chest n holds: { stars, gems, shards, card (id or nil), title (or nil) }.
 function Campaign.chest(worldKey, n)
 	local w = Campaign.WorldByKey[worldKey]
 	local def = Campaign.Chests[n]
@@ -654,6 +667,7 @@ function Campaign.chest(worldKey, n)
 	return {
 		stars = def.stars,
 		gems = def.gems,
+		shards = def.shards or 0,
 		card = def.rarity and Campaign.pickCard(family, def.rarity, w.index * 3 + n) or nil,
 		title = def.title and w.title or nil,
 	}

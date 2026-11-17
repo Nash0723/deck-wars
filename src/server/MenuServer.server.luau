@@ -4,7 +4,7 @@
 -- MenuAction requests: LoadSettings, SaveSettings, GetDecks, SaveDeck, DeleteDeck, ClaimAchievement,
 -- and the Deck Shelf's cards: FuseCard { id, level }, FuseAll { id }, FuseEverything, SellCard { id, level }
 -- (each answered with "CardResult" and a fresh "Decks" snapshot; see CardLevels for the rules),
--- and the Enchanting Crystal's Enchant { id, mode = "coins" | "lucky" } and EnchantChoose
+-- and the Enchanting Crystal's Enchant { id, mode = "shards" | "lucky" } and EnchantChoose
 -- { keep = "new" | "old" } (see Enchants).
 
 local Players = game:GetService("Players")
@@ -151,7 +151,7 @@ local function cardAction(player, what, options)
 		end
 	elseif what == "Enchant" then
 		-- the Enchanting Crystal in the Park (rules and odds in Enchants)
-		local ok, r = EconomyManager.enchantCard(player, id, options.mode == "lucky" and "lucky" or "coins")
+		local ok, r = EconomyManager.enchantCard(player, id, options.mode == "lucky" and "lucky" or "shards")
 		result.ok = ok
 		if ok then
 			result.id, result.enchant, result.rarity, result.old, result.pending, result.pity = r.card, r.enchant, r.rarity, r.old, r.pending, r.pity
@@ -217,10 +217,10 @@ MenuAction.OnServerEvent:Connect(function(player, what, options)
 		end
 	elseif what == "ClaimAchievement" and type(options) == "table" then
 		local r = PlayerData.claimAchievement(player, options.id)
-		LobbyEvent:FireClient(player, { kind = "claimed", what = "achievement", ok = r ~= nil, id = options.id, gems = r and r.gems })
+		LobbyEvent:FireClient(player, { kind = "claimed", what = "achievement", ok = r ~= nil, id = options.id, gems = r and r.gems, shards = r and r.shards })
 	elseif what == "ClaimRoad" and type(options) == "table" then
 		local r = PlayerData.claimRoad and PlayerData.claimRoad(player, options.index)
-		LobbyEvent:FireClient(player, { kind = "claimed", what = "road", ok = r ~= nil, index = options.index, gems = r and r.gems, coins = r and r.coins, cosmetic = r and r.cosmetic })
+		LobbyEvent:FireClient(player, { kind = "claimed", what = "road", ok = r ~= nil, index = options.index, gems = r and r.gems, coins = r and r.coins, shards = r and r.shards, cosmetic = r and r.cosmetic })
 	end
 end)
 

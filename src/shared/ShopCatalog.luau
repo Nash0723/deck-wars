@@ -2,12 +2,15 @@
 -- the Shop screen uses it to draw prices. Only the server's copy counts (EconomyManager checks
 -- every price itself), so editing this on a client changes nothing.
 --
--- Two currencies:
---   Gems  = premium / gacha currency. Spent on card packs (and a few premium cosmetics/boosts).
---           Bought with Robux (Gem bundles), earned slowly (daily login, first win, level ups,
---           a daily-limited Coin exchange).
---   Coins = earned by playing. Spent in the Shop: deck slots, cosmetics, XP boosters.
---   Robux = Gem bundles and Luck Potions (Roblox Developer Products).
+-- Three currencies:
+--   Gems   = premium / gacha currency. Spent on card packs (and a few premium cosmetics/boosts,
+--            Lucky Enchants). Bought with Robux (Gem bundles), earned slowly (daily login, first
+--            win, level ups, a daily-limited Coin exchange).
+--   Coins  = earned by playing. Spent in the Shop: deck slots, cosmetics, XP boosters.
+--   Shards = rune shards, the enchanting currency (Enchants.Cost). Only earned by playing: the
+--            Campaign (first clears, star chests, replay wins), the hourly Challenge, Trophy Road
+--            stops, achievements and quests. Never sold for Robux.
+--   Robux  = Gem bundles and Luck Potions (Roblox Developer Products).
 --
 -- Change prices here. Every price is a whole number. If you add an item, give it a unique id.
 
@@ -26,11 +29,12 @@ local Rng = req("Rng")
 
 local ShopCatalog = {}
 
-ShopCatalog.Currencies = { "Gems", "Coins" }
+ShopCatalog.Currencies = { "Gems", "Coins", "Shards" }
 -- (Roblox has no 🪙 to draw, so where a coin icon matters UIKit draws one; in plain text Coins
--- are written as a word: Icon.Coins is only a fallback for text-only spots.)
-ShopCatalog.Icon = { Gems = "💎", Coins = "Coins" }
-ShopCatalog.Color = { Gems = { 110, 200, 255 }, Coins = { 255, 200, 70 } }
+-- are written as a word: Icon.Coins is only a fallback for text-only spots. Shards work the same
+-- way: UIKit draws the little crystal, and in plain text they're the word "Shards".)
+ShopCatalog.Icon = { Gems = "💎", Coins = "Coins", Shards = "Shards" }
+ShopCatalog.Color = { Gems = { 110, 200, 255 }, Coins = { 255, 200, 70 }, Shards = { 236, 140, 255 } }
 ShopCatalog.MaxBalance = 999999999
 
 ---------------------------------------------------------------------------
@@ -40,6 +44,7 @@ ShopCatalog.MaxBalance = 999999999
 -- What a brand new player starts with (enough for a couple of packs and a first shop visit).
 ShopCatalog.StartingGems = 300
 ShopCatalog.StartingCoins = 500
+ShopCatalog.StartingShards = 40 -- two enchants (old saves get these too, the first time they load)
 
 -- Daily login, once per UTC day. The streak grows when you come back the next day (up to 7),
 -- and resets if you skip a day. Day 7 of a streak adds the bonus Gems.
