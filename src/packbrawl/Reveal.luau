@@ -3,8 +3,8 @@
 -- show (burst, colours, sound). Then the stat card. For 10 packs, the card fan: every card face
 -- down, tap each one (or Reveal all). Both can offer "Watch the Brawl" (the Pack Brawl fight of
 -- the best card, played after the reveal). UI only, animated with TweenService.
--- With CardBacks.ByRarity on, a face-down card's back wakes up in its rarity's colours while it
--- waits (CardBacks.luau; one flag turns that off and the backs stay the classic navy).
+-- A face-down card's back wakes up while it waits: its biome's art with its rarity's foil
+-- (CardBacks.luau; flags there turn either off, and with both off the backs stay the classic navy).
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -459,7 +459,7 @@ function Reveal.single(opts)
 	corner(aura, 26)
 	local auraStroke = make("UIStroke", { Thickness = 10, Color = packMain:Lerp(WHITE, 0.4), Transparency = 0.5 }, aura)
 	-- the back wakes up in the card's rarity colours (CardBacks.ByRarity), and the glow follows
-	if CardBacks.dress(back, tier) then
+	if CardBacks.dress(back, tier, def.family) then
 		local wake = opts.quick and 0.15 or 0.5
 		CardBacks.awaken(back, wake)
 		task.delay(wake, function()
@@ -781,7 +781,8 @@ function Reveal.fan(opts)
 		local holder = h.cards[i] or PackOpen.cardHolder(stage, PackOpen.FanW, PackOpen.FanH)
 		local back = holder:FindFirstChild("Back")
 		-- each back wakes up in its rarity's colours just after it lands in its place
-		if CardBacks.dress(back, CardData.get(id).rarity) then
+		local cdef = CardData.get(id)
+		if CardBacks.dress(back, cdef.rarity, cdef.family) then
 			CardBacks.awaken(back, 0.5 + (i - 1) * 0.09)
 		end
 		local stamp = (opts.isNew and opts.isNew[i]) and "NEW" or "+1"
