@@ -1,13 +1,17 @@
 -- The Park on your screen: walking out of the room's front door into the shared park, your
 -- avatar with Roblox's own camera and controls, nameplates and companions over everyone, the Top
 -- Collector's cards and plaque, the Pull Altar (opens packs right there), the Trading Post (trade
--- cards with another player: the screens are in TradeUI), the Hall of Pulls, the
+-- cards with another player: the screens are in TradeUI), the Quest Hall on the north lawn
+-- (claim your quests from Quill the owl: the window and the boards are in QuestHallUI; here Quill
+-- watches you and blinks, the Beacon in the cupola glows and a marker floats over the hall while
+-- something is ready to claim, and a guide light shows the way), the Hall of Pulls, the
 -- leaderboards, the big-pull banners (those show in the room too) and the park's life: ducks,
 -- ripples, swaying willows, butterflies, songbirds and pollen in the sun. Client only.
 --
 --   ParkClient.init(ctx)        once, from DeckWarsClient (ctx: see the bottom of DeckWarsClient)
 --   ParkClient.doorPanel(body)  the front door station's panel (who's out there, "Walk out")
---   ParkClient.enter() / ParkClient.leave(instant, thenStation)
+--   ParkClient.enter(opts) / ParkClient.leave(instant, thenStation)   (opts.guide: the guide
+--                               light to the Quest Hall comes on once you're out)
 --   ParkClient.isInside()
 --
 -- The server (ParkServer) picks the Top Collector and owns your companion and title; this only
@@ -32,6 +36,7 @@ local TradeUI = require(here:WaitForChild("TradeUI")) -- (trading cards at the T
 local EnchantUI = require(here:WaitForChild("EnchantUI")) -- (the Enchanting Crystal on the island)
 local EnchantFx = require(here:WaitForChild("EnchantFx"))
 local MenuBriefs = require(here:WaitForChild("MenuBriefs")) -- (a short brief the first time you open each window here)
+local QuestHallUI = require(here:WaitForChild("QuestHallUI")) -- (the Quest Hall's window and boards)
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -724,6 +729,304 @@ local function drawBoards()
 				text(row, medal .. "  " .. tostring(r.name), { Size = UDim2.new(0.75, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, TextSize = 22, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = i <= 3 and GOLD:Lerp(TEXT, 0.4) or TEXT })
 				text(row, tostring(r.value), { Size = UDim2.new(0.25, 0, 1, 0), Position = UDim2.fromScale(0.75, 0), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 22, Font = TITLE_FONT, TextColor3 = GOLD })
 			end
+		end
+	end
+end
+
+---------------------------------------------------------------------------
+-- The Quest Hall: Quill watches you and blinks, the Beacon in the cupola glows (and a marker
+-- floats over the hall) while something is ready to claim, the fire inside flickers, the
+-- armillary sphere out front turns, and a guide light shows the way there
+---------------------------------------------------------------------------
+
+local function questHall()
+	local root = parkModel()
+	return root and root:FindFirstChild("QuestHall")
+end
+
+local function questsReady()
+	return tonumber(player:GetAttribute("QuestsReady")) or 0
+end
+
+-- The hall's moving parts, found once.
+local function questRig()
+	local hall = questHall()
+	if not hall then
+		return nil
+	end
+	local rig = S.quest
+	if rig and rig.hall == hall then
+		return rig
+	end
+	rig = { hall = hall, yaw = 0, pitch = 0, want = 0, wantPitch = 0, nextLook = 0, nextBlink = 1.5, blinkUntil = 0, closed = false, acc = 1 }
+	local keeper = hall:FindFirstChild("Keeper")
+	local head = keeper and keeper:FindFirstChild("Head")
+	if head and head:IsA("Model") then
+		rig.keeper, rig.keeperBase = keeper, keeper:GetPivot()
+		rig.head, rig.headBase = head, head:GetPivot()
+		local neck = head:FindFirstChild("Neck")
+		rig.neck = neck and neck.CFrame or rig.headBase
+		rig.lids = {}
+		for _, d in ipairs(head:GetDescendants()) do
+			if d:IsA("BasePart") and d.Name == "Lid" then
+				table.insert(rig.lids, d)
+			end
+		end
+		rig.face = head:FindFirstChild("Head") -- (the head itself: Quill's "!" floats over it)
+	end
+	local arm = hall:FindFirstChild("Armillary")
+	if arm and arm:IsA("Model") then
+		rig.arm, rig.armBase = arm, arm:GetPivot()
+	end
+	local beacon = hall:FindFirstChild("Beacon")
+	if beacon and beacon:IsA("BasePart") then
+		rig.beacon, rig.beaconColor, rig.beaconMaterial = beacon, beacon.Color, beacon.Material
+		rig.beaconLight = beacon:FindFirstChildWhichIsA("PointLight")
+	end
+	local fire = hall:FindFirstChild("FireSpot")
+	rig.fireLight = fire and fire:FindFirstChildWhichIsA("PointLight")
+	rig.fireBrightness = rig.fireLight and rig.fireLight.Brightness or 0
+	rig.desk = hall:FindFirstChild("Desk")
+	rig.sign = hall:FindFirstChild("Sign")
+	S.quest = rig
+	return rig
+end
+
+-- A scroll marker over the cupola (seen from anywhere in the Park) and a "!" over Quill.
+local function questMarkers(rig)
+	if rig.markers then
+		return rig.markers
+	end
+	local mk = {}
+	if rig.beacon then
+		local bb = make("BillboardGui", { Name = "QuestMarker", Size = UDim2.fromOffset(64, 78), StudsOffsetWorldSpace = Vector3.new(0, 4.6, 0), LightInfluence = 0, MaxDistance = 450, Enabled = false }, rig.beacon)
+		local holder = make("Frame", { Name = "Holder", Size = UDim2.fromOffset(64, 78), BackgroundTransparency = 1 }, bb)
+		make("Frame", { Name = "Point", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 60), Size = UDim2.fromOffset(18, 18), Rotation = 45, BackgroundColor3 = GOLD, BorderSizePixel = 0 }, holder)
+		local disc = make("Frame", { Name = "Disc", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), Size = UDim2.fromOffset(56, 56), BackgroundColor3 = Color3.new(1, 1, 1) }, holder)
+		corner(disc, 28)
+		make("UIGradient", { Rotation = 90, Color = ColorSequence.new(rgb(140, 92, 200), rgb(52, 38, 100)) }, disc)
+		stroke(disc, GOLD, 3)
+		text(disc, "📜", { Size = UDim2.fromScale(1, 1), TextSize = 28, Font = TITLE_FONT })
+		local count = text(disc, "", { Name = "Count", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 8, 0, -6), Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 0, BackgroundColor3 = rgb(230, 70, 80), Font = TITLE_FONT, TextSize = 16, TextColor3 = Color3.new(1, 1, 1) })
+		corner(count, 13)
+		stroke(count, INK, 2)
+		Juice.bob(holder, 5, 2.2)
+		mk.hall, mk.count = bb, count
+	end
+	if rig.face then
+		local bb = make("BillboardGui", { Name = "QuillMarker", Size = UDim2.fromOffset(40, 44), StudsOffsetWorldSpace = Vector3.new(0, 2.3, 0), LightInfluence = 0, MaxDistance = 70, Enabled = false }, rig.face)
+		local bang = make("TextLabel", { Name = "Bang", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 2), Size = UDim2.fromOffset(36, 36), BackgroundColor3 = Color3.new(1, 1, 1), Text = "!", Font = TITLE_FONT, TextSize = 28, TextColor3 = rgb(206, 120, 20) }, bb)
+		corner(bang, 18)
+		stroke(bang, INK, 2.5)
+		Juice.bob(bang, 4, 3)
+		mk.quill = bb
+	end
+	rig.markers = mk
+	return mk
+end
+
+-- The guide light: a glowing arc from you to the hall's porch steps (it fades out as you arrive).
+local function stopGuide()
+	local g = S.guide
+	S.guide = nil
+	if g then
+		for _, inst in ipairs(g.parts) do
+			if inst.Parent then
+				inst:Destroy()
+			end
+		end
+	end
+end
+
+local function guideToHall(seconds)
+	local rig = questRig()
+	local body = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not rig or not rig.sign or not body then
+		return false
+	end
+	stopGuide()
+	local sign = rig.sign
+	-- (the sign hangs over the porch, 9.3 studs up: the spot is on the ground in front of the steps)
+	local spot = Vector3.new(sign.Position.X, sign.Position.Y - 8.3, sign.Position.Z) + sign.CFrame.LookVector * 3
+	if (body.Position - spot).Magnitude < 16 then
+		return false
+	end
+	-- (both ends point up, so the beam arcs over the park)
+	local a0 = make("Attachment", { Name = "QuestGuideStart", Position = Vector3.new(0, -1, 0), Orientation = Vector3.new(0, 0, 90) }, body)
+	local a1 = make("Attachment", { Name = "QuestGuideEnd", Position = sign.CFrame:PointToObjectSpace(spot), Orientation = Vector3.new(0, 0, 90) }, sign)
+	local beam = make("Beam", {
+		Name = "QuestGuide",
+		Attachment0 = a0,
+		Attachment1 = a1,
+		Color = ColorSequence.new(rgb(255, 234, 156), rgb(255, 186, 80)),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.9),
+			NumberSequenceKeypoint.new(0.12, 0.3),
+			NumberSequenceKeypoint.new(0.88, 0.3),
+			NumberSequenceKeypoint.new(1, 0.55),
+		}),
+		Width0 = 0.9,
+		Width1 = 2.4,
+		FaceCamera = true,
+		LightEmission = 1,
+		LightInfluence = 0,
+		Segments = 48,
+		Texture = "rbxasset://textures/particles/sparkles_main.dds",
+		TextureMode = Enum.TextureMode.Wrap,
+		TextureLength = 4,
+		TextureSpeed = 1.4,
+	}, sign)
+	S.guide = { parts = { beam, a0, a1 }, beam = beam, a0 = a0, body = body, spot = spot, untilT = os.clock() + (seconds or 40) }
+	Juice.sound("chime", 1.3, 0.3)
+	return true
+end
+
+local function updateGuide()
+	local g = S.guide
+	if not g then
+		return
+	end
+	if not g.a0.Parent or not g.body.Parent or os.clock() > g.untilT then
+		stopGuide()
+		return
+	end
+	local d = (g.body.Position - g.spot).Magnitude
+	if d < 14 then
+		stopGuide()
+		return
+	end
+	local h = math.clamp(d * 0.3, 3, 36)
+	g.beam.CurveSize0 = h
+	g.beam.CurveSize1 = -h
+	-- (it fades in the last stretch)
+	g.beam.Width1 = math.clamp(d / 12, 1, 2.4)
+end
+
+-- The HUD's quest button: opens the window at the counter (true), or shows the way there.
+local function questButton()
+	local rig = questRig()
+	local body = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if rig and rig.desk and body and (body.Position - rig.desk.Position).Magnitude <= 22 then
+		QuestHallUI.open()
+		return true
+	elseif guideToHall(40) then
+		toast("📜 Follow the light to the Quest Hall on the north lawn.")
+	elseif not rig then
+		toast("📜 The Quest Hall isn't in this park.")
+	end
+end
+
+-- Quill hops when you claim something and nods when you swap a quest.
+local function keeperReact(kind)
+	local rig = S.quest
+	if not rig then
+		return
+	end
+	if kind == "hop" then
+		rig.hop = os.clock()
+	elseif kind == "nod" then
+		rig.nod = os.clock()
+	end
+end
+
+local function updateQuestHall(dt)
+	local rig = questRig()
+	if not rig then
+		return
+	end
+	local t = os.clock()
+	local body = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local near = (body and rig.desk) and (body.Position - rig.desk.Position).Magnitude or math.huge
+	-- the Beacon, the markers and the HUD button, a few times a second
+	rig.acc += dt
+	if rig.acc >= 0.25 then
+		rig.acc = 0
+		local ready = questsReady()
+		local on = ready > 0
+		local mk = questMarkers(rig)
+		if mk.hall then
+			mk.hall.Enabled = on and near > 26
+			mk.count.Text = tostring(ready)
+		end
+		if mk.quill then
+			mk.quill.Enabled = on and near <= 60
+		end
+		if rig.beacon and rig.beaconOn ~= on then
+			rig.beaconOn = on
+			rig.beacon.Material = on and Enum.Material.Neon or rig.beaconMaterial
+			rig.beacon.Color = on and rgb(255, 214, 120) or rig.beaconColor
+		end
+		if S.questPill and S.questReady ~= ready then
+			S.questReady = ready
+			S.questPill.Text = on and ("📜 " .. ready .. " to claim") or "📜 Quests"
+			S.questPill.BackgroundColor3 = on and rgb(196, 140, 40) or rgb(84, 60, 130)
+			if on then
+				Juice.pop(S.questPill, 1.15, 0.4)
+			end
+		end
+	end
+	if rig.beaconLight then
+		rig.beaconLight.Brightness = rig.beaconOn and (1.6 + math.sin(t * 2.4) * 0.6) or 0
+	end
+	-- the fire inside flickers
+	if rig.fireLight then
+		local n = (math.sin(t * 11) + math.sin(t * 6.7 + 1) + math.sin(t * 19.3 + 2)) / 3
+		rig.fireLight.Brightness = rig.fireBrightness * (0.82 + 0.18 * n)
+	end
+	-- the armillary sphere turns slowly
+	if rig.arm then
+		rig.arm:PivotTo(CFrame.new(rig.armBase.Position) * CFrame.Angles(0, t * 0.22, 0) * rig.armBase.Rotation)
+	end
+	if not rig.head or near > 140 then
+		return
+	end
+	-- Quill looks at you when you're close (owls turn their heads a long way), or round the hall
+	if body and near < 55 then
+		local v = rig.neck:PointToObjectSpace(body.Position + Vector3.new(0, 1.5, 0))
+		rig.want = math.clamp(math.atan2(-v.X, -v.Z), -math.rad(125), math.rad(125))
+		rig.wantPitch = math.clamp(math.atan2(v.Y, math.sqrt(v.X * v.X + v.Z * v.Z)), -0.4, 0.3)
+	elseif t >= rig.nextLook then
+		rig.nextLook = t + 1.6 + math.random() * 2.8
+		local big = math.random() < 0.18
+		rig.want = math.rad(big and (math.random() < 0.5 and -120 or 120) or math.random(-50, 50))
+		rig.wantPitch = math.rad(math.random(-8, 10))
+	end
+	local k = 1 - math.exp(-dt * 8)
+	rig.yaw += (rig.want - rig.yaw) * k
+	rig.pitch += (rig.wantPitch - rig.pitch) * k
+	local nod = 0
+	if rig.nod then
+		local p = (t - rig.nod) / 0.5
+		if p >= 1 then
+			rig.nod = nil
+		else
+			nod = -math.sin(p * math.pi * 2) * 0.28
+		end
+	end
+	local lift = 0
+	if rig.hop then
+		local p = (t - rig.hop) / 0.5
+		if p >= 1 then
+			rig.hop = nil
+			rig.keeper:PivotTo(rig.keeperBase)
+		else
+			lift = math.sin(p * math.pi) * 0.9
+			rig.keeper:PivotTo(CFrame.new(0, lift, 0) * rig.keeperBase)
+		end
+	end
+	local turn = rig.neck * CFrame.Angles(0, rig.yaw, 0) * CFrame.Angles(rig.pitch + nod, 0, 0) * rig.neck:Inverse()
+	rig.head:PivotTo(CFrame.new(0, lift, 0) * turn * rig.headBase)
+	-- and blinks now and then (sometimes twice)
+	if t >= rig.nextBlink then
+		rig.blinkUntil = t + 0.12
+		rig.nextBlink = t + 2.2 + math.random() * 3.8
+		rig.blink2 = math.random() < 0.22 and (t + 0.26) or nil
+	end
+	local closed = t < rig.blinkUntil or (rig.blink2 ~= nil and t >= rig.blink2 and t < rig.blink2 + 0.1)
+	if closed ~= rig.closed then
+		rig.closed = closed
+		for _, lid in ipairs(rig.lids) do
+			lid.Transparency = closed and 0 or 1
 		end
 	end
 end
@@ -1775,11 +2078,20 @@ local function buildGui()
 		if S.editor then
 			closeEditor()
 		else
+			QuestHallUI.close()
 			ParkAction:FireServer("State")
 			openEditor()
 		end
 	end, { Size = UDim2.fromOffset(140, 46), LayoutOrder = 2 })
-	S.skyLabel = text(hud, "", { Name = "SkyClock", Size = UDim2.fromOffset(260, 46), LayoutOrder = 3, Font = TITLE_FONT, TextSize = 17, TextColor3 = rgb(255, 245, 225), TextStrokeTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	S.questPill = button(hud, "📜 Quests", rgb(84, 60, 130), function()
+		if questButton() then
+			-- (the window is up: the other panels go away)
+			closeEditor()
+			closePacks()
+			EnchantUI.close()
+		end
+	end, { Name = "Quests", Size = UDim2.fromOffset(150, 46), LayoutOrder = 3 })
+	S.skyLabel = text(hud, "", { Name = "SkyClock", Size = UDim2.fromOffset(260, 46), LayoutOrder = 4, Font = TITLE_FONT, TextSize = 17, TextColor3 = rgb(255, 245, 225), TextStrokeTransparency = 0.5, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local hint = text(S.gui, "WASD to walk · E to use · the Top Collector stands across the pond", { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -16), Size = UDim2.fromOffset(520, 22), TextColor3 = rgb(255, 245, 225), TextStrokeTransparency = 0.4, Visible = false })
 	S.hint = hint
 end
@@ -1834,7 +2146,7 @@ pcall(function()
 	RunService:BindToRenderStep("ParkCameraFence", Enum.RenderPriority.Camera.Value + 1, fenceCamera)
 end)
 
-function ParkClient.enter()
+function ParkClient.enter(opts)
 	local ctx = S.ctx
 	if S.inside or S.busy or not ctx or ctx.getMode() ~= "menu" then
 		return
@@ -1886,11 +2198,21 @@ function ParkClient.enter()
 	watchTopCollector()
 	drawHall()
 	drawBoards()
+	QuestHallUI.request()
+	QuestHallUI.drawBoards(questHall())
 	showHud(true)
 	S.hint.Visible = true
 	task.spawn(swingDoor, false, 0.1)
 	fade(1, 0.6)
 	S.busy = false
+	-- (sent out to claim something: the guide light shows the way to the Quest Hall)
+	if opts and opts.guide then
+		task.delay(0.6, function()
+			if S.inside and not S.busy then
+				guideToHall(40)
+			end
+		end)
+	end
 end
 
 -- Back to the room. instant = no fade (a match is starting). thenStation = a station to open after.
@@ -1904,6 +2226,8 @@ function ParkClient.leave(instant, thenStation)
 	closePacks()
 	TradeUI.close()
 	EnchantUI.close()
+	QuestHallUI.close()
+	stopGuide()
 	showHud(false)
 	S.hint.Visible = false
 	if not instant then
@@ -1960,16 +2284,20 @@ function ParkClient.doorPanel(body)
 	local list = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, body)
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	text(list, "Step outside into the park: everyone in this server walks around as their avatar.", { Size = UDim2.new(1, 0, 0, 40), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1 })
+	-- (the Quest Hall comes first, in gold while rewards wait there)
+	local ready = questsReady()
 	local lines = {
+		ready > 0 and ("📜  " .. (ready == 1 and "1 reward waits" or (ready .. " rewards wait")) .. " at the Quest Hall on the north lawn, with Quill the owl.") or "📜  Quests are claimed at the Quest Hall on the north lawn, with Quill the owl.",
 		"🏆  Whoever here has the rarest cards stands on the Top Collector's pedestal.",
 		"✨  Open packs at the Pull Altar by the Hall of Pulls. Mythic and up gets a banner for everyone.",
 		"◆  Enchant your cards at the big crystal on the island. Every rune rarity glows its own colour.",
 		"🤝  Swap cards with other players at the Trading Post.",
-		"📜  Hall of Pulls and leaderboards: Campaign stars and levels.",
+		"📊  Hall of Pulls and leaderboards: Campaign stars and levels.",
 		"🐾  Pick a creature to walk with you, and wear a title you've earned.",
 	}
 	for i, l in ipairs(lines) do
-		text(list, l, { Size = UDim2.new(1, 0, 0, 36), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = DIM, LayoutOrder = 1 + i })
+		local gold = i == 1 and ready > 0
+		text(list, l, { Size = UDim2.new(1, 0, 0, 36), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = gold and GOLD or DIM, Font = gold and TITLE_FONT or BODY_FONT, LayoutOrder = 1 + i })
 	end
 	local count = 0
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -1978,8 +2306,8 @@ function ParkClient.doorPanel(body)
 		end
 	end
 	text(list, count == 1 and "1 player is out there now." or (count .. " players are out there now."), { Size = UDim2.new(1, 0, 0, 22), Font = TITLE_FONT, TextSize = 17, TextColor3 = GOLD, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 10 })
-	local go = button(list, "🌳  Walk out", GOOD, function()
-		ParkClient.enter()
+	local go = button(list, ready > 0 and "🌳  Walk out and claim them" or "🌳  Walk out", GOOD, function()
+		ParkClient.enter({ guide = questsReady() > 0 })
 	end, { Name = "WalkOut", Size = UDim2.new(1, 0, 0, 52), TextSize = 24, LayoutOrder = 11 })
 	Juice.shine(go, 3, UDim.new(0, 10))
 end
@@ -1993,6 +2321,25 @@ function ParkClient.init(ctx)
 	buildGui()
 	TradeUI.init({ gui = S.gui, action = ParkAction, makeCard = ctx.makeCard, toast = toast })
 	EnchantUI.init({ gui = S.gui, makeCard = ctx.makeCard, toast = toast, hideMenus = hideForEnchant })
+	QuestHallUI.init({
+		gui = S.gui,
+		makeCard = ctx.makeCard,
+		toast = toast,
+		inPark = function()
+			return S.inside
+		end,
+		keeper = keeperReact,
+		desk = function()
+			local rig = questRig()
+			return rig and rig.desk
+		end,
+	})
+	-- (the boards on the hall's walls follow your quest book)
+	QuestHallUI.onBook(function()
+		if S.inside then
+			QuestHallUI.drawBoards(questHall())
+		end
+	end)
 	ParkEvent.OnClientEvent:Connect(function(e)
 		if type(e) ~= "table" then
 			return
@@ -2037,15 +2384,24 @@ function ParkClient.init(ctx)
 		end
 		if prompt.Name == "OpenPacks" then
 			EnchantUI.close()
+			QuestHallUI.close()
 			openPacks()
 		elseif prompt.Name == "Enchant" then
 			closeEditor()
 			closePacks()
+			QuestHallUI.close()
 			EnchantUI.open()
 		elseif prompt.Name == "Trade" then
 			closeEditor()
 			closePacks()
+			QuestHallUI.close()
 			TradeUI.openPicker()
+		elseif prompt.Name == "Quests" then
+			closeEditor()
+			closePacks()
+			EnchantUI.close()
+			stopGuide()
+			QuestHallUI.open()
 		elseif prompt.Name == "GoHome" then
 			ParkClient.leave(false)
 		elseif prompt.Name == "Campaign" then
@@ -2054,7 +2410,8 @@ function ParkClient.init(ctx)
 			ParkClient.leave(false, "DuelTable")
 		end
 	end)
-	-- Escape puts the enchant scene away, or closes the "My look" editor and the panels.
+	-- Escape puts the enchant scene (or the Quest Hall's chest) away, or closes the "My look"
+	-- editor and the panels.
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed or not S.inside then
 			return
@@ -2063,9 +2420,13 @@ function ParkClient.init(ctx)
 			if EnchantUI.escape() then
 				return -- (the enchant scene goes first: the card flies back, the window stays)
 			end
+			if QuestHallUI.escape() then
+				return -- (an open chest goes first, then the window)
+			end
 			closeEditor()
 			closePacks()
 			EnchantUI.close()
+			QuestHallUI.close()
 			TradeUI.escape()
 		end
 	end)
@@ -2140,6 +2501,8 @@ function ParkClient.init(ctx)
 		updatePeople(dt)
 		updateDoors(dt)
 		parkLife(dt)
+		updateQuestHall(dt)
+		updateGuide()
 	end)
 	-- the Top Collector can change while you're inside (someone joins, pulls something rare)
 	task.spawn(function()

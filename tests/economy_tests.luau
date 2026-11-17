@@ -524,7 +524,7 @@ do
 	for i, stop in ipairs(Progression.TrophyRoad) do
 		check(stop.at > last, "Trophy Road stop " .. i .. " comes after the one before")
 		last = stop.at
-		check((stop.gems or 0) > 0 or (stop.coins or 0) > 0 or (stop.cosmetic and ShopCatalog.CosmeticById[stop.cosmetic] ~= nil), "Trophy Road stop " .. i .. " has a reward")
+		check((stop.gems or 0) > 0 or (stop.coins or 0) > 0 or (stop.shards or 0) > 0 or (stop.cosmetic and ShopCatalog.CosmeticById[stop.cosmetic] ~= nil), "Trophy Road stop " .. i .. " has a reward")
 	end
 	check(Progression.trophiesFor({ result = "win", difficulty = "Hard" }) > Progression.trophiesFor({ result = "win", difficulty = "Easy" }), "a Hard win earns more trophies than an Easy one")
 	check(Progression.trophiesFor({ result = "win", pvp = true }) == Progression.Trophies.pvpWin, "a win against people")

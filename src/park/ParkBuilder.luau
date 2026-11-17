@@ -28,6 +28,14 @@
 --   Park.DuelKiosk.Table       a ProximityPrompt "Duel" (opens the Duel Table in your room)
 --   Park.TradingPost.Desk      a ProximityPrompt "Trade" (trade cards with another player); the
 --                               server also measures "at the Trading Post" from this part
+--   Park.QuestHall             the Quest Hall on the north lawn (Model): Desk (unseen, over Quill's
+--                               counter, with a ProximityPrompt "Quests"; QuestServer measures "at
+--                               the hall" from it), Keeper (Quill the owl: a "Head" group that turns
+--                               round its unseen Neck part, unseen Lid parts to blink), Beacon (the
+--                               cupola's glass, with a dark PointLight: the client lights it when you
+--                               have quests to claim), DailyBoard, WeeklyBoard, JourneyBoard and
+--                               NoticeBoard (the client draws them), Armillary (a group the client
+--                               turns)
 --   Park.Pond.Ducks.Duck1..    the ducks (Models; the client glides them round the pond)
 --   Park.Grounds.Willows          the weeping willows (the client sways their "Strand" parts)
 --   Park.Grounds.Spots            Vector3Values "Butterfly" and "Bird": where the client lets
@@ -996,6 +1004,12 @@ local BIRDBATH = SYCAMORE + Vector3.new(16, 0, 14)
 local CAMPFIRE = polar(math.rad(48), 80) -- a campfire circle on the south-east lawn
 local TRADING = polar(math.rad(240), 112) -- the Trading Post, on the west lawn beyond the sycamore
 local ALTAR_AT = HALL + HALL_FRONT * 17 -- the Pull Altar: in front of the Hall of Pulls
+-- The Quest Hall: on the north lawn, at the far end of the park from the Home door, facing the
+-- pond (its cupola shows over the island as you walk in). Its path leaves the shore path a little
+-- west of the north bench and curves round onto the hall's axis, into its forecourt.
+local QUEST_HALL = Vector3.new(0, 0, -102)
+local QUEST_FRONT = Vector3.new(0, 0, 1)
+local QUEST_PATH_FROM = 196 -- degrees
 local ALCOVES = { 30, 60, 120, 150, 210, 300, 330 } -- quiet nooks round the edge, degrees
 local SHORE_LAMPS = { 35, 100, 140, 173, 222, 260, 306, 325 } -- (none in the way of the paths or the terrace; 306 lights the stepping stones)
 local SHORE_BENCHES = { 42, 180, 215, 318 }
@@ -1010,11 +1024,28 @@ local function shoreSpot(deg, out)
 	return polar(a, pondR(a) + out)
 end
 
+-- The path up to the Quest Hall: out from the shore path, then round onto the hall's axis.
+local function questPathPoints()
+	local a = math.rad(QUEST_PATH_FROM)
+	local p0 = polar(a, pondR(a) + 8)
+	local p1 = p0 + polar(a, 12)
+	local p3 = QUEST_HALL + QUEST_FRONT * 28 -- (just inside the forecourt)
+	local p2 = p3 + QUEST_FRONT * 14
+	local pts = {}
+	for i = 0, 14 do
+		local t = i / 14
+		local u = 1 - t
+		table.insert(pts, p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t))
+	end
+	return pts
+end
+
 local function allPathPoints()
 	local list = {}
 	for _, p in ipairs(PATHS) do
 		table.insert(list, windingPoints(p.a, pondR(p.a) + 8, p.to, p.sway))
 	end
+	table.insert(list, questPathPoints()) -- (last: the lantern posts and jasmine borders skip it)
 	return list
 end
 
@@ -1060,7 +1091,7 @@ end
 
 local function isClear(p, clear, taken, gap)
 	if math.abs(p.X) < 34 and p.Z < -64 then
-		return false -- the Hall of Pulls and its boards, and the view of them across the pond
+		return false -- the Quest Hall and its forecourt, and the view of them across the pond
 	end
 	if math.abs(p.X) < 24 and p.Z > 36 then
 		return false -- the view from the Home gate, over the lawn to the pond and the island
@@ -1380,7 +1411,7 @@ end
 
 local function clearGrassUnder(root, terrain)
 	local list = {}
-	for _, name in ipairs({ "TradingPost", "Boards", "HallOfPulls", "TopCollector", "Gazebo", "DuelKiosk", "Campfire", "HomeDoor", "CampaignGate" }) do
+	for _, name in ipairs({ "TradingPost", "QuestHall", "Boards", "HallOfPulls", "TopCollector", "Gazebo", "DuelKiosk", "Campfire", "HomeDoor", "CampaignGate" }) do
 		table.insert(list, root:FindFirstChild(name))
 	end
 	local grounds = root:FindFirstChild("Grounds")
@@ -2209,6 +2240,73 @@ end
 -- under striped awnings and tables inside to sit down at across from someone.
 ---------------------------------------------------------------------------
 
+---------------------------------------------------------------------------
+-- The Quest Hall: where you claim your quests (QuestServer; the client's window is QuestHallUI).
+-- The hall itself, Quill and the forecourt are made in gen_park.py; this adds the prompt, the
+-- sign, the lights, the fire, the smoke and what stands round it.
+---------------------------------------------------------------------------
+
+local function buildQuestHall(root, pathPoints)
+	local m = make("Model", { Name = "QuestHall" }, root)
+	local cf = CFrame.lookAt(QUEST_HALL, QUEST_HALL + QUEST_FRONT) -- (its front, -Z, faces the pond)
+	local function at(x, y, z)
+		return (cf * CFrame.new(x, y, z)).Position
+	end
+	local _, named = propFrom(m, "questhall", cf)
+	-- Quill on his perch behind the counter
+	local keeper = make("Model", { Name = "Keeper" }, m)
+	propFrom(keeper, "questowl", cf * CFrame.new(0, 4.6, 4.8), 0.85)
+	-- the prompt over the counter (the server measures "at the hall" from this part too)
+	if named.Desk then
+		prompt(named.Desk, "Quests", "See your quests", "Quest Hall", 14)
+	end
+	if named.Sign then
+		local sg = make("SurfaceGui", { Face = Enum.NormalId.Front, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 40, LightInfluence = 0 }, named.Sign)
+		make("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "📜 Quest Hall", TextScaled = true, Font = Enum.Font.FredokaOne, TextColor3 = rgb(255, 222, 140) }, sg)
+	end
+	-- the chandelier, the fire and its smoke, and the Beacon (dark until the client lights it)
+	if named.ChandelierLight then
+		light(named.ChandelierLight, rgb(255, 206, 150), 30, 1.1)
+	end
+	if named.FireSpot then
+		light(named.FireSpot, rgb(255, 150, 70), 18, 1.4)
+		make("Fire", { Size = 3, Heat = 5, Color = rgb(255, 130, 50), SecondaryColor = rgb(255, 214, 120) }, named.FireSpot)
+	end
+	if named.Beacon then
+		light(named.Beacon, rgb(255, 214, 120), 26, 0)
+	end
+	if named.ChimneyTop then
+		make("Smoke", { Color = rgb(226, 222, 216), Opacity = 0.1, RiseVelocity = 3, Size = 1.6 }, named.ChimneyTop)
+	end
+	-- lanterns: one hanging in the porch, one either side of the door, one by each window inside
+	lantern(m, at(0, 8.6 - 1.39 * 1.3, -10.4), 1.3)
+	for _, sx in ipairs({ -1, 1 }) do
+		lantern(m, at(sx * 4.95, 6.55 - 1.39 * 0.9, -8.92), 0.9)
+		lantern(m, at(sx * 10.32, 7.6 - 1.39 * 0.9, -3.25), 0.9)
+	end
+	-- round the forecourt: topiaries by the steps, a bench either side facing the compass rose,
+	-- lamps where the path comes in; hydrangeas at the front corners, lavender along the sides
+	local rng = Random.new(31)
+	for i, sx in ipairs({ -1, 1 }) do
+		topiary(m, at(sx * 8.4, 0, -14.9))
+		bench(m, at(sx * 8.6, 0, -20), at(0, 0, -20))
+		lamp(m, at(sx * 7.4, 0, -30.4))
+		hydrangea(m, CFrame.new(at(sx * 14.3, 0, -9.3)), rng, i)
+		for _, z in ipairs({ -4.5, -0.5, 3.5, 7.5 }) do
+			lavender(m, CFrame.new(at(sx * 14.3, 0, z)), rng)
+		end
+	end
+	-- little lantern posts along its path (a lamp already stands further up, on the other side)
+	local pts = pathPoints[#pathPoints]
+	for _, spot in ipairs({ { 4, -6.4 }, { 7, 6.4 } }) do
+		local p, q = pts[spot[1]], pts[spot[1] + 1]
+		local post = p + Vector3.new(-(q - p).Z, 0, (q - p).X).Unit * spot[2]
+		propFrom(make("Model", { Name = "Bollard" }, m), "bollard", CFrame.new(post))
+		lantern(m, post + Vector3.new(0, 1.8, 0), 0.85)
+	end
+	return m
+end
+
 local function buildTradingPost(root)
 	local m = make("Model", { Name = "TradingPost" }, root)
 	local cf = CFrame.lookAt(TRADING, Vector3.new(0, 0, 0)) -- (its front, -Z, faces the pond)
@@ -2293,6 +2391,7 @@ function ParkBuilder.build(workspaceRoot)
 	buildBoards(root)
 	buildGazebo(root)
 	buildTradingPost(root)
+	buildQuestHall(root, pathPoints)
 	buildPark(root, pathPoints)
 	buildCozy(root, pathPoints)
 	gate(root, "HomeDoor", 0, "🏠 Home", rgb(255, 196, 120), "GoHome", "Back to your room")
@@ -2308,6 +2407,8 @@ function ParkBuilder.build(workspaceRoot)
 	glow(glows, TRADING + Vector3.new(0, 7, 0), 20, 1)
 	glow(glows, TRADING - Vector3.new(TRADING.X, 0, TRADING.Z).Unit * 11 + Vector3.new(0, 6, 0), 16, 0.7)
 	glow(glows, GAZEBO + Vector3.new(0, 6, 0), 16, 0.6)
+	glow(glows, QUEST_HALL + QUEST_FRONT * 15 + Vector3.new(0, 7, 0), 22, 1) -- (the Quest Hall's porch)
+	glow(glows, QUEST_HALL + QUEST_FRONT * 24 + Vector3.new(0, 6, 0), 18, 0.7)
 	if terrainMade then
 		pcall(clearGrassUnder, root, terrain)
 	end
@@ -2324,6 +2425,7 @@ ParkBuilder.UseTerrain = true -- (paint the lawn and the pond into terrain when 
 -- (for the tests and the map preview)
 ParkBuilder.Gazebo = GAZEBO
 ParkBuilder.Terrace = TERRACE
+ParkBuilder.QuestHall = QUEST_HALL
 ParkBuilder.bridgeTop = bridgeTop
 
 return ParkBuilder

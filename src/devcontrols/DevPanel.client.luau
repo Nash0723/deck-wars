@@ -9,6 +9,7 @@
 -- the real odds), so you can still test true probability.
 -- Enchanting: gives or clears Shards (the enchant currency), and picks the rarity every enchant
 -- lands on (Random = the real odds), to see each rarity's enchant scene at the crystal.
+-- Quests: a new day or week of quests, or all of them finished (to try the Quest Hall's claims).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -71,7 +72,7 @@ local tab = button(gui, "DEV", rgb(255, 120, 60), function() end, {
 	Size = UDim2.fromOffset(46, 74),
 	TextSize = 16,
 })
-local panel = make("Frame", { Name = "Panel", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 54, 0.5, 0), Size = UDim2.fromOffset(330, 590), BackgroundColor3 = PANEL, BackgroundTransparency = 0.04, Visible = false }, gui)
+local panel = make("Frame", { Name = "Panel", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 54, 0.5, 0), Size = UDim2.fromOffset(330, 656), BackgroundColor3 = PANEL, BackgroundTransparency = 0.04, Visible = false }, gui)
 corner(panel, 14)
 make("UIStroke", { Thickness = 3, Color = rgb(255, 120, 60) }, panel)
 make("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 10) }, panel)
@@ -183,6 +184,31 @@ for i, tier in ipairs({ "Random", "Common", "Rare", "Epic", "Mythic", "Legendary
 end
 player:GetAttributeChangedSignal("DevEnchantRarity"):Connect(showForced)
 showForced()
+
+-- Quests (the Quest Hall in the Park): a new day or week of quests, or every daily and weekly
+-- quest finished at once, to try the hall's claim scene (QuestServer checks DevAccess too)
+label(panel, "Quests", { Font = Enum.Font.FredokaOne, TextSize = 17, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = nextOrder() })
+local questRow = row()
+local function questDev(what, said)
+	local folder = ReplicatedStorage:FindFirstChild("QuestRemotes")
+	local action = folder and folder:FindFirstChild("QuestAction")
+	if not action then
+		say("The Quest Hall isn't in this place.", false)
+		return
+	end
+	action:FireServer(what)
+	say(said, true)
+end
+local QUEST = rgb(150, 210, 160)
+button(questRow, "New quest day", QUEST, function()
+	questDev("DevNewDay", "New daily quests.")
+end, { Name = "QuestNewDay", Size = UDim2.new(1 / 3, -4, 1, 0), TextSize = 13 })
+button(questRow, "New quest week", rgb(140, 190, 255), function()
+	questDev("DevNewWeek", "A new quest week: Renown back to 0.")
+end, { Name = "QuestNewWeek", Size = UDim2.new(1 / 3, -4, 1, 0), TextSize = 13 })
+button(questRow, "Finish my quests", rgb(255, 214, 102), function()
+	questDev("DevFinish", "Daily and weekly quests finished: claim them at the Quest Hall.")
+end, { Name = "QuestFinish", Size = UDim2.new(1 / 3, -4, 1, 0), TextSize = 13 })
 
 label(panel, "Shop and save", { Font = Enum.Font.FredokaOne, TextSize = 17, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = nextOrder() })
 local shopRow = row()

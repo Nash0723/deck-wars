@@ -1232,8 +1232,9 @@ do
 		ShopUI.stationPanel(ui.stationBody)
 	end
 
-	-- Trophies (the wall of cups in the room): your level, the daily reward, today's three quests, the first-win bonus and
-	-- the achievements. Everything here comes from attributes the server keeps on your Player.
+	-- Trophies (the wall of cups in the room): the Trophy Road, your level, the daily reward, the first-win bonus and the
+	-- achievements, plus a card for the Quest Hall (quests are claimed out in the Park now). Everything here comes from
+	-- attributes the server keeps on your Player.
 	local function showTrophyPanel()
 		local dailyPrizeText = ui.dailyPrizeText
 		clearBody()
@@ -1277,20 +1278,14 @@ do
 		end, { Name = "ClaimDaily", Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
 		-- First win and streak
 		local extra = label(body, "", { Name = "Bonuses", Size = UDim2.new(1, -8, 0, 22), Font = BODY_FONT, TextScaled = false, TextSize = 14, TextColor3 = Color3.fromRGB(255, 205, 140), LayoutOrder = 3 })
-		heading("Today's quests", 4)
-		local rows = {}
-		for i = 1, Progression.QuestsPerDay do
-			local q = box(4 + i, 60, "Quest" .. i)
-			local r = {}
-			r.text = label(q, "", { Size = UDim2.new(1, -124, 0, 22), Position = UDim2.fromOffset(10, 6), Font = UIKit.BOLD_FONT, TextScaled = false, TextSize = 15, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
-			r.fill = bar(q, UDim2.fromOffset(10, 36), UDim2.new(1, -184, 0, 10))
-			r.count = label(q, "", { Size = UDim2.fromOffset(56, 18), Position = UDim2.new(1, -168, 0, 32), Font = BODY_FONT, TextScaled = false, TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left })
-			r.button = button(q, "", READY, function()
-				MenuAction:FireServer("ClaimQuest", { index = i })
-			end, { Name = "ClaimQuest" .. i, Size = UDim2.fromOffset(104, 40), Position = UDim2.new(1, -10, 0.5, 0), AnchorPoint = Vector2.new(1, 0.5), TextScaled = false, TextSize = 18 })
-			rows[i] = r
-		end
-		local resetText = label(body, "", { Size = UDim2.new(1, -8, 0, 20), Font = BODY_FONT, TextScaled = false, TextSize = 12, TextColor3 = DIM, LayoutOrder = 9 })
+		-- Quests: they're claimed at the Quest Hall out in the Park (QuestHallUI). Its card here shows today's three and
+		-- walks you out there, with a guide light to the hall.
+		heading("Quests", 4)
+		require(Shared:WaitForChild("QuestHallUI")).summary(body, 5, {
+			walk = function()
+				require(Shared:WaitForChild("ParkClient")).enter({ guide = true })
+			end,
+		})
 		-- Achievements: one-time goals, claimed once each.
 		heading("Achievements", 10)
 		local achRows = {}
@@ -1337,23 +1332,6 @@ do
 				table.insert(bits, "🔥 Streak " .. streak)
 			end
 			extra.Text = table.concat(bits, "   ")
-			for i, r in ipairs(rows) do
-				local def = Progression.QuestById[player:GetAttribute("Quest" .. i .. "Id") or ""]
-				local progress = player:GetAttribute("Quest" .. i .. "Progress") or 0
-				local claimed = player:GetAttribute("Quest" .. i .. "Claimed") == true
-				r.text.Parent.Visible = def ~= nil
-				if def then
-					r.text.Text = (claimed and "✓ " or "") .. def.text
-					r.text.TextColor3 = claimed and DIM or WHITE
-					r.count.Text = math.min(progress, def.target) .. "/" .. def.target
-					r.fill.Size = UDim2.fromScale(math.clamp(progress / def.target, 0, 1), 1)
-					local done = progress >= def.target
-					r.button.Text = claimed and "Done" or ("+" .. def.gems .. " 💎")
-					r.button.AutoButtonColor = done and not claimed
-					r.button.BackgroundColor3 = (done and not claimed) and READY or IDLE
-				end
-			end
-			resetText.Text = "New quests in " .. untilReset() .. " · every quest also gives +" .. Progression.QuestXP .. " XP"
 			for _, r in ipairs(achRows) do
 				local a = r.def
 				local progress = player:GetAttribute("Ach_" .. a.id) or 0
@@ -1567,22 +1545,33 @@ do
 		end
 	end
 	ui.navButtons = navButtons
-	-- A little "!" on Trophies when there's something to collect.
+	-- A little "!" on Trophies when there's something to collect there (the daily reward, an achievement or a Trophy
+	-- Road stop), and a gold count on the Park when quest rewards wait at the Quest Hall.
 	do
 		local badge = label(navButtons.TrophyWall, "!", { Name = "Badge", Size = UDim2.fromOffset(20, 20), Position = UDim2.new(1, 4, 0, -6), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.fromRGB(230, 70, 80), BackgroundTransparency = 0, Visible = false, ZIndex = 5, TextScaled = false, TextSize = 18 })
 		corner(badge, 12)
 		make("UIStroke", { Thickness = 2, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, badge)
+		local park = navButtons.ParkDoor
+			and label(navButtons.ParkDoor, "", { Name = "QuestBadge", Size = UDim2.fromOffset(34, 20), Position = UDim2.new(1, 8, 0, -6), AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.fromRGB(240, 186, 60), BackgroundTransparency = 0, Visible = false, ZIndex = 5, TextScaled = false, TextSize = 14, TextColor3 = INK })
+		if park then
+			corner(park, 10)
+			make("UIStroke", { Thickness = 2, Color = INK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, park)
+		end
+		local shown = 0
 		local function refreshBadge()
-			local any = player:GetAttribute("DailyReady") == true or (player:GetAttribute("QuestsReady") or 0) > 0
-			for _, a in ipairs(Progression.Achievements) do
-				if (player:GetAttribute("Ach_" .. a.id) or 0) >= a.target and player:GetAttribute("Ach_" .. a.id .. "_Claimed") ~= true then
-					any = true
+			badge.Visible = player:GetAttribute("DailyReady") == true or (tonumber(player:GetAttribute("TrophiesReady")) or 0) > 0
+			if park then
+				local n = tonumber(player:GetAttribute("QuestsReady")) or 0
+				park.Text = "📜" .. math.min(n, 99)
+				park.Visible = n > 0
+				if n > shown and park.Parent then
+					Juice.pop(park, 1.25, 0.4)
 				end
+				shown = n
 			end
-			badge.Visible = any
 		end
 		player.AttributeChanged:Connect(function(name)
-			if name == "DailyReady" or name == "QuestsReady" or string.sub(name, 1, 4) == "Ach_" then
+			if name == "DailyReady" or name == "TrophiesReady" or name == "QuestsReady" then
 				refreshBadge()
 			end
 		end)
@@ -1880,7 +1869,8 @@ end
 ---------------------------------------------------------------------------
 
 -- The signs over the stations in the room: small, soft labels in title case (they used to be big
--- outlined capitals that ran off the edges of the screen). Trophies holds the quests and achievements.
+-- outlined capitals that ran off the edges of the screen). Trophies holds the achievements and the Trophy Road (the
+-- quests are out at the Quest Hall in the Park).
 do
 	local NAMES = { ["PACK PARTY"] = "Pack Party", ["DUEL TABLE"] = "Duel Table", ["SHOP"] = "Shop", ["SETTINGS"] = "Settings", ["DECK SHELF"] = "Deck Shelf", ["TROPHY WALL"] = "Trophies", ["TROPHIES"] = "Trophies", ["PARK"] = "Park", ["CAMPAIGN"] = "Campaign" }
 	-- (the server's HubRoom script makes the Campaign and Park stations out of the painting and

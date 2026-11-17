@@ -70,7 +70,7 @@ local function folder(name, parent)
 	return f
 end
 local shared = folder("DeckWars", ReplicatedStorage)
-for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "VfxAssets", "LayerFx", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Park", "ParkClient", "IdleTable", "BackdropPicker", "TrophyRoadUI", "CardLevels", "CozyTheme", "RoomTour", "Trade", "TradeUI" }) do
+for _, n in ipairs({ "CardData", "MatchEngine", "BotBrain", "Rng", "StarterDecks", "CreatureModelData", "CreatureBuilder", "Settings", "VfxAssets", "LayerFx", "Juice", "UIKit", "TitleScreen", "ShopCatalog", "Cosmetics", "ShopUI", "DeckRules", "DeckBuilderUI", "TableSounds", "Progression", "Backdrops", "LobbyScreen", "PartyScreen", "MatchScreen", "RoomLife", "Campaign", "CampaignUI", "Park", "ParkClient", "IdleTable", "BackdropPicker", "TrophyRoadUI", "CardLevels", "CozyTheme", "RoomTour", "Trade", "TradeUI", "Quests", "QuestHallUI" }) do
 	moduleFrom(SRC .. "shared/" .. n .. ".luau", n, shared)
 end
 local pb = folder("PackBrawl", ReplicatedStorage)
@@ -90,6 +90,7 @@ local pullRemotes = remoteFolder("PullRemotes", { "PullRequest", "PullResult" })
 local remotes = remoteFolder("Remotes", { "MatchEvent", "MatchAction", "MenuAction", "LobbyEvent" })
 local econRemotes = remoteFolder("EconomyRemotes", { "ShopAction", "EconomyEvent", "DevAction" })
 local parkRemotes = remoteFolder("ParkRemotes", { "ParkAction", "ParkEvent" })
+remoteFolder("QuestRemotes", { "QuestAction", "QuestEvent" }) -- (the Quest Hall: QuestServer and the window)
 -- ServerStorage: the server modules and the dev panel template (like default.project.json)
 local serverModules = folder("DeckWarsServer", ServerStorage)
 for _, n in ipairs({ "EconomyManager", "DevAccess", "ProfileStore" }) do
@@ -202,12 +203,14 @@ moduleFrom(SRC .. "park/ParkBuilder.luau", "ParkBuilder", ServerScriptService)
 moduleFrom(SRC .. "park/ParkKit.luau", "ParkKit", ServerScriptService)
 moduleFrom(SRC .. "park/ParkPropData.luau", "ParkPropData", ServerScriptService)
 moduleFrom(SRC .. "server/TradeDesk.luau", "TradeDesk", ServerScriptService)
+moduleFrom(SRC .. "server/QuestBook.luau", "QuestBook", ServerScriptService)
 runScript(SRC .. "server/HubRoom.server.luau", scriptIn(ServerScriptService, "Script", "HubRoom"), serverCache)
 runScript(SRC .. "server/MatchServer.server.luau", scriptIn(ServerScriptService, "Script", "MatchServer"), serverCache)
 runScript(SRC .. "server/MenuServer.server.luau", scriptIn(ServerScriptService, "Script", "MenuServer"), serverCache)
 runScript(SRC .. "pullserver/PullServer.server.luau", scriptIn(ServerScriptService, "Script", "PullServer"), serverCache)
 runScript(SRC .. "server/EconomyServer.server.luau", scriptIn(ServerScriptService, "Script", "EconomyServer"), serverCache)
 runScript(SRC .. "server/ParkServer.server.luau", scriptIn(ServerScriptService, "Script", "ParkServer"), serverCache)
+runScript(SRC .. "server/QuestServer.server.luau", scriptIn(ServerScriptService, "Script", "QuestServer"), serverCache)
 local clientScript = scriptIn(playerScripts, "LocalScript", "DeckWarsClient")
 runScript(SRC .. "client/DeckWarsClient.client.luau", clientScript, clientCache)
 M.advance(2)

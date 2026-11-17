@@ -56,6 +56,15 @@
         "ParkEvent": {
           "$className": "RemoteEvent"
         }
+      },
+      "QuestRemotes": {
+        "$className": "Folder",
+        "QuestAction": {
+          "$className": "RemoteEvent"
+        },
+        "QuestEvent": {
+          "$className": "RemoteEvent"
+        }
       }
     },
     "ServerScriptService": {
@@ -97,6 +106,12 @@
       },
       "TradeDesk": {
         "$path": "src/server/TradeDesk.luau"
+      },
+      "QuestBook": {
+        "$path": "src/server/QuestBook.luau"
+      },
+      "QuestServer": {
+        "$path": "src/server/QuestServer.server.luau"
       }
     },
     "ServerStorage": {

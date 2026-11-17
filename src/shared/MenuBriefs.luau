@@ -129,12 +129,12 @@ MenuBriefs.Briefs = {
 	TrophyWall = {
 		icon = "🏆",
 		title = "Trophy Wall",
-		tag = "Your progress, quests and rewards in one place.",
+		tag = "Your trophies, achievements and daily reward in one place.",
 		accent = rgb(255, 176, 70),
 		beats = {
-			{ "Trophy Road", "Every finished match earns trophies and they never go down. Claim stops for Coins, Gems and backgrounds." },
-			{ "Daily quests", "Three fresh quests every day, plus the daily reward." },
-			{ "Achievements", "Big milestones. Claim each one once for Gems." },
+			{ "Trophy Road", "Every finished match earns trophies and they never go down. Claim stops for Coins, Gems, Shards and backgrounds." },
+			{ "Achievements", "Big milestones. Claim each one once for Gems and Shards." },
+			{ "Quests moved out", "Quests are claimed at the Quest Hall in the Park now. The card here shows today's and walks you there." },
 		},
 		tip = "Three backgrounds can only be won on the Trophy Road.",
 	},
@@ -145,7 +145,7 @@ MenuBriefs.Briefs = {
 		accent = rgb(96, 206, 140),
 		beats = {
 			{ "Walk around", "You walk as your own avatar, with your creature at your side." },
-			{ "Places to go", "Pull Altar, Enchanting Crystal, Trading Post, Hall of Pulls and the leaderboards." },
+			{ "Places to go", "Quest Hall, Pull Altar, Enchanting Crystal, Trading Post, Hall of Pulls and the leaderboards." },
 			{ "Show off", "Whoever holds the rarest cards takes the Top Collector's pedestal." },
 		},
 		tip = "Walk up to anything with a prompt and press E.",
@@ -185,6 +185,18 @@ MenuBriefs.Briefs = {
 			{ "It sticks", "The rune rides on every copy in every deck. It powers up against bots and in the Campaign; in duels it only glows." },
 		},
 		tip = "8 enchants in a row below Epic and the next one is Epic or better.",
+	},
+	QuestHall = {
+		icon = "📜",
+		title = "Quest Hall",
+		tag = "Finish quests anywhere. Claim them here, with Quill.",
+		accent = rgb(214, 150, 255),
+		beats = {
+			{ "Three kinds", "3 daily quests, 5 weekly quests, and Journey quests for every Campaign world." },
+			{ "Claim at the counter", "Each finished quest pays Gems, Shards and XP, and adds Renown." },
+			{ "Renown chests", "Renown fills the track along the bottom. Four chests open on it, and it starts again every week." },
+		},
+		tip = "Swap one daily and one weekly quest for free. Finished quests wait for you, even after the day ends.",
 	},
 	Trade = {
 		icon = "🤝",

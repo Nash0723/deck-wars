@@ -180,6 +180,14 @@ local function cardAction(player, what, options)
 	if snap then
 		MenuAction:FireClient(player, "Decks", snap)
 	end
+	-- the Quest Hall's "enchant cards" and "fuse cards" quests
+	if result.ok and PlayerData.noteQuest then
+		if what == "Enchant" then
+			PlayerData.noteQuest(player, "enchant", 1)
+		elseif what == "FuseCard" or what == "FuseAll" or what == "FuseEverything" then
+			PlayerData.noteQuest(player, "fuse", math.max(1, math.floor(tonumber(result.count) or 1)))
+		end
+	end
 end
 
 MenuAction.OnServerEvent:Connect(function(player, what, options)
