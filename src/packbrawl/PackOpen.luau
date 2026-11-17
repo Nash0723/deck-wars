@@ -65,7 +65,11 @@ end
 -- The screen, the scene and the stage, shared with the reveal (also used on its own by tests).
 function PackOpen.newScreen(pack, name)
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-	local gui = make("ScreenGui", { Name = name or "PackOpen", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 55, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, playerGui)
+	local gui = make("ScreenGui", { Name = name or "PackOpen", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 55, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	-- (set before it is parented: the cozy menu colours must never touch the pack screens, even
+	-- after the reveal renames this one)
+	gui:SetAttribute("KeepColors", true)
+	gui.Parent = playerGui
 	local scene = PackArt.scene(gui, pack)
 	local stage = make("Frame", { Name = "Stage", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(PackOpen.StageW, PackOpen.StageH), BackgroundTransparency = 1, ZIndex = 10 }, gui)
 	local stageScale = make("UIScale", { Scale = 1 }, stage)

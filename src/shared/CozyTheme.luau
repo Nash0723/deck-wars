@@ -26,8 +26,19 @@ pcall(function()
 	end
 end)
 
--- The pack opening screens (PackBrawl) are left as they are.
-local SKIP_GUIS = { PackDive = true, PackBrawlOut = true, PackBrawlGui = true, PackOpen = true }
+-- The pack opening screens (PackBrawl) are left as they are. The reveal renames the PackOpen
+-- screen to PackBrawlReveal / PackBrawlFan when it takes over, so those are listed too (they
+-- weren't, and the pulled cards came out recoloured: Spooky, Robo and Weather faces turned brown).
+-- A ScreenGui with the KeepColors attribute is skipped whatever its name (PackOpen sets it).
+local SKIP_GUIS = {
+	PackDive = true,
+	PackBrawlOut = true,
+	PackBrawlGui = true,
+	PackOpen = true,
+	PackReveal = true,
+	PackBrawlReveal = true,
+	PackBrawlFan = true,
+}
 
 -- Converts one color. Idempotent: a converted color comes back unchanged (its hue is outside the
 -- range that gets converted), so a property that is set again can't run away.

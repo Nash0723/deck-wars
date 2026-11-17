@@ -85,8 +85,10 @@ local function corner(p, px)
 	return make("UICorner", { CornerRadius = px and UDim.new(0, px) or UDim.new(1, 0) }, p)
 end
 
--- Hard-edged stripes as a colour gradient (n of each colour; n <= 9 keeps under 20 keypoints).
+-- Hard-edged stripes as a colour gradient. Each stripe takes 2 keypoints and Roblox allows at
+-- most 20 in a ColorSequence (more is an error), so n is capped at 10.
 local function stripes(parent, a, b, n, rot)
+	n = math.clamp(math.floor(n), 1, 10)
 	local keys = {}
 	for k = 0, n - 1 do
 		local x0, x1 = k / n, (k + 1) / n
@@ -320,10 +322,16 @@ function CardBacks.dress(back, rarity, family)
 	local k = (w > 0 and w or 300) / 300 -- 1 for the big single card, about 0.47 in a 10-pack fan
 	back:SetAttribute("KeepColors", true) -- (the cozy menu colours leave the backs alone)
 
-	-- the whole look lives in one group that fades in when the card wakes up
-	local trim = make("CanvasGroup", { Name = "RarityBack", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BorderSizePixel = 0, GroupTransparency = 1 }, back)
+	-- the whole look lives in one group that fades in when the card wakes up. (ZIndex 2: drawn over
+	-- the classic back's own ring and lettering, which share its parent.)
+	local trim = make("CanvasGroup", { Name = "RarityBack", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, GroupTransparency = 1, ZIndex = 2 }, back)
 	corner(trim, math.floor(16 * k + 0.5))
-	local body = make("UIGradient", { Rotation = 90, Color = ColorSequence.new(look.top, look.bottom) }, trim)
+	-- The body colour is its own frame at the bottom of the group. (A UIGradient parented to a
+	-- CanvasGroup tints everything drawn in the group, so the art, crest and gems all came out
+	-- dark at the bottom of the card.)
+	local bodyFrame = frame(trim, { Name = "Body", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, ZIndex = 0 })
+	corner(bodyFrame, math.floor(16 * k + 0.5))
+	local body = make("UIGradient", { Rotation = 90, Color = ColorSequence.new(look.top, look.bottom) }, bodyFrame)
 	local spin = {} -- things that turn slowly: { inst, degrees per second }
 
 	if biome then
