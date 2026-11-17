@@ -7,7 +7,8 @@
 --   "Claim"  { key }          -> QuestEvent { kind = "claimed", ok, key, reward | why, book }
 --   "Swap"   { key }          -> QuestEvent { kind = "swapped", ok, key, old, new | why, book }
 --   "Chest"  { index }        -> QuestEvent { kind = "chest", ok, index, reward | why, book }
---   "DevNewDay" / "DevNewWeek" (developers only: DevAccess) -> a fresh day or week of quests
+--   "DevNewDay" / "DevNewWeek" / "DevFinish" (developers only: DevAccess) -> a fresh day or
+--                                week of quests, or every daily and weekly quest finished
 --
 -- Claiming, swapping and opening chests only work at the hall: you have to be in the Park
 -- (InPark) and within Quests.ClaimDistance of Park.QuestHall.Desk. The rules and the save are in
@@ -118,16 +119,22 @@ QuestAction.OnServerEvent:Connect(function(player, what, options)
 		end
 		local r, why = PlayerData.openQuestChest(player, index)
 		send(player, { kind = "chest", ok = r ~= nil, index = index, reward = r, why = why })
-	elseif what == "DevNewDay" or what == "DevNewWeek" then
+	elseif what == "DevNewDay" or what == "DevNewWeek" or what == "DevFinish" then
 		if not isDev(player) then
 			return
 		end
+		local note
 		if what == "DevNewDay" then
 			PlayerData.debugNewDay(player)
-		else
+			note = "New daily quests."
+		elseif what == "DevNewWeek" then
 			PlayerData.debugNewWeek(player)
+			note = "A new week: new weekly quests, Renown back to 0."
+		else
+			PlayerData.debugFinishQuests(player)
+			note = "Your daily and weekly quests are finished: claim them at the Quest Hall."
 		end
-		send(player, { kind = "state", note = what == "DevNewDay" and "New daily quests." or "A new week: new weekly quests, Renown back to 0." })
+		send(player, { kind = "state", note = note })
 	end
 end)
 

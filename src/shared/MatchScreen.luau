@@ -2999,7 +2999,7 @@ function MatchScreen.init(ctx)
 				if def then
 					order += 1
 					local done = q.progress >= q.target
-					F.rewardRow((done and "✅ " or "📜 ") .. def.text .. "  " .. q.progress .. "/" .. q.target .. (done and "  (claim it in Trophies)" or ""), done and Color3.fromRGB(140, 255, 160) or Color3.fromRGB(220, 215, 235), order)
+					F.rewardRow((done and "✅ " or "📜 ") .. def.text .. "  " .. q.progress .. "/" .. q.target .. (done and "  (claim it at the Quest Hall)" or ""), done and Color3.fromRGB(140, 255, 160) or Color3.fromRGB(220, 215, 235), order)
 				end
 			end
 		elseif payload.gemsEarned then

@@ -594,6 +594,18 @@ function PlayerData.debugNewWeek(player)
 	return true
 end
 
+-- Finishes every daily and weekly quest you have (developers: try the hall's claim scene).
+function PlayerData.debugFinishQuests(player)
+	local d = data(player)
+	if not d or not QuestBook then
+		return false
+	end
+	ensure(d, player.UserId)
+	QuestBook.debugFinish(d, player.UserId)
+	changed(player, "questsFinished")
+	return true
+end
+
 function PlayerData.debugAddXP(player, amount)
 	local d = data(player)
 	if not d then

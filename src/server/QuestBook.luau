@@ -608,7 +608,7 @@ function QuestBook.snapshot(d, userId, now)
 end
 
 ---------------------------------------------------------------------------
--- Developer tools (the dev panel's "New day", and "New week" in the hall for developers)
+-- Developer tools (the dev panel's quest buttons, and the hall's for developers)
 ---------------------------------------------------------------------------
 
 -- Fresh daily quests now (a different roll than today's), finished ones kept waiting.
@@ -617,6 +617,22 @@ function QuestBook.debugNewDay(d, userId, now)
 	keepFinished(b, b.daily, "daily")
 	b.daily = freshList(Quests.rollDaily(whole(userId) + math.random(1, 100000), b.day, eligible(d)))
 	b.dailySwaps = 0
+	b.rev += 1
+	return b
+end
+
+-- Every daily and weekly quest you have finished now (not claimed: claim them at the hall), to
+-- try the claim scene without playing for it.
+function QuestBook.debugFinish(d, userId, now)
+	local b = QuestBook.ensure(d, userId, now)
+	for _, list in ipairs({ b.daily, b.weekly }) do
+		for _, e in ipairs(list) do
+			local def = Quests.ById[e.id]
+			if def and not e.c then
+				e.p = def.target
+			end
+		end
+	end
 	b.rev += 1
 	return b
 end
