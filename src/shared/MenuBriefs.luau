@@ -100,7 +100,7 @@ MenuBriefs.Briefs = {
 			{ "Mind the land", "Your themes set the terrain of each lane. A creature on its own terrain hits +1 harder." },
 			{ "Level your cards", "Two copies of a card at the same level fuse into one copy a level higher." },
 		},
-		tip = "The 🌄 Match background button here picks the world around your table.",
+		tip = "Tap a card, then tap the big card to inspect its 3D model up close. 🌄 Match background picks the world around your table.",
 	},
 	PackParty = {
 		icon = "🎁",

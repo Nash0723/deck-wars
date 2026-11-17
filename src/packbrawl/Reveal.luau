@@ -3,6 +3,8 @@
 -- show (burst, colours, sound). Then the stat card. For 10 packs, the card fan: every card face
 -- down, tap each one (or Reveal all). Both can offer "Watch the Brawl" (the Pack Brawl fight of
 -- the best card, played after the reveal). UI only, animated with TweenService.
+-- A face-down card's back wakes up while it waits: its biome's art with its rarity's foil
+-- (CardBacks.luau; flags there turn either off, and with both off the backs stay the classic navy).
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -10,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Kit = require(script.Parent:WaitForChild("Kit"))
 local PackArt = require(script.Parent:WaitForChild("PackArt"))
+local CardBacks = require(script.Parent:WaitForChild("CardBacks"))
 local PackOpen = require(script.Parent:WaitForChild("PackOpen"))
 local Packs = require(script.Parent:WaitForChild("Packs"))
 local DeckWars = ReplicatedStorage:WaitForChild("DeckWars")
@@ -455,6 +458,16 @@ function Reveal.single(opts)
 	local aura = make("Frame", { Name = "CardAura", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 26, 1, 26), BackgroundTransparency = 1, ZIndex = 0 }, holder)
 	corner(aura, 26)
 	local auraStroke = make("UIStroke", { Thickness = 10, Color = packMain:Lerp(WHITE, 0.4), Transparency = 0.5 }, aura)
+	-- the back wakes up in the card's rarity colours (CardBacks.ByRarity), and the glow follows
+	if CardBacks.dress(back, tier, def.family) then
+		local wake = opts.quick and 0.15 or 0.5
+		CardBacks.awaken(back, wake)
+		task.delay(wake, function()
+			if aura.Parent and back.Visible then
+				tween(auraStroke, 0.5, { Color = color:Lerp(WHITE, 0.3) })
+			end
+		end)
+	end
 	local backShine = Juice.shine(back, 2.4, UDim.new(0, 16))
 
 	local hint = label(gui, "TAP THE CARD TO FLIP IT", { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -30), Size = UDim2.fromOffset(420, 28), TextColor3 = WHITE, Font = Enum.Font.GothamBlack, TextTransparency = 1, ZIndex = 44 })
@@ -767,6 +780,11 @@ function Reveal.fan(opts)
 		local col, row = (i - 1) % 5, math.floor((i - 1) / 5)
 		local holder = h.cards[i] or PackOpen.cardHolder(stage, PackOpen.FanW, PackOpen.FanH)
 		local back = holder:FindFirstChild("Back")
+		-- each back wakes up in its rarity's colours just after it lands in its place
+		local cdef = CardData.get(id)
+		if CardBacks.dress(back, cdef.rarity, cdef.family) then
+			CardBacks.awaken(back, 0.5 + (i - 1) * 0.09)
+		end
 		local stamp = (opts.isNew and opts.isNew[i]) and "NEW" or "+1"
 		local front, animate, stampLabel = Reveal.cardFace(holder, id, stamp)
 		front.Visible = false
