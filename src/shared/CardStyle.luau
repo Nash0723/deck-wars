@@ -64,8 +64,11 @@ local function vgrad(parent: Instance, top: Color3, bottom: Color3)
 	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(top, bottom) }, parent)
 end
 
--- Hard-edged stripes as a gradient (n stripes of two colours).
+-- Hard-edged stripes as a gradient (n stripes of two colours). Each stripe takes 2 keypoints and
+-- Roblox allows at most 20 in a ColorSequence (more is an error, and the card isn't drawn at all),
+-- so n is capped at 10.
 local function stripes(parent: Instance, a: Color3, b: Color3, n: number, rot: number)
+	n = math.clamp(math.floor(n), 1, 10)
 	local keys = {}
 	for k = 0, n - 1 do
 		local x0, x1 = k / n, (k + 1) / n
@@ -267,7 +270,7 @@ function CardStyle.dress(card: GuiObject, def: any, famColor: Color3, rarityColo
 	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, rgb(222, 222, 222)) }, card)
 	local pattern = make("Frame", { Name = "Pattern", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 0.8, BorderSizePixel = 0, ZIndex = 0 }, card)
 	make("UICorner", { CornerRadius = UDim.new(0, radius) }, pattern)
-	stripes(pattern, famColor:Lerp(WHITE, 0.7), famColor:Lerp(WHITE, 0.25), 14, 45)
+	stripes(pattern, famColor:Lerp(WHITE, 0.7), famColor:Lerp(WHITE, 0.25), 10, 45)
 	-- an inner border, like a printed frame
 	local inner = make("Frame", { Name = "InnerFrame", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -8, 1, -8), BackgroundTransparency = 1, ZIndex = 0 }, card)
 	make("UICorner", { CornerRadius = UDim.new(0, math.max(2, radius - 4)) }, inner)
