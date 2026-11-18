@@ -80,10 +80,18 @@ local function expand(m, seat, list)
 				local team = m.seats[seat].team
 				local spots = {}
 				if c.type == "Creature" then
+					-- Free tiles first: the bot only plays over its own creature when the side is
+					-- full and that creature is hurt or small (a creature that's swapped out for no
+					-- reason just looks like it vanished).
+					local free = 0
+					for _, t in ipairs(a.tiles or {}) do
+						if not m:unitAt(team, t.lane, t.row) then
+							free += 1
+						end
+					end
 					for _, t in ipairs(a.tiles or {}) do
 						local here = m:unitAt(team, t.lane, t.row)
-						-- Only play over your own creature if it's hurt or small.
-						if not here or (m:healthOf(here) <= 1 or m:attackOf(here) < c.atk - 1) then
+						if not here or (free == 0 and (m:healthOf(here) <= 1 or m:attackOf(here) < c.atk - 1)) then
 							table.insert(spots, t)
 						end
 					end

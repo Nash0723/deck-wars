@@ -37,6 +37,7 @@ local EnchantUI = require(here:WaitForChild("EnchantUI")) -- (the Enchanting Cry
 local EnchantFx = require(here:WaitForChild("EnchantFx"))
 local MenuBriefs = require(here:WaitForChild("MenuBriefs")) -- (a short brief the first time you open each window here)
 local QuestHallUI = require(here:WaitForChild("QuestHallUI")) -- (the Quest Hall's window and boards)
+local ParkLoading = require(here:WaitForChild("ParkLoading")) -- (Pickles running to the Park while it loads)
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -2168,6 +2169,22 @@ function ParkClient.enter(opts)
 	ctx.glideCamera(Vector3.new(-14, 5.7, 23.1), Vector3.new(-14, 5.7, 34), 0.6, 50)
 	task.wait(0.5)
 	fade(0, 0.15) -- (the screen is all doorway by now: this only makes sure it's black)
+	-- While the Park loads, a little film: Pickles from the Shop counter runs to the Park with his
+	-- cart (ParkLoading). Meanwhile the Park's meshes and textures load, so it's smooth inside.
+	local film = nil
+	pcall(function()
+		local room = workspace:FindFirstChild("MenuRoom")
+		local stations = room and room:FindFirstChild("Stations")
+		film = ParkLoading.show(stations and stations:FindFirstChild("ShopCounter"))
+	end)
+	local filmStart = time()
+	local preloaded = false
+	task.spawn(function()
+		pcall(function()
+			game:GetService("ContentProvider"):PreloadAsync({ parkModel() })
+		end)
+		preloaded = true
+	end)
 	ctx.setMode("park")
 	S.inside = true
 	ParkAction:FireServer("Enter")
@@ -2177,6 +2194,9 @@ function ParkClient.enter(opts)
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if root and (root.Position - Park.Origin).Magnitude < 200 then
 			break
+		end
+		if film then
+			film.progress(0.15 + 0.35 * (time() - t0) / 4)
 		end
 		task.wait(0.05)
 	end
@@ -2203,6 +2223,20 @@ function ParkClient.enter(opts)
 	showHud(true)
 	S.hint.Visible = true
 	task.spawn(swingDoor, false, 0.1)
+	if film then
+		-- the film plays at least a moment (longer the first time), and until the Park has loaded
+		local least = S.filmSeen and 1.6 or 3.0
+		S.filmSeen = true
+		while (time() - filmStart < least) or (not preloaded and time() - filmStart < 7) do
+			local k = math.min(1, (time() - filmStart) / least)
+			if not preloaded then
+				k = math.min(k, 0.85)
+			end
+			film.progress(0.5 + 0.5 * k)
+			task.wait(0.05)
+		end
+		film.finish()
+	end
 	fade(1, 0.6)
 	S.busy = false
 	-- (sent out to claim something: the guide light shows the way to the Quest Hall)
@@ -2233,6 +2267,16 @@ function ParkClient.leave(instant, thenStation)
 	if not instant then
 		fade(0, 0.4)
 	end
+	-- the way home: the same little film the other way round (Pickles runs back at sunset)
+	local film = nil
+	if not instant then
+		pcall(function()
+			local room = workspace:FindFirstChild("MenuRoom")
+			local stations = room and room:FindFirstChild("Stations")
+			film = ParkLoading.show(stations and stations:FindFirstChild("ShopCounter"), { home = true })
+		end)
+	end
+	local filmStart = time()
 	ParkAction:FireServer("Leave")
 	controls(false)
 	swapLight(false)
@@ -2252,6 +2296,17 @@ function ParkClient.leave(instant, thenStation)
 		S.plates[p] = nil
 	end
 	camera.CameraType = Enum.CameraType.Scriptable
+	if film then
+		-- (a moment longer the first time; the room is already loaded, so it's short)
+		local least = S.homeFilmSeen and 1.5 or 2.6
+		S.homeFilmSeen = true
+		while time() - filmStart < least do
+			film.progress(math.min(1, (time() - filmStart) / least))
+			task.wait(0.05)
+		end
+		film.finish()
+		task.wait(0.55) -- (it fades out over the black; then you step in through the doorway)
+	end
 	if not instant then
 		ctx.setMode("menu")
 		ctx.menuVisible(true)

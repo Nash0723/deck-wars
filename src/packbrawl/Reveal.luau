@@ -17,6 +17,7 @@ local PackOpen = require(script.Parent:WaitForChild("PackOpen"))
 local Packs = require(script.Parent:WaitForChild("Packs"))
 local DeckWars = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(DeckWars:WaitForChild("CardData"))
+local CardStyle = require(DeckWars:WaitForChild("CardStyle"))
 local CreatureBuilder = require(DeckWars:WaitForChild("CreatureBuilder"))
 local Juice = require(DeckWars:WaitForChild("Juice"))
 local LayerFx = require(DeckWars:WaitForChild("LayerFx"))
@@ -75,7 +76,7 @@ end
 -- A creature (or building) turning slowly inside the card art.
 local function addArt(art, def)
 	if not CreatureBuilder.has(def.id) then
-		label(art, def.type == "Spell" and "★" or "?", { TextColor3 = Kit.TierColor[def.rarity] or WHITE, Size = UDim2.fromScale(0.6, 0.8), Position = UDim2.fromScale(0.2, 0.1) })
+		label(art, def.type == "Spell" and "★" or "?", { TextColor3 = Kit.TierColor[def.rarity] or WHITE, Size = UDim2.fromScale(0.6, 0.8), Position = UDim2.fromScale(0.2, 0.1), ZIndex = art.ZIndex + 1 })
 		return nil
 	end
 	local model = CreatureBuilder.build(def.id)
@@ -86,6 +87,7 @@ local function addArt(art, def)
 		Ambient = rgb(150, 150, 165),
 		LightColor = rgb(255, 244, 228),
 		LightDirection = Vector3.new(-0.6, -1, -0.8),
+		ZIndex = art.ZIndex + 1, -- (above the card's painted scene)
 	}, art)
 	model.Parent = vp
 	local info = CreatureBuilder.info(def.id) or { height = 2.5, width = 2.5, depth = 2.5 }
@@ -111,6 +113,7 @@ function Reveal.cardFace(parent, cardId, stamp)
 	corner(card, 16)
 	local stroke = make("UIStroke", { Thickness = 7, Color = tierColor }, card)
 	local rainbow = tier == "Secret" and rainbowGradient(stroke) or nil
+	CardStyle.dress(card, def, famColor, tierColor, { radius = 16, gemSize = 16 })
 	-- cost
 	local cost = make("Frame", { Size = UDim2.fromScale(0.24, 0.17), Position = UDim2.fromScale(-0.05, -0.04), BackgroundColor3 = rgb(40, 90, 200), ZIndex = 3 }, card)
 	corner(cost, 100)
@@ -122,6 +125,7 @@ function Reveal.cardFace(parent, cardId, stamp)
 	local art = make("Frame", { Name = "Art", Size = UDim2.fromScale(0.88, 0.4), Position = UDim2.fromScale(0.06, 0.15), BackgroundColor3 = WHITE, ClipsDescendants = true }, card)
 	corner(art, 10)
 	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(famColor:Lerp(WHITE, 0.45), famColor:Lerp(rgb(0, 0, 0), 0.35)) }, art)
+	CardStyle.scene(art, def)
 	local spinner = addArt(art, def)
 	label(card, def.type .. (def.family ~= "Any" and (" · " .. def.family) or ""), { Size = UDim2.new(0.9, 0, 0.055, 0), Position = UDim2.fromScale(0.05, 0.565), Font = BODY, TextColor3 = rgb(60, 50, 70) })
 	local box = make("Frame", { Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.625), BackgroundColor3 = WHITE, BackgroundTransparency = 0.25 }, card)
@@ -169,9 +173,104 @@ function Reveal.cardFace(parent, cardId, stamp)
 			}),
 		}, sf)
 	end
+	-- Mythic and up: when the card turns face up, a glowing outline snaps in round it, with two
+	-- bright lights racing along it, a soft pulsing halo outside and sparkles riding the edge.
+	-- (Rainbow for a Secret.) It only shows once the card is face up, so it never gives it away.
 	local t = 0
+	local outline = nil
+	if (RANK[tier] or 1) >= 4 then
+		local o = { shownAt = nil, sparks = {} }
+		outline = o
+		local function ring(name, thick, color, tr)
+			local f = make("Frame", { Name = name, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 0 }, card)
+			local c = make("UICorner", { CornerRadius = UDim.new(0, 24) }, f)
+			local s = make("UIStroke", { Thickness = thick, Color = color, Transparency = tr, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
+			return f, s, c
+		end
+		o.halo, o.haloStroke = ring("OutlineHalo", 14, tierColor, 1)
+		o.frame, o.stroke, o.corner = ring("MythicOutline", 5, tierColor:Lerp(WHITE, 0.2), 1)
+		o.runner, o.runStroke = ring("OutlineRunner", 8, WHITE, 1)
+		o.rainbow = tier == "Secret" and rainbowGradient(o.stroke) or nil
+		if o.rainbow then
+			rainbowGradient(o.haloStroke)
+		end
+		-- the racing lights: a narrow bright band turning across the runner's stroke
+		o.racer = make("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.44, 1),
+				NumberSequenceKeypoint.new(0.5, 0),
+				NumberSequenceKeypoint.new(0.56, 1),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}, o.runStroke)
+		for k = 1, 8 do
+			local s = label(card, "✦", { Name = "OutlineSpark", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(18, 18), TextColor3 = tier == "Secret" and Color3.fromHSV(k / 8, 0.5, 1) or tierColor:Lerp(WHITE, 0.5), TextTransparency = 1, ZIndex = 7 })
+			table.insert(o.sparks, { label = s, u = (k - 1) / 8 })
+		end
+	end
+
+	-- a point on the outline's edge: u = 0..1 round the rectangle (clockwise from the top left)
+	local function edgePoint(u, w, hgt)
+		local per = 2 * (w + hgt)
+		local d = (u % 1) * per
+		if d < w then
+			return d, 0
+		elseif d < w + hgt then
+			return w, d - w
+		elseif d < 2 * w + hgt then
+			return w - (d - w - hgt), hgt
+		end
+		return 0, hgt - (d - 2 * w - hgt)
+	end
+
+	local function animateOutline(o)
+		if not card.Visible then
+			o.shownAt = nil
+			return
+		end
+		if not o.shownAt then
+			o.shownAt = t -- (the reveal plays the rarity's sound itself)
+		end
+		local w = math.max(card.AbsoluteSize.X, 40)
+		local pad = w * 0.07
+		local k = math.clamp((t - o.shownAt) / 0.5, 0, 1)
+		local e = 1 - (1 - k) ^ 3
+		-- it snaps in from far out, then settles just outside the card
+		local grow = pad + (1 - e) * w * 0.5
+		local thick = math.max(2, w / 55)
+		o.frame.Size = UDim2.new(1, grow * 2, 1, grow * 2)
+		o.runner.Size = o.frame.Size
+		o.halo.Size = UDim2.new(1, grow * 2 + thick * 5, 1, grow * 2 + thick * 5)
+		o.corner.CornerRadius = UDim.new(0, 16 + grow * 0.6)
+		o.stroke.Thickness = thick * 1.6
+		o.runStroke.Thickness = thick * 2.6
+		o.haloStroke.Thickness = thick * 4
+		o.stroke.Transparency = 1 - e * 0.95
+		o.runStroke.Transparency = 1 - e
+		o.haloStroke.Transparency = 1 - e * (0.45 + 0.2 * math.sin(t * 3))
+		o.racer.Rotation = (t * 160) % 360
+		if o.rainbow then
+			o.rainbow.Rotation = (t * 90) % 360
+		elseif tier == "Legendary" then
+			o.stroke.Color = tierColor:Lerp(WHITE, 0.3 + 0.3 * math.sin(t * 5))
+		end
+		-- the sparkles ride round the edge
+		local fw, fh = card.AbsoluteSize.X + grow * 2, card.AbsoluteSize.Y + grow * 2
+		for _, s in ipairs(o.sparks) do
+			local x, y = edgePoint(s.u + t * 0.12, fw, fh)
+			s.label.Position = UDim2.new(0, x - grow, 0, y - grow)
+			s.label.Size = UDim2.fromOffset(thick * 7, thick * 7)
+			s.label.Rotation = (t * 90) % 360
+			s.label.TextTransparency = 1 - e * (0.6 + 0.4 * math.abs(math.sin(t * 4 + s.u * 9)))
+		end
+	end
+
 	local function animate(dt)
 		t += dt
+		if outline then
+			animateOutline(outline)
+		end
 		if spinner then
 			local yaw = -0.5 + math.sin(t * 0.8) * 0.5
 			spinner.cam.CFrame = CFrame.lookAt(spinner.look + Vector3.new(math.sin(yaw) * spinner.dist, spinner.dist * 0.22, -math.cos(yaw) * spinner.dist), spinner.look)

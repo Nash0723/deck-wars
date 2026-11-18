@@ -16,6 +16,7 @@ local Campaign = require(here:WaitForChild("Campaign"))
 local CardData = require(here:WaitForChild("CardData"))
 local Backdrops = require(here:WaitForChild("Backdrops"))
 local Juice = require(here:WaitForChild("Juice"))
+local LandPicker = require(here:WaitForChild("LandPicker"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local MenuAction = Remotes:WaitForChild("MenuAction")
@@ -227,6 +228,20 @@ local function startRow(scroll, order, stageId, canStart, why)
 	button(row, "▶", TILE, function()
 		cycle(1)
 	end, { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -34, 0, 0) })
+	-- your lands for this stage (a Home Turf stage lays the opponent's land instead)
+	LandPicker.build(scroll, {
+		order = order + 1,
+		compact = true,
+		auto = deck and ((type(deck.lanes) == "table" and #deck.lanes > 0) and deck.lanes or { deck.family, deck.family, deck.family, deck.family }) or nil,
+		get = function()
+			return S.ctx.prefs and S.ctx.prefs.get("Lands")
+		end,
+		set = function(str)
+			if S.ctx.prefs then
+				(S.ctx.prefs.setNow or S.ctx.prefs.set)("Lands", str)
+			end
+		end,
+	})
 
 	local ready = canStart and deck ~= nil and deck.ok ~= false and not S.waiting
 	local start = button(scroll, S.waiting and "Starting..." or "⚔  START", ready and GOOD or LOCKED, function()
@@ -245,7 +260,7 @@ local function startRow(scroll, order, stageId, canStart, why)
 				render()
 			end
 		end)
-	end, { Name = "StartButton", Size = UDim2.new(1, 0, 0, 48), TextSize = 24, LayoutOrder = order + 1 })
+	end, { Name = "StartButton", Size = UDim2.new(1, 0, 0, 48), TextSize = 24, LayoutOrder = order + 2 })
 	if ready then
 		Juice.shine(start, 3.2, UDim.new(0, 8))
 	else

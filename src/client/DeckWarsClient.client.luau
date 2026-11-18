@@ -28,6 +28,7 @@ local PartyScreen = require(Shared:WaitForChild("PartyScreen"))
 local Backdrops = require(Shared:WaitForChild("Backdrops"))
 local Progression = require(Shared:WaitForChild("Progression"))
 local CardLevels = require(Shared:WaitForChild("CardLevels"))
+local CardStyle = require(Shared:WaitForChild("CardStyle"))
 local UIKit = require(Shared:WaitForChild("UIKit")) -- drawn icons, the level badge and Focus (one window at a time)
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -658,7 +659,7 @@ do
 	-- (a big icon for a spell that has no 3D model).
 	function addCardArt(art, def, calm)
 		if def.type == "Spell" and not CreatureBuilder.has(def.id) then
-			local icon = label(art, SPELL_ICONS[def.id] or "✨", { Name = "Icon", Size = UDim2.fromScale(0.9, 0.9), Position = UDim2.fromScale(0.05, 0.05), Font = Enum.Font.GothamBold })
+			local icon = label(art, SPELL_ICONS[def.id] or "✨", { Name = "Icon", Size = UDim2.fromScale(0.9, 0.9), Position = UDim2.fromScale(0.05, 0.05), Font = Enum.Font.GothamBold, ZIndex = art.ZIndex + 1 })
 			if not calm then
 				cardLife.icons[icon] = math.random() * 6.28
 			end
@@ -673,6 +674,7 @@ do
 			Ambient = Color3.fromRGB(150, 150, 165),
 			LightColor = Color3.fromRGB(255, 244, 228),
 			LightDirection = Vector3.new(-0.6, -1, -0.8),
+			ZIndex = art.ZIndex + 1, -- (above the card's painted scene)
 		}, art)
 		model.Parent = viewport
 		local info = CreatureBuilder.info(def.id) or { height = 2.5, width = 2.5, depth = 2.5 }
@@ -716,6 +718,8 @@ local function makeCard(parent, cardId, size, costOverride, calm, level, boosted
 	if rank and rank >= 2 then
 		cardLife.glows[stroke] = math.random() * 6.28
 	end
+	-- the body: a soft pattern, a printed inner frame and the rarity's gems and foil
+	CardStyle.dress(card, def, famColor, rgb(CardData.RarityColors[def.rarity]), { radius = 10, compact = compact, gemSize = compact and 9 or 11 })
 	if def.rarity == "Secret" and not calm then
 		cardLife.spins[make("UIGradient", {
 			Color = ColorSequence.new({
@@ -762,6 +766,7 @@ local function makeCard(parent, cardId, size, costOverride, calm, level, boosted
 	}, card)
 	corner(art, 8)
 	make("UIGradient", { Rotation = 90, Color = ColorSequence.new(famColor:Lerp(WHITE, 0.45), famColor:Lerp(BLACK, 0.35)) }, art)
+	CardStyle.scene(art, def, { lite = compact or calm == true }) -- (a painted place behind the creature)
 	addCardArt(art, def, calm)
 	if compact then
 		if def.atk ~= nil then
@@ -1022,6 +1027,7 @@ function ui.myDecks()
 			name = d.deck.name or ("Deck " .. d.slot),
 			family = d.deck.themes and d.deck.themes[1] or "Any",
 			themes = d.deck.themes,
+			lanes = d.deck.lanes,
 			hero = d.deck.hero,
 			count = d.deck.cards and #d.deck.cards or 0,
 			ok = d.ok,
@@ -2484,6 +2490,11 @@ function prefs.get(key)
 	end
 	return v
 end
+-- (sent at once, for a choice the very next match must see, like your lands)
+function prefs.setNow(key, value)
+	prefs.mine[key] = value
+	MenuAction:FireServer("SavePrefs", { [key] = value })
+end
 function prefs.set(key, value)
 	prefs.mine[key] = value
 	prefs.pending[key] = value
@@ -3234,6 +3245,11 @@ do
 		end
 	end
 
+	-- the cozy corner: the cat's sleepy z's and the reading lamp (only while the room is on screen)
+	require(Shared:WaitForChild("CozyLife")).start(room, function()
+		return (mode == "menu" or mode == "title") and not Backdrops.current()
+	end)
+
 	local hideTimer = 0
 	RunService.RenderStepped:Connect(function(dt)
 		clock += dt
@@ -3303,8 +3319,12 @@ do
 		MatchScreen.update(dt)
 		Backdrops.update(dt) -- (the moving parts of a match world)
 		ui.idleTable.update(dt)
-		if not Backdrops.current() then
-			updateAmbience(dt) -- the room is hidden while a match background is up
+		-- the room is out of sight while a match world is up or you're out in the Park: its fire,
+		-- disco ball and pack shelf rest then (they pick up again the moment you're back)
+		local roomHidden = Backdrops.current() ~= nil or mode == "park"
+		PackShelf.suspend(roomHidden)
+		if not roomHidden then
+			updateAmbience(dt)
 		end
 	end)
 end
