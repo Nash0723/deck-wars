@@ -3538,7 +3538,7 @@ function MatchScreen.init(ctx)
 		F.step(1.0)
 	end
 	ANIM.win = function(e)
-		F.step(0.6) -- (cards still flying onto the pile land first)
+		F.step(0.95) -- (cards still on their way to the pile land first)
 		F.returnPile()
 	end
 
