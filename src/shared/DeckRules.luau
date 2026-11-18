@@ -27,10 +27,12 @@ local DeckRules = {}
 -- the best cards of two thirds of the game. Set it to 4 to try that out.
 DeckRules.MaxThemes = 2
 DeckRules.MinCards = 20
-DeckRules.MaxCards = 30
-DeckRules.MaxCopies = CardData.MaxCopies or 3
--- The rarest cards are one of a kind in a deck.
-DeckRules.MaxCopiesByRarity = { Legendary = 1, Secret = 1 }
+DeckRules.MaxCards = 40
+-- Copies of the same card are fine (4 Pancake Paladins count as 4 of the 40). In a match only one
+-- copy of each creature can be on the board at a time (MatchEngine:copyOnBoard).
+DeckRules.MaxCopies = CardData.MaxCopies or 4
+-- The rarest cards have lower limits.
+DeckRules.MaxCopiesByRarity = { Legendary = 2, Secret = 1 }
 DeckRules.Heroes = { "bonk", "granny_bolt" }
 DeckRules.MaxNameLength = 24
 DeckRules.DefaultDeckSlots = 3
@@ -96,6 +98,18 @@ end
 function DeckRules.copyLimit(id)
 	local d = CardData.Cards[id]
 	return (d and DeckRules.MaxCopiesByRarity[d.rarity]) or DeckRules.MaxCopies
+end
+
+-- "4 at most, 2 of each Legendary, 1 of each Secret" (follows the numbers above)
+function DeckRules.copyRuleText()
+	local parts = { DeckRules.MaxCopies .. " at most" }
+	for _, r in ipairs({ "Common", "Rare", "Epic", "Mythic", "Legendary", "Secret" }) do
+		local n = DeckRules.MaxCopiesByRarity[r]
+		if n then
+			table.insert(parts, n .. " of each " .. r)
+		end
+	end
+	return table.concat(parts, ", ")
 end
 
 -- Does card `id` fit a deck with these themes? ("Any" cards fit every deck.)
@@ -240,7 +254,7 @@ function DeckRules.validate(deck, owned)
 		add("Not in this deck's themes: " .. table.concat(offTheme, ", "))
 	end
 	if #tooMany > 0 then
-		add("Too many copies (3 at most, 1 of each Legendary and Secret): " .. table.concat(tooMany, ", "))
+		add("Too many copies (" .. DeckRules.copyRuleText() .. "): " .. table.concat(tooMany, ", "))
 	end
 	if #notOwned > 0 then
 		add("You don't own enough of: " .. table.concat(notOwned, ", "))

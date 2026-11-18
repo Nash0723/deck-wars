@@ -45,8 +45,8 @@ CardData.MaxMagic = 8
 CardData.MaxEnergy = CardData.MaxMagic -- older name, still used for the crystals on the table
 CardData.StartHand = 5
 CardData.MaxHand = 8
-CardData.DeckSize = 30
-CardData.MaxCopies = 3
+CardData.DeckSize = 40
+CardData.MaxCopies = 4
 CardData.BigMoveCharge = 10 -- damage you must deal before your hero's Big Move is ready (once per match)
 -- Going first is an edge. The team that goes first starts with FirstHandPenalty cards fewer
 -- and its first player skips their very first draw. In Hard bot games that took the first

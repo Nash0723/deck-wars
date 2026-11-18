@@ -138,6 +138,15 @@ Click **Lighting** in Studio's Explorer. `Ambient` is the overall room brightnes
 ## Use your own models
 Put a Model in ReplicatedStorage > CreatureModels and name it after the card id, for example `toaster_knight` or `snack_bar` (ids are in CardData). Build it facing the front (-Z); the game shrinks it to fit a tile, stands it on its feet and puts a round base under creatures. The same works for the heroes (`hero_bonk`, `hero_granny_bolt`). Parts named `Lid` are hidden eyelids the game flashes to make a model blink.
 
+## Cards on the table, the trash pile, and 40-card decks
+
+- **Real cards on the table.** Playing a creature or building deals its card from your side of the table into its spot, face up (its family's painted scene, frame, rarity gems, cost and stats), and the creature climbs out of it and stands on it. A spell's card is laid over your side while it works. Tokens (Ghost, Pigeon, Scrap...) have no card.
+- **The trash pile.** When a creature falls (or a building is wrecked, or a unit is played over), it sinks back into its card, the card turns face down (the biome card back with the rarity foil) and lands on one shared pile at the right side of the field, between the two decks, with a count over it. A creature that comes back from the trash (a Phoenix) takes its card back off the pile. A unit sent back to the hand takes its card home.
+- **End of the match.** The pile is dealt back to the cards' owners one card after another, quickly.
+- **No reshuffle.** Your deck is played through once. If you have to draw and your deck is empty, you lose (in 2v2 your team does). Cards in the trash stay there for the match.
+- **Decks: 20 to 40 cards, copies welcome.** Up to 4 copies of a card (2 of each Legendary, 1 of each Secret): 4 Pancake Paladins count as 4 of your 40. In a match only **one copy of each creature can be on the board at a time**; when it's gone you can play the next copy (and a copy that fell is in the trash, so with 4 in the deck you have 3 left).
+- Where to change it: `DeckRules.MaxCards`, `DeckRules.MaxCopies`/`MaxCopiesByRarity` (deck limits), `MatchEngine:copyOnBoard` (the one-on-the-board rule), `MatchEngine:deckOut` (empty deck loses), `TableCardArt.luau` (what the table cards look like), and the "Cards on the table" section of `MatchScreen.luau` (card size, pile spot, how fast cards fly).
+
 ## Inspect a card: its model up close
 In the Deck Shelf, tap a card to open its copies, then tap the big card (it leans in and says **🔍 Inspect** when you point at it) or the **🔍 Inspect** button under it. Cards you haven't found yet open straight in the inspector from **All cards** (Secret ones stay hidden).
 

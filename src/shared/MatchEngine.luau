@@ -312,13 +312,39 @@ function MatchEngine:draw(s)
 	local level = seat.deckLv and table.remove(seat.deckLv) or 1
 	local id = table.remove(seat.deck)
 	if not id then
-		-- An empty deck hurts more every time.
-		seat.fatigue += 1
-		self:emit({ type = "fatigue", seat = s, amount = seat.fatigue })
-		self:damageTeam(seat.team, seat.fatigue, nil)
+		-- No reshuffle: a deck is played through once, and a player who has to draw from an empty
+		-- deck loses the match (in 2v2 their team does).
+		self:deckOut(s)
 		return nil
 	end
 	return self:addToHand(s, id, nil, nil, level)
+end
+
+-- Seat s had to draw but its deck is empty: its team loses.
+function MatchEngine:deckOut(s)
+	if self.over then
+		return
+	end
+	local seat = self.seats[s]
+	self:emit({ type = "deckout", seat = s })
+	self.over = true
+	self.winner = self:enemyTeam(seat.team)
+	self:emit({ type = "win", winner = self.winner, deckout = s })
+end
+
+-- One copy of a creature on the board at a time: the creature of seat s with this card id that is
+-- on the board now (nil if none). Another copy can be played once it's gone; tokens don't count.
+function MatchEngine:copyOnBoard(s, id)
+	local c = card(id)
+	if not c or c.type ~= "Creature" or c.token then
+		return nil
+	end
+	for _, u in ipairs(self:creaturesOf(s)) do
+		if u.id == id then
+			return u
+		end
+	end
+	return nil
 end
 
 function MatchEngine:findHand(s, uid)
@@ -2147,6 +2173,9 @@ function MatchEngine:act(s, action)
 			if c.type == "Creature" and action.row ~= nil and action.row ~= 1 and action.row ~= 2 then
 				return false, "Pick the Front or the Back row"
 			end
+			if self:copyOnBoard(s, entry.id) then
+				return false, "Only one " .. (c.name or "of these") .. " on the board at a time"
+			end
 			if c.target and target ~= nil and not self:validTarget(s, c.target, target) then
 				return false, "That's not a target for this card"
 			end
@@ -2265,7 +2294,7 @@ function MatchEngine:listActions(s)
 	local team = seat.team
 	for _, entry in ipairs(seat.hand) do
 		local c = card(entry.id)
-		if self:costOf(s, entry) <= seat.magic then
+		if self:costOf(s, entry) <= seat.magic and not self:copyOnBoard(s, entry.id) then
 			local a = { kind = "play", handUid = entry.uid, id = entry.id }
 			if c.type == "Creature" or c.type == "Building" then
 				a.lanes = self:lanesOf(s)

@@ -67,7 +67,7 @@ end
 ---------------------------------------------------------------------------
 local all = {}
 for _, id in ipairs(CardData.List) do
-	all[id] = 3
+	all[id] = 4
 end
 
 local function deckOf(themes, cards, lanes)
@@ -77,8 +77,8 @@ local function familyCards(f, n)
 	local out = {}
 	for _, id in ipairs(CardData.List) do
 		local d = CardData.Cards[id]
-		if d.family == f and DeckRules.collectible(id) and DeckRules.copyLimit(id) == 3 then
-			for _ = 1, 3 do
+		if d.family == f and DeckRules.collectible(id) and DeckRules.copyLimit(id) >= 3 then
+			for _ = 1, DeckRules.copyLimit(id) do
 				if #out < n then
 					table.insert(out, id)
 				end
@@ -103,15 +103,16 @@ table.remove(short)
 ok, problems = DeckRules.validate(deckOf({ "Snack" }, short), all)
 check(not ok and hasProblem(problems, "Add 1 more card"), "19 cards is too few")
 local long = table.clone(snack20)
-for _, id in ipairs(familyCards("Critter", 11)) do
+for _, id in ipairs(familyCards("Critter", 21)) do
 	table.insert(long, id)
 end
 ok, problems = DeckRules.validate(deckOf({ "Snack", "Critter" }, long), all)
-check(not ok and hasProblem(problems, "Take out 1 card"), "31 cards is too many")
-local four = table.clone(snack20)
-table.insert(four, snack20[1])
-ok, problems = DeckRules.validate(deckOf({ "Snack" }, four), all)
-check(not ok and hasProblem(problems, "Too many copies"), "4 copies is too many")
+check(not ok and hasProblem(problems, "Take out 1 card"), "41 cards is too many")
+local five = table.clone(snack20)
+table.insert(five, snack20[1])
+table.insert(five, snack20[1])
+ok, problems = DeckRules.validate(deckOf({ "Snack" }, five), all)
+check(not ok and hasProblem(problems, "Too many copies"), "5 copies is too many")
 -- one of a kind
 local legend
 for _, id in ipairs(CardData.List) do
@@ -120,7 +121,7 @@ for _, id in ipairs(CardData.List) do
 		break
 	end
 end
-check(legend ~= nil and DeckRules.copyLimit(legend) == 1, "Legendary cards are one per deck")
+check(legend ~= nil and DeckRules.copyLimit(legend) == 2, "Legendary cards are two per deck")
 -- ownership
 local fewer = table.clone(all)
 fewer[snack20[1]] = 1

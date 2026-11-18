@@ -22,6 +22,7 @@ local UIKit = require(Shared:WaitForChild("UIKit"))
 local CardLevels = require(Shared:WaitForChild("CardLevels"))
 local LayerFx = require(Shared:WaitForChild("LayerFx"))
 local EnchantFx = require(Shared:WaitForChild("EnchantFx")) -- (enchanted cards: rims, auras, trigger effects)
+local TableCardArt = require(Shared:WaitForChild("TableCardArt")) -- (the real cards lying on the table)
 
 local ABORT = "MatchScreenAbort" -- thrown to stop playback when the match ended meanwhile
 
@@ -603,7 +604,7 @@ function MatchScreen.init(ctx)
 			for _, d in ipairs(folder:GetChildren()) do
 				if d:IsA("BasePart") then
 					local name = d.Name
-					local always = ALWAYS_HIDE[name] or name:match("^Tile_") or name:match("^Energy_")
+					local always = ALWAYS_HIDE[name] or name:match("^Tile_") or name:match("^Energy_") or name:match("^Discard")
 					local wideOnly = name:match("^Hero") or name:match("^Pedestal") or name:match("^Deck") or name:match("^Discard")
 					if always or (all and wideOnly) then
 						if not S.hidden[d] then
@@ -701,6 +702,7 @@ function MatchScreen.init(ctx)
 	function F.buildBoard(v)
 		S.ghost = nil -- (its model goes with the board)
 		S.boardFolder:ClearAllChildren()
+		S.pile = nil -- (the trash pile's cards went with the board too)
 		S.pads = {}
 		S.scrap = {}
 		local L = F.makeLayout(v.width)
@@ -738,6 +740,7 @@ function MatchScreen.init(ctx)
 		end
 		-- The seam where the two sides meet: a thin gold line.
 		part({ Name = "MidLine", Size = Vector3.new(2 * W, 0.03, 0.08), CFrame = CFrame.new(0, L.groundTop + 0.01, 0), Color = GOLD, Material = Enum.Material.SmoothPlastic, Transparency = 0.2, CanQuery = false })
+		F.makePile()
 		-- The lands are laid down one after another, yours first (left to right from your chair),
 		-- then the other side's: each one drops onto the table and lands with its own effect.
 		for k, t in ipairs({ S.myTeam, 3 - S.myTeam }) do
@@ -1397,9 +1400,384 @@ function MatchScreen.init(ctx)
 		g.model.Parent = S.boardFolder
 	end
 
-	function F.spawnUnit(u, quick)
+
+	---------------------------------------------------------------------------
+	-- Cards on the table
+	---------------------------------------------------------------------------
+	-- A creature or building is played by laying its real card down in its spot; the creature
+	-- climbs out of the card and stands on it. When it falls, it sinks back into its card, the
+	-- card turns face down and goes onto the trash pile, one shared pile at the side of the field.
+	-- A spell card is laid on the table while it works, then goes onto the pile too. When the
+	-- match ends the pile is dealt back to the cards' owners, one card after another.
+	-- Tokens (Ghost, Pigeon, Scrap...) have no card: they just appear and vanish.
+
+	local CARD = Vector3.new(1.5, 0.05, 2.05) -- (width, thickness, depth) in studs
+	local PILE_STEP = 0.032 -- how much each card raises the pile
+	local PILE_MAX_SHOWN = 40 -- more than this and the pile stops growing (the cards still count)
+
+	local function isCardBacked(id)
+		local def = id and CardData.Cards[id]
+		return def ~= nil and not def.token
+	end
+
+	local function surface(p, face, name)
+		local sg = Instance.new("SurfaceGui")
+		sg.Name = name
+		sg.Face = face
+		sg.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+		sg.CanvasSize = TableCardArt.CanvasSize
+		sg.LightInfluence = 0.35
+		sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		sg.ClipsDescendants = true
+		sg.Parent = p
+		return sg
+	end
+
+	-- A new card part, face up (its face drawn on top). Its back is drawn when it turns over.
+	function F.newCard(id, level, cf)
+		local p = Instance.new("Part")
+		p.Name = "TableCard"
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanTouch = false
+		p.CanQuery = false
+		p.CastShadow = true
+		p.Size = CARD
+		p.Material = Enum.Material.SmoothPlastic
+		p.Color = Color3.fromRGB(242, 236, 222)
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.CFrame = cf or CFrame.new(0, -50, 0)
+		p:SetAttribute("CardId", id)
+		local sg = surface(p, Enum.NormalId.Top, "Face")
+		pcall(TableCardArt.face, sg, id, level)
+		p.Parent = S.boardFolder
+		return p
+	end
+
+	-- Draws the card's back (on its bottom face, which is up once the card turns over).
+	function F.cardBack(p)
+		if p and p.Parent and not p:FindFirstChild("BackFace") then
+			local sg = surface(p, Enum.NormalId.Bottom, "BackFace")
+			pcall(TableCardArt.back, sg, p:GetAttribute("CardId"))
+		end
+	end
+
+	-- Where a card lies under a unit at `home` (the unit's spot).
+	function F.cardHome(home)
+		return home * CFrame.new(0, CARD.Y / 2 - 0.015, 0)
+	end
+
+	-- Where a seat's cards come from and go back to: its side of the table, by its chair (1v1:
+	-- next to its deck; 2v2: behind its hero).
+	function F.seatSpot(seat)
+		local v = S.view
+		local sv = v and v.seats[seat]
+		local L = S.layout
+		local mine = sv == nil or sv.team == S.myTeam
+		if L and not L.wide then
+			local deck = board:FindFirstChild(mine and "Deck_Near" or "Deck_Far")
+			if deck then
+				return deck.Position + Vector3.new(0, deck.Size.Y / 2 + 0.4, 0)
+			end
+		end
+		if sv and S.heroes[seat] then
+			return S.heroes[seat].home.Position + Vector3.new(0, 1.2, mine and 1.5 or -1.5)
+		end
+		return Vector3.new(0, F.feltTop() + 1, mine and 10 or -10)
+	end
+
+	-- The point a card is dealt from: just over the table in front of the player's chair (where
+	-- the hand is), lying flat and facing that player.
+	function F.handCF(seat)
+		local v = S.view
+		local sv = v and v.seats[seat]
+		local mine = sv == nil or sv.team == S.myTeam
+		local L = S.layout
+		local x = 0
+		if sv and sv.lanes and #sv.lanes > 0 and L then
+			for _, lane in ipairs(sv.lanes) do
+				x += L.x(lane)
+			end
+			x /= #sv.lanes
+		end
+		local z = (L and L.half + 2.2 or 9.5) * (mine and 1 or -1)
+		local cf = CFrame.new(x, F.feltTop() + 2.6, z)
+		return mine and cf or cf * CFrame.Angles(0, math.pi, 0)
+	end
+
+	-- A card flies from `from` to `to` (CFrames) in an arc, turning over on the way if `flip`.
+	function F.flyCard(p, from, to, seconds, opts)
+		opts = opts or {}
+		local flip = opts.flip and math.pi or 0
+		local lift = opts.lift or 1.2
+		local spin = opts.spin or 0
+		local fromRot, toRot = from - from.Position, to - to.Position
+		p.CFrame = from
+		return F.tween(seconds, function(a)
+			if p.Parent then
+				local pos = from.Position:Lerp(to.Position, a) + Vector3.new(0, math.sin(a * math.pi) * lift, 0)
+				local rot = fromRot:Lerp(toRot, a)
+				p.CFrame = CFrame.new(pos) * rot * CFrame.Angles(0, spin * (1 - a), flip * a)
+			end
+		end, function()
+			if p.Parent then
+				p.CFrame = to * CFrame.Angles(0, 0, flip)
+			end
+			if opts.done then
+				opts.done()
+			end
+		end)
+	end
+
+	-- Deals a card from a seat's hand into a unit's spot (face up). Returns the card; the caller
+	-- waits for it to land (it takes CARD_DEAL seconds at the match's pace).
+	local CARD_DEAL = 0.34
+	function F.dealCard(id, level, seat, home)
+		local from = F.handCF(seat)
+		local p = F.newCard(id, level, from)
+		local to = F.cardHome(home)
+		F.flyCard(p, from, to, CARD_DEAL, { lift = 1.4, spin = 0.5 })
+		return p
+	end
+
+	-- The pile: a dark mat at the side of the field, between the two players.
+	function F.makePile()
+		local L = S.layout
+		local x
+		if not L.wide then
+			local deck = board:FindFirstChild("Deck_Near")
+			x = deck and deck.Position.X or (L.halfWidth + L.frame + 3)
+		else
+			x = L.halfWidth + L.frame + 0.9
+		end
+		local base = CFrame.new(x, F.feltTop() + 0.012, 0)
+		local mat = Instance.new("Part")
+		mat.Name = "TrashMat"
+		mat.Anchored = true
+		mat.CanCollide = false
+		mat.CanTouch = false
+		mat.CanQuery = false
+		mat.CastShadow = false
+		mat.Size = Vector3.new(CARD.X + 0.36, 0.02, CARD.Z + 0.36)
+		mat.CFrame = base
+		mat.Color = Color3.fromRGB(34, 26, 30)
+		mat.Material = Enum.Material.Fabric
+		mat.Parent = S.boardFolder
+		local sg = Instance.new("SurfaceGui")
+		sg.Face = Enum.NormalId.Top
+		sg.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+		sg.CanvasSize = Vector2.new(190, 240)
+		sg.LightInfluence = 0.5
+		sg.Parent = mat
+		local edge = Instance.new("Frame")
+		edge.Size = UDim2.new(1, -16, 1, -16)
+		edge.Position = UDim2.fromOffset(8, 8)
+		edge.BackgroundTransparency = 1
+		edge.Parent = sg
+		local st = Instance.new("UIStroke")
+		st.Thickness = 3
+		st.Color = Color3.fromRGB(150, 120, 80)
+		st.Transparency = 0.3
+		st.Parent = edge
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, 14)
+		c.Parent = edge
+		local t = Instance.new("TextLabel")
+		t.BackgroundTransparency = 1
+		t.Size = UDim2.fromScale(0.8, 0.16)
+		t.Position = UDim2.fromScale(0.1, 0.42)
+		t.Text = "TRASH"
+		t.TextScaled = true
+		t.Font = Enum.Font.FredokaOne
+		t.TextColor3 = Color3.fromRGB(170, 140, 100)
+		t.TextTransparency = 0.25
+		t.Parent = edge
+		local count = Instance.new("BillboardGui")
+		count.Name = "PileCount"
+		count.Size = UDim2.fromOffset(60, 22)
+		count.StudsOffsetWorldSpace = Vector3.new(0, 0.6, 0)
+		count.LightInfluence = 0
+		count.MaxDistance = 60
+		count.Enabled = false
+		count.Parent = mat
+		local ct = Instance.new("TextLabel")
+		ct.BackgroundTransparency = 1
+		ct.Size = UDim2.fromScale(1, 1)
+		ct.Font = Enum.Font.FredokaOne
+		ct.TextScaled = true
+		ct.TextColor3 = Color3.fromRGB(255, 240, 215)
+		ct.TextStrokeTransparency = 0.4
+		ct.Parent = count
+		S.pile = { base = base, mat = mat, count = count, countText = ct, cards = {} }
+	end
+
+	function F.pileTopCF(n)
+		local P = S.pile
+		local k = math.min(n, PILE_MAX_SHOWN)
+		-- each card sits a little askew, like a real pile (the same way every time for a slot)
+		local turn = math.sin(n * 12.9898) * 0.12
+		local nudge = Vector3.new(math.sin(n * 7.31) * 0.06, 0, math.cos(n * 3.17) * 0.06)
+		return P.base * CFrame.new(nudge + Vector3.new(0, 0.01 + CARD.Y / 2 + (k - 1) * PILE_STEP, 0)) * CFrame.Angles(0, turn, 0)
+	end
+
+	function F.updatePileCount()
+		local P = S.pile
+		if not P then
+			return
+		end
+		local n = #P.cards
+		P.count.Enabled = n > 0
+		P.count.StudsOffsetWorldSpace = Vector3.new(0, 0.5 + math.min(n, PILE_MAX_SHOWN) * PILE_STEP, 0)
+		P.countText.Text = tostring(n)
+	end
+
+	-- A card goes onto the trash pile, face down. `p` is the card (it can be anywhere, face up).
+	-- Only the top card keeps its drawn back; the ones under it are plain card edges.
+	function F.toPile(p, id, owner, opts)
+		opts = opts or {}
+		if not (p and p.Parent) then
+			return
+		end
+		if not S.pile then
+			p:Destroy()
+			return
+		end
+		local P = S.pile
+		local item = { part = p, id = id, owner = owner, landed = false }
+		table.insert(P.cards, item)
+		local n = #P.cards
+		F.cardBack(p)
+		local from = p.CFrame
+		local to = F.pileTopCF(n)
+		F.flyCard(p, from, to, opts.seconds or 0.42, {
+			flip = true,
+			lift = opts.lift or 1.6,
+			done = function()
+				item.landed = true
+				if p.Parent then
+					-- face down now: the face isn't seen any more
+					local face = p:FindFirstChild("Face")
+					if face then
+						face:Destroy()
+					end
+					p.Color = Color3.fromRGB(46, 50, 86)
+				end
+				-- the card under it doesn't need its drawn back any more
+				local under = P.cards[table.find(P.cards, item) and (table.find(P.cards, item) - 1) or 0]
+				if under and under.landed and under.part.Parent then
+					local bf = under.part:FindFirstChild("BackFace")
+					if bf then
+						bf:Destroy()
+					end
+				end
+				F.updatePileCount()
+				if not opts.silent then
+					F.sound("thudSmall", { volume = 0.25, pitch = 1.5 })
+				end
+			end,
+		})
+	end
+
+	-- Takes a landed card of this id and owner off the pile (a creature brought back from the
+	-- trash). Returns the card, face up again, or nil.
+	function F.takeFromPile(id, owner)
+		local P = S.pile
+		if not P then
+			return nil
+		end
+		for i = #P.cards, 1, -1 do
+			local it = P.cards[i]
+			if it.id == id and it.owner == owner and it.landed and it.part.Parent then
+				table.remove(P.cards, i)
+				local p = it.part
+				-- the cards above it slide down into its place
+				for k = i, #P.cards do
+					local above = P.cards[k]
+					if above.landed and above.part.Parent then
+						above.part.CFrame = F.pileTopCF(k) * CFrame.Angles(0, 0, math.pi)
+					end
+				end
+				local top = P.cards[#P.cards]
+				if top and top.part.Parent then
+					F.cardBack(top.part)
+				end
+				-- face up again
+				p.Color = Color3.fromRGB(242, 236, 222)
+				if not p:FindFirstChild("Face") then
+					local sg = surface(p, Enum.NormalId.Top, "Face")
+					pcall(TableCardArt.face, sg, id, 1)
+				end
+				F.updatePileCount()
+				return p
+			end
+		end
+		return nil
+	end
+
+	-- A card goes back to its owner's side (back to the hand, or dealt back at the end).
+	function F.cardHomeward(p, seat, seconds)
+		if not (p and p.Parent) then
+			return
+		end
+		local to = CFrame.new(F.seatSpot(seat)) * ((p.CFrame - p.CFrame.Position))
+		F.tween(seconds or 0.3, function(a)
+			if p.Parent then
+				local from = p:GetAttribute("FromPos") or p.Position
+				p.Position = from:Lerp(to.Position, a) + Vector3.new(0, math.sin(a * math.pi) * 1.2, 0)
+				p.Size = CARD * (1 - 0.45 * a)
+			end
+		end, function()
+			p:Destroy()
+		end)
+		p:SetAttribute("FromPos", p.Position)
+	end
+
+	-- The end of the match: the pile is dealt back to the cards' owners, top card first, quickly.
+	function F.returnPile()
+		local P = S.pile
+		if not P or #P.cards == 0 then
+			return
+		end
+		F.log("The trash pile goes back to its owners.", Color3.fromRGB(230, 215, 190))
+		local gap = math.clamp(1.6 / #P.cards, 0.035, 0.09)
+		while #P.cards > 0 do
+			local it = table.remove(P.cards)
+			F.updatePileCount()
+			if it.part.Parent then
+				F.cardBack(it.part)
+				F.cardHomeward(it.part, it.owner, 0.28)
+				F.sound("whooshShort", { volume = 0.12, pitch = 1.4 + math.random() * 0.3 })
+			end
+			F.step(gap)
+		end
+		F.step(0.3)
+	end
+
+	-- A spell card is laid face up over the caster's side of the table while the spell works.
+	function F.laySpell(id, seat, level)
+		if not isCardBacked(id) or not S.layout then
+			return nil
+		end
+		local v = S.view
+		local sv = v and v.seats[seat]
+		local mine = sv == nil or sv.team == S.myTeam
+		local from = F.handCF(seat)
+		local spot = CFrame.new(from.Position.X * 0.6, F.feltTop() + 1.3, (mine and 1 or -1) * (S.layout.half * 0.45))
+		spot = spot * (from - from.Position) * CFrame.Angles(math.rad(mine and 35 or -35), 0, 0)
+		local p = F.newCard(id, level, from)
+		F.flyCard(p, from, spot, 0.3, { lift = 0.6 })
+		return p
+	end
+
+	-- card: the unit's card, already lying in its spot (it climbs out of it). Without one, a
+	-- quick spawn (catching up with the server) puts its card under it at once.
+	function F.spawnUnit(u, quick, card)
 		local existing = S.units[u.uid]
 		if existing then
+			if card and card ~= existing.card then
+				card:Destroy()
+			end
 			return existing
 		end
 		local model = ctx.buildModel(u.id)
@@ -1417,6 +1795,12 @@ function MatchScreen.init(ctx)
 		model.Parent = S.boardFolder
 		local entry = { uid = u.uid, id = u.id, kind = u.kind, slot = slot, row = u.row, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false, data = u }
 		S.units[u.uid] = entry -- (data: so a building whose model is lost can be built again too, not just creatures)
+		if card then
+			entry.card = card
+			card.CFrame = F.cardHome(home)
+		elseif quick and isCardBacked(u.id) then
+			entry.card = F.newCard(u.id, u.level, F.cardHome(home))
+		end
 		if u.enchant then
 			-- an enchanted creature stands in a slow glow of its enchant's colour
 			entry.enchant = u.enchant
@@ -1426,7 +1810,34 @@ function MatchScreen.init(ctx)
 			F.makeLabel(entry)
 			F.setStats(entry, u)
 		end
-		if not quick then
+		if not quick and card then
+			-- it climbs out of its card: small and low at first, then up to full size with a hop
+			entry.busy = true
+			ctx.setScale(model, s * 0.12)
+			model:PivotTo(home)
+			if u.kind == "creature" then
+				F.flareRing(u.team, u.lane, nil, u.row)
+			end
+			local glow = Instance.new("PointLight")
+			glow.Color = familyColor(CardData.Cards[u.id] and CardData.Cards[u.id].family)
+			glow.Range = 6
+			glow.Brightness = 3
+			glow.Parent = card
+			F.tween(0.5, function(a)
+				if model.Parent then
+					ctx.setScale(model, s * (0.12 + 0.88 * a))
+					model:PivotTo(home * CFrame.new(0, math.sin(a * math.pi) * 0.6, 0))
+				end
+				glow.Brightness = 3 * (1 - a)
+			end, function()
+				if model.Parent then
+					ctx.setScale(model, s)
+					model:PivotTo(home)
+				end
+				glow:Destroy()
+				entry.busy = false
+			end)
+		elseif not quick then
 			entry.busy = true
 			model:PivotTo(home * CFrame.new(0, -1.2, 0))
 			if u.kind == "creature" then
@@ -1449,12 +1860,39 @@ function MatchScreen.init(ctx)
 			return
 		end
 		S.units[uid] = nil
+		local card = entry.card
+		entry.card = nil
 		local model = entry.model
-		if not model.Parent then
+		if how == "quick" then
+			if card then
+				card:Destroy()
+			end
+			if model.Parent then
+				model:Destroy()
+			end
 			return
 		end
-		if how == "quick" then
-			model:Destroy()
+		if card then
+			if how == "bounce" then
+				-- back to its owner's hand
+				task.delay(0.15 * PACE, function()
+					F.cardHomeward(card, entry.owner, 0.4)
+				end)
+			else
+				-- it sinks back into its card; the card turns face down onto the trash pile (unless
+				-- the creature comes right back first: a Phoenix takes its card along)
+				local key = tostring(entry.id) .. ":" .. tostring(entry.owner)
+				S.leaving = S.leaving or {}
+				S.leaving[key] = card
+				task.delay(0.42 * PACE, function()
+					if S.leaving[key] == card then
+						S.leaving[key] = nil
+						F.toPile(card, entry.id, entry.owner)
+					end
+				end)
+			end
+		end
+		if not model.Parent then
 			return
 		end
 		F.flashModel(model, WHITE, 0.25)
@@ -1484,6 +1922,9 @@ function MatchScreen.init(ctx)
 		local to = F.slotCF(entry.team, lane, entry.slot or entry.kind)
 		entry.home = to
 		entry.busy = true
+		if entry.card and entry.card.Parent then
+			F.flyCard(entry.card, F.cardHome(from), F.cardHome(to), 0.45, { lift = 0.9 })
+		end
 		F.tween(0.45, function(a)
 			if entry.model.Parent then
 				local p = from.Position:Lerp(to.Position, a) + Vector3.new(0, math.sin(a * math.pi) * 1.4, 0)
@@ -1805,7 +2246,23 @@ function MatchScreen.init(ctx)
 		end
 		local c = CardData.Cards[entry.id]
 		if not a then
-			F.notice(entry.cost > (S.view.seats[S.view.you].magic or 0) and ("Not enough ✨ magic for " .. c.name .. " yet") or ("You can't play " .. c.name .. " right now"), Color3.fromRGB(255, 170, 170))
+			local onBoard = false
+			if c.type == "Creature" and not c.token then
+				for _, unit in pairs(S.units) do
+					if unit.id == entry.id and unit.owner == S.view.you and unit.kind == "creature" then
+						onBoard = true
+					end
+				end
+			end
+			local why
+			if onBoard then
+				why = "Only one " .. c.name .. " on the board at a time: play another when this one is gone"
+			elseif entry.cost > (S.view.seats[S.view.you].magic or 0) then
+				why = "Not enough ✨ magic for " .. c.name .. " yet"
+			else
+				why = "You can't play " .. c.name .. " right now"
+			end
+			F.notice(why, Color3.fromRGB(255, 170, 170))
 			return
 		end
 		F.clearPick()
@@ -2462,6 +2919,9 @@ function MatchScreen.init(ctx)
 							entry.slot = F.slotOf(u)
 							entry.home = F.slotCF(u.team, u.lane, entry.slot)
 							entry.model:PivotTo(entry.home)
+							if entry.card and entry.card.Parent then
+								entry.card.CFrame = F.cardHome(entry.home)
+							end
 						end
 						entry.owner = u.owner
 						F.setStats(entry, u)
@@ -2580,6 +3040,17 @@ function MatchScreen.init(ctx)
 		F.log((e.seat == S.view.you and "Your" or (F.seatName(S.view, e.seat) .. "'s")) .. " hand is full: a card burns" .. (e.id and (" (" .. cardName(e.id) .. ")") or "") .. ".", Color3.fromRGB(255, 170, 120))
 	end
 
+	-- No reshuffle: a player who must draw from an empty deck loses (the win event follows).
+	ANIM.deckout = function(e)
+		local v = S.view
+		local mine = e.seat == v.you
+		local nm = F.seatName(v, e.seat)
+		F.log((mine and "You have" or (nm .. " has")) .. " no cards left to draw: out of cards!", Color3.fromRGB(255, 140, 140))
+		F.banner(mine and "Out of cards!" or (nm .. " is out of cards!"), 1.6, mine and Color3.fromRGB(255, 150, 140) or Color3.fromRGB(170, 255, 190))
+		F.sound("gong", { volume = 0.4 })
+		F.step(1.2)
+	end
+
 	ANIM.fatigue = function(e)
 		F.log(F.seatName(S.view, e.seat) .. " has no cards left: " .. e.amount .. " damage!", Color3.fromRGB(255, 140, 140))
 	end
@@ -2629,12 +3100,42 @@ function MatchScreen.init(ctx)
 		F.removeUnit(uid)
 	end
 
+	-- The card a unit arrives on: dealt from its owner's hand when it's played, taken back off the
+	-- trash pile when it comes back from there, a fresh one otherwise. nil for tokens (no card).
+	function F.arrivalCard(u, how)
+		if S.units[u.uid] or not isCardBacked(u.id) or not S.layout then
+			return nil
+		end
+		local home = F.slotCF(u.team, u.lane, F.slotOf(u))
+		if how ~= "play" and how ~= nil then
+			local key = tostring(u.id) .. ":" .. tostring(u.owner)
+			local p = S.leaving and S.leaving[key]
+			if p and p.Parent then
+				S.leaving[key] = nil
+				F.flyCard(p, p.CFrame, F.cardHome(home), 0.3, { lift = 0.5 })
+				F.step(0.32)
+				return p
+			end
+			p = F.takeFromPile(u.id, u.owner)
+			if p then
+				F.flyCard(p, p.CFrame, F.cardHome(home), CARD_DEAL + 0.08, { lift = 1.6 })
+				F.step(CARD_DEAL + 0.1)
+				return p
+			end
+		end
+		local p = F.dealCard(u.id, u.level, u.owner, home)
+		F.step(CARD_DEAL + 0.04)
+		F.sound("thudSmall", { volume = 0.35, pitch = 1.35 })
+		return p
+	end
+
 	ANIM.summon = function(e)
 		local u = e.unit
 		if e.replaced then
 			F.swapOut(e.replaced, u.id)
 		end
-		local entry = F.spawnUnit(u)
+		local card = F.arrivalCard(u, e.how)
+		local entry = F.spawnUnit(u, nil, card)
 		F.sound("thudSmall", { volume = 0.7 })
 		if entry then
 			-- It lands in its family's colours; the rarer the card, the bigger the arrival.
@@ -2660,7 +3161,8 @@ function MatchScreen.init(ctx)
 		if e.replaced then
 			F.swapOut(e.replaced, e.unit.id)
 		end
-		local built = F.spawnUnit(e.unit)
+		local card = F.arrivalCard(e.unit, "play")
+		local built = F.spawnUnit(e.unit, nil, card)
 		if built then
 			F.fx("slam", F.groundOf(built), { palette = "rust", size = 2.6, delay = 0.12 })
 			F.fx("gears", F.aboveOf(built), { palette = "rust", size = 2.4, delay = 0.2 })
@@ -2674,6 +3176,8 @@ function MatchScreen.init(ctx)
 		if e.seat == v.you then
 			F.popup(e.id, 1.0, false, S.lastPlayLevel, F.levelsCount(v.you))
 		end
+		-- the spell's card is laid on the table while it works, then goes onto the trash pile
+		local spellCard = F.laySpell(e.id, e.seat, S.lastPlayLevel)
 		if e.target then
 			F.glowLanes({ { team = e.target.team, lane = e.target.lane, color = Color3.fromRGB(200, 140, 255) } })
 		end
@@ -2695,6 +3199,9 @@ function MatchScreen.init(ctx)
 		end
 		F.step(0.7)
 		F.glowLanes({})
+		if spellCard then
+			F.toPile(spellCard, e.id, e.seat)
+		end
 	end
 
 	ANIM.spark = function(e)
@@ -3031,7 +3538,8 @@ function MatchScreen.init(ctx)
 		F.step(1.0)
 	end
 	ANIM.win = function(e)
-		F.step(0.3)
+		F.step(0.6) -- (cards still flying onto the pile land first)
+		F.returnPile()
 	end
 
 	function F.animate(e)
@@ -3455,6 +3963,7 @@ function MatchScreen.init(ctx)
 			S.botAvatar = nil
 		end
 		S.boardFolder:ClearAllChildren()
+		S.pile = nil
 		F.restoreTableParts()
 		S.view = nil
 		S.busy = false
@@ -3799,7 +4308,7 @@ function MatchScreen.init(ctx)
 						entry.model:Destroy()
 					end)
 				end
-				F.spawnUnit(entry.data, true)
+				F.spawnUnit(entry.data, true, entry.card)
 			end
 		end
 		for _, entry in pairs(S.heroes) do

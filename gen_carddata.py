@@ -73,7 +73,7 @@ out.append('CardData.Terrains = { Snack = "Soda Swamp", Junk = "Glitter Junkyard
 out.append('CardData.Keywords = { "Zoom", "Fast", "Ranged", "Sturdy", "Splash", "Haunt", "Pack", "Zap", "Grudge" }')
 out.append('CardData.KeywordText = {\n\tZoom = "Can move and attack the turn it\'s played",\n\tFast = "Walks up to 2 tiles",\n\tRanged = "Attacks up to 2 tiles away",\n\tSturdy = "Takes 1 less damage",\n\tSplash = "Its attacks also hit enemies next to the target for 1",\n\tHaunt = "Leaves a 1/1 Ghost when it pops",\n\tPack = "+1 attack for each friendly Critter next to it (up to +2)",\n\tZap = "Deals 2 more damage to Soaked creatures",\n\tGrudge = "Gets 1 Power whenever another friendly creature pops",\n}')
 out.append('CardData.Heroes = {\n\tbonk = { id = "bonk", name = "Bonk", bigMove = "Hat Trick", text = "Pull a random spell from the hat. It costs 0.", target = nil },\n\tgranny_bolt = { id = "granny_bolt", name = "Granny Bolt", bigMove = "Strike", text = "Roll a bowling ball down a column: 4 damage to the first enemy in its way, leftover damage hits the hero.", target = "column" },\n}')
-out.append("CardData.HeroMaxHp = 20\nCardData.BigMoveCharge = 10\nCardData.MaxEnergy = 8\nCardData.MaxHand = 8\nCardData.DeckSize = 30\nCardData.MaxCopies = 3")
+out.append("CardData.HeroMaxHp = 20\nCardData.BigMoveCharge = 10\nCardData.MaxEnergy = 8\nCardData.MaxHand = 8\nCardData.DeckSize = 40\nCardData.MaxCopies = 4")
 out.append("""-- The board: 4 lanes (columns) and 6 rows, 3 for each player: Backline (nearest you), Midline and
 -- Frontline. Rows are counted from player 1's side: rows 1-3 are player 1's, 4-6 player 2's.
 -- Behind each player's Backline is their building row: one building slot per lane (row 0 for
