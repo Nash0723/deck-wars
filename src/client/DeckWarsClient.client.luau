@@ -1003,6 +1003,7 @@ do
 		button = button,
 		panel = panel,
 		makeCard = makeCard,
+		buildModel = buildModel, -- (CardInspect: a card's model up close)
 		familyColor = familyColor,
 		menuUI = ui.menuUI,
 		BODY_FONT = BODY_FONT,
@@ -1627,6 +1628,11 @@ do
 	UserInputService.InputBegan:Connect(function(input)
 		-- (not "processed by GUI": a focused button must not eat the keys; text boxes still do)
 		if mode ~= "menu" or UserInputService:GetFocusedTextBox() then
+			return
+		end
+		-- (a card being inspected uses A / D to turn and S / Backspace to close)
+		local inspect = Shared:FindFirstChild("CardInspect")
+		if inspect and require(inspect).isOpen() then
 			return
 		end
 		local k = input.KeyCode

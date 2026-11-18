@@ -96,8 +96,11 @@ local function vgrad(parent, a, b, rot)
 	return make("UIGradient", { Rotation = rot or 90, Color = ColorSequence.new(a, b) }, parent)
 end
 
--- Hard-edged stripes as a gradient (n stripes of two colours).
+-- Hard-edged stripes as a gradient (n stripes of two colours). Each stripe takes 2 keypoints and
+-- Roblox allows at most 20 in a ColorSequence: more is an error, which used to stop the Sugar Rush
+-- (11 stripes) and Scrap Heap (14) packs from opening at all. So n is capped at 10.
 local function stripes(parent, a, b, n, rot)
+	n = math.clamp(math.floor(n), 1, 10)
 	local keys = {}
 	for k = 0, n - 1 do
 		local x0, x1 = k / n, (k + 1) / n
@@ -223,7 +226,7 @@ function Shapes.wrapper(root, pack, design, opts)
 	end
 	local body = frame(root, { Name = "Body", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 0, 1, -20), BackgroundColor3 = WHITE })
 	corner(body, 26)
-	stripes(body, main, main:Lerp(WHITE, 0.28), 11, 45)
+	stripes(body, main, main:Lerp(WHITE, 0.28), 10, 45)
 	make("UIStroke", { Thickness = 4, Color = dark, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, body)
 	-- the twisted bands near each end
 	for _, y in ipairs({ 0.1, 0.9 }) do
@@ -273,8 +276,12 @@ function Shapes.crate(root, pack, design, opts)
 		corner(rust, "round")
 	end
 	-- hazard band
-	local band = frame(body, { Name = "Hazard", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -16), Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = WHITE })
-	stripes(band, rgb(30, 30, 30), accent, 14, 0)
+	-- (two halves of 7 stripes each: one gradient can only hold 10)
+	local band = frame(body, { Name = "Hazard", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -16), Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1 })
+	for half = 0, 1 do
+		local part = frame(band, { Name = "HazardHalf", Position = UDim2.fromScale(half * 0.5, 0), Size = UDim2.fromScale(0.5, 1), BackgroundColor3 = WHITE })
+		stripes(part, half == 0 and rgb(30, 30, 30) or accent, half == 0 and accent or rgb(30, 30, 30), 7, 0)
+	end
 	make("UIStroke", { Thickness = 2, Color = rgb(30, 30, 30) }, band)
 	local w = window(body, pack, opts, { Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromOffset(176, 140) })
 	corner(w, 6)

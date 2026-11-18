@@ -134,6 +134,7 @@ local state = {
 	selected = Packs.Default,
 	ui = nil, -- the mounted panel's parts
 	requestId = 0,
+	showId = 0, -- counts the shows, so a late callback from an old one does nothing
 }
 PackParty.state = state -- (for tests)
 
@@ -184,10 +185,13 @@ end
 local function finish(result)
 	state.playing = false
 	state.busy = false
-	PackShelf.restore()
+	pcall(PackShelf.restore)
 	local o = state.opts
 	if o and o.onEnd then
-		o.onEnd(result)
+		local ok, err = pcall(o.onEnd, result)
+		if not ok then
+			warn("[PackParty] onEnd failed: " .. tostring(err))
+		end
 	end
 end
 
@@ -213,6 +217,37 @@ local REFUSED = {
 	end,
 }
 
+-- The screens a pack show puts up (the opening, the reveal, the Dive, the Pack Brawl).
+local SHOW_SCREENS = { "PackOpen", "PackReveal", "PackBrawlReveal", "PackBrawlFan", "PackDive", "PackBrawlGui", "PackBrawlOut" }
+
+local function showOnScreen()
+	local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+	if pg then
+		for _, n in ipairs(SHOW_SCREENS) do
+			if pg:FindFirstChild(n) then
+				return true
+			end
+		end
+	end
+	return workspace:FindFirstChild("PackBrawlScene") ~= nil
+end
+
+-- Takes down what's left of a show that hit an error (the opening and reveal screens only: the
+-- Pack Brawl cleans up after itself).
+local function clearShowScreens()
+	local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+	if not pg then
+		return
+	end
+	for _, n in ipairs({ "PackOpen", "PackReveal", "PackBrawlReveal", "PackBrawlFan", "PackDive" }) do
+		local g = pg:FindFirstChild(n)
+		while g do
+			g:Destroy()
+			g = pg:FindFirstChild(n)
+		end
+	end
+end
+
 local function onResult(result)
 	state.requestId += 1
 	if type(result) ~= "table" then
@@ -232,50 +267,91 @@ local function onResult(result)
 	local best = result.best
 	local id = result.cards[best]
 	local pack = Packs.get(result.packId)
-	local cast = Casting.build(id, result.seed)
-	local brawl = Scripts.build(cast)
-	brawl.pack = pack
-	-- biome pulls: the fight happens on the Duel Table inside the pack's world
-	if BiomeStage.available() then
-		brawl.world = BiomeFx.worldFor(pack.id, result.seed, tableWorld())
+	-- From here the server has already taken the Gems and saved the cards, so whatever goes wrong
+	-- in the show, the player must get the panel back. (A Luau error anywhere in the show used to
+	-- leave the panel "busy" for good: no pack opened again, and the Pull Altar wouldn't open,
+	-- until you rejoined.) Every step runs protected, and a watchdog ends a show whose screens
+	-- have all gone without saying so.
+	state.showId += 1
+	local myShow = state.showId
+	local ended = false
+	local function back()
+		if ended or state.showId ~= myShow then
+			return
+		end
+		ended = true
+		local def = CardData.get(id)
+		local owned = result.uniqueOwned and string.format(" You own %d different cards.", result.uniqueOwned) or ""
+		status(string.format("Last pull: %s (%s).%s", def and def.name or tostring(id), def and def.rarity or "?", owned))
+		finish(result)
+	end
+	local function recover(what, err)
+		warn("[PackParty] " .. what .. " failed: " .. tostring(err))
+		if ended or state.showId ~= myShow then
+			return
+		end
+		clearShowScreens()
+		back()
+	end
+	local function guarded(what, fn)
+		return function(...)
+			local ok, err = pcall(fn, ...)
+			if not ok then
+				recover(what, err)
+			end
+		end
+	end
+	local brawl
+	local okSetup, setupErr = pcall(function()
+		local cast = Casting.build(id, result.seed)
+		brawl = Scripts.build(cast)
+		brawl.pack = pack
+		-- biome pulls: the fight happens on the Duel Table inside the pack's world
+		if BiomeStage.available() then
+			brawl.world = BiomeFx.worldFor(pack.id, result.seed, tableWorld())
+		end
+	end)
+	if not okSetup then
+		-- no fight for this card: the opening and the reveal still play, without Watch the Brawl
+		warn("[PackParty] the Pack Brawl for " .. tostring(id) .. " couldn't be set up: " .. tostring(setupErr))
+		brawl = nil
 	end
 	state.playing = true
 	local o = state.opts
 	if o and o.onStart then
-		o.onStart()
+		local okStart, startErr = pcall(o.onStart)
+		if not okStart then
+			warn("[PackParty] onStart failed: " .. tostring(startErr))
+		end
 	end
 	status("")
 	local quick = Settings.get("packFights") == "Quick"
-	local function back()
-		local def = CardData.get(id)
-		local owned = result.uniqueOwned and string.format(" You own %d different cards.", result.uniqueOwned) or ""
-		status(string.format("Last pull: %s (%s).%s", def.name, def.rarity, owned))
-		finish(result)
-	end
 	-- Watch the Brawl: the best card's fight, after the reveal (the dive into the table first)
-	local function watch()
+	local watch = brawl and guarded("the Pack Brawl", function()
 		local function afterFight()
 			-- the fight ends on a wipe in the card's colour: let it fade into the room
-			local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-			local g = make("ScreenGui", { Name = "PackBrawlOut", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 49 }, playerGui)
-			local veil = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Kit.tierColor(CardData.get(id).rarity, 0), BorderSizePixel = 0 }, g)
-			Juice.tween(veil, 0.5, { BackgroundTransparency = 1 }).Completed:Connect(function()
-				g:Destroy()
+			pcall(function()
+				local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+				local g = make("ScreenGui", { Name = "PackBrawlOut", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 49 }, playerGui)
+				local veil = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Kit.tierColor(CardData.get(id).rarity, 0), BorderSizePixel = 0 }, g)
+				Juice.tween(veil, 0.5, { BackgroundTransparency = 1 }).Completed:Connect(function()
+					g:Destroy()
+				end)
 			end)
 			back()
 		end
 		if brawl.world and not (state.opts and state.opts.noDive) then
-			dive(Kit.tierColor("Common", 0):Lerp(Packs.color(pack, "color"), 0.7), function()
+			dive(Kit.tierColor("Common", 0):Lerp(Packs.color(pack, "color"), 0.7), guarded("the Pack Brawl", function()
 				Director.play(brawl, afterFight)
-			end)
+			end))
 		else
 			Director.play(brawl, afterFight)
 		end
-	end
+	end) or nil
 	-- the 3D pack leaps off the shelf, then it is in your hands: slash it open
-	PackShelf.launch(pack.id)
-	task.delay(PackShelf.has() and 0.3 or 0, function()
-		PackOpen.play({ pack = pack, count = #result.cards, quick = quick }, function(handoff)
+	pcall(PackShelf.launch, pack.id)
+	task.delay(PackShelf.has() and 0.3 or 0, guarded("the pack opening", function()
+		PackOpen.play({ pack = pack, count = #result.cards, quick = quick }, guarded("the card reveal", function(handoff)
 			if #result.cards > 1 then
 				Reveal.fan({ cards = result.cards, best = best, isNew = result.isNew, pack = pack, handoff = handoff, onDone = back, onWatch = watch })
 			else
@@ -290,7 +366,23 @@ local function onResult(result)
 					onWatch = watch,
 				})
 			end
-		end)
+		end))
+	end))
+	-- the watchdog: once none of the show's screens has been up for a few seconds, it is over
+	task.spawn(function()
+		local gone = 0
+		while not ended and state.showId == myShow and state.playing do
+			task.wait(1)
+			if showOnScreen() then
+				gone = 0
+			else
+				gone += 1
+				if gone >= 4 then
+					recover("the pack show", "its screens closed without finishing")
+					return
+				end
+			end
+		end
 	end)
 end
 
