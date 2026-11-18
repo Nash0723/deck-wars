@@ -1077,7 +1077,7 @@ function MatchScreen.init(ctx)
 	end
 
 	-- What stands on the felt beside the field (1v1), for the side scenery to keep away from: the
-	-- heroes, the decks, the trash pile and the path the cards fly along between them.
+	-- heroes, the card mats (decks and trash pile) and the path the cards fly along between them.
 	function F.sceneryAvoid()
 		local out = {}
 		for _, name in ipairs({ "Hero_Near", "Hero_Far" }) do
@@ -1086,19 +1086,28 @@ function MatchScreen.init(ctx)
 				table.insert(out, { p.Position.X, p.Position.Z, 1.9 })
 			end
 		end
-		local pileX = nil
-		for _, name in ipairs({ "Deck_Near", "Deck_Far" }) do
-			local p = board:FindFirstChild(name)
-			if p then
-				table.insert(out, { p.Position.X, p.Position.Z, 1.5 })
-				pileX = pileX or p.Position.X
-				for _, f in ipairs({ 0.25, 0.5, 0.75 }) do
-					table.insert(out, { p.Position.X, p.Position.Z * f, 0.6 })
+		-- the card mats (F.cardSpots: both decks and the shared trash pile) and the column
+		-- between them that the cards fly along
+		local spots = F.cardSpots and F.cardSpots()
+		if spots then
+			for _, key in ipairs({ "near", "far", "pile" }) do
+				local cf = spots[key]
+				if cf then
+					table.insert(out, { cf.Position.X, cf.Position.Z, 1.7 })
 				end
 			end
+			for _, key in ipairs({ "near", "far" }) do
+				local cf = spots[key]
+				if cf then
+					for _, f in ipairs({ 0.25, 0.5, 0.75 }) do
+						table.insert(out, { cf.Position.X, cf.Position.Z * f, 1.1 })
+					end
+				end
+			end
+		else
+			local L = S.layout
+			table.insert(out, { L.halfWidth + L.frame + 3, 0, 1.7 })
 		end
-		local L = S.layout
-		table.insert(out, { pileX or (L.halfWidth + L.frame + 3), 0, 1.5 })
 		return out
 	end
 

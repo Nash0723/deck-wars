@@ -68,12 +68,12 @@ local function dumpPart(p, family)
 	))
 end
 
--- what stands beside the field in 1v1: the heroes (left), the decks and the trash pile (right) and
--- the path the cards fly along between them
-local AVOID = { { -8.75, 3.9, 1.9 }, { -8.75, -3.9, 1.9 }, { 9.65, 8.55, 1.5 }, { 9.65, -8.55, 1.5 }, { 9.65, 0, 1.5 } }
+-- what stands beside the field in 1v1: the heroes (left), the card mats (decks at z +-4.6 and the
+-- trash pile at z 0, right) and the column the cards fly along between them
+local AVOID = { { -8.75, 3.9, 1.9 }, { -8.75, -3.9, 1.9 }, { 9.65, 4.6, 1.7 }, { 9.65, -4.6, 1.7 }, { 9.65, 0, 1.7 } }
 for _, zs in ipairs({ 1, -1 }) do
 	for _, f in ipairs({ 0.25, 0.5, 0.75 }) do
-		table.insert(AVOID, { 9.65, zs * 8.55 * f, 0.6 })
+		table.insert(AVOID, { 9.65, zs * 4.6 * f, 1.1 })
 	end
 end
 
