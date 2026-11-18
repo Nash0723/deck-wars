@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage:WaitForChild("DeckWars")
 local CardData = require(Shared:WaitForChild("CardData"))
 local StarterDecks = require(Shared:WaitForChild("StarterDecks"))
+local LandPicker = require(Shared:WaitForChild("LandPicker"))
 
 local TABS = {
 	{ key = "Duel", text = "⚔ 1v1" },
@@ -645,6 +646,24 @@ function LobbyScreen.init(ctx)
 			local rule = CardData.FamilyRules[deck.family]
 			txt(info, (FAMILY_EMOJI[deck.family] or "") .. "  " .. deck.name .. "  ·  Hero " .. CardData.Heroes[deck.hero].name, 16, familyColor(deck.family):Lerp(WHITE, 0.5), { Font = TITLE, LayoutOrder = 1 })
 			txt(info, (rule and (rule.text .. ".") or deck.blurb or ""), 13, KC.dim, { LayoutOrder = 2 })
+		end
+		-- Your lands: the biome under each of your lanes (LandPicker; saved as the Lands pref).
+		do
+			local fam = myInfo and myInfo.family or (StarterDecks[L.deck] or StarterDecks.Snack).family
+			local autoLands = (myInfo and type(myInfo.lanes) == "table" and #myInfo.lanes > 0) and myInfo.lanes or { fam, fam, fam, fam }
+			LandPicker.build(body, {
+				order = 5,
+				compact = true,
+				auto = autoLands,
+				get = function()
+					return ctx.prefs and ctx.prefs.get("Lands")
+				end,
+				set = function(str)
+					if ctx.prefs then
+						(ctx.prefs.setNow or ctx.prefs.set)("Lands", str)
+					end
+				end,
+			})
 		end
 		if lobby then
 			L.renderLobby(body, lobby)

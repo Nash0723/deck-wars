@@ -73,6 +73,41 @@ local function nearest(shelf, name, pos)
 	return best
 end
 
+-- The shelf packs wear their real pack art (the same design as the pack you open), instead of
+-- the plain printed name the room was built with. The art is drawn still (no per-frame work).
+local function dressFace(m, def)
+	local PackArt = require(here:WaitForChild("PackArt"))
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("SurfaceGui") and d.Name == "PackArt" and d.Parent and d.Parent:IsA("BasePart") then
+			local part = d.Parent
+			local ok = pcall(function()
+				local sg = Instance.new("SurfaceGui")
+				sg.Name = "PackDesign"
+				sg.Face = d.Face
+				sg.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+				-- the canvas matches the face's shape, so the 240 x 340 art isn't stretched
+				local fw, fh = part.Size.X, part.Size.Y
+				sg.CanvasSize = Vector2.new(math.floor(PackArt.Height * fw / math.max(fh, 0.01)), PackArt.Height)
+				sg.LightInfluence = 0.15
+				sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+				local bg = Instance.new("Frame")
+				bg.Name = "Bg"
+				bg.Size = UDim2.fromScale(1, 1)
+				bg.BorderSizePixel = 0
+				bg.BackgroundColor3 = Packs.color(def, "dark")
+				bg.Parent = sg
+				PackArt.build(bg, def, 1, { static = true, noGuide = true, zIndex = 2 })
+				sg:SetAttribute("Shelf", true)
+				sg.Parent = part
+			end)
+			if ok then
+				d.Enabled = false
+				d:SetAttribute("Replaced", true)
+			end
+		end
+	end
+end
+
 local function buildMascot(spot, cardId)
 	if not CreatureBuilder.has(cardId) then
 		return nil
@@ -109,7 +144,7 @@ local function setHidden(p, hidden)
 	for _, e in ipairs(p.parts) do
 		e.part.Transparency = hidden and 1 or e.tr
 		for _, g in ipairs(e.part:GetChildren()) do
-			if g:IsA("SurfaceGui") then
+			if g:IsA("SurfaceGui") and not g:GetAttribute("Replaced") then
 				g.Enabled = not hidden
 			end
 		end
@@ -156,11 +191,20 @@ local function update(dt)
 		-- lights: the chosen pack's niche glows brighter
 		local glowK = sel and 1 or (hov and 0.5 or 0)
 		p.glowK = approach(p.glowK or 0, glowK, dt, 6)
+		-- (written only when they change: most frames nothing here moves)
 		if p.light then
-			p.light.Brightness = 1.6 + p.glowK * 2.4 + (sel and math.sin(t * 4) * 0.3 or 0)
+			local b = 1.6 + p.glowK * 2.4 + (sel and math.sin(t * 4) * 0.3 or 0)
+			if math.abs(b - (p.lastB or -1)) > 0.004 then
+				p.lastB = b
+				p.light.Brightness = b
+			end
 		end
 		if p.backlight then
-			p.backlight.Transparency = 0.72 - p.glowK * 0.3
+			local tr = 0.72 - p.glowK * 0.3
+			if math.abs(tr - (p.lastTr or -1)) > 0.002 then
+				p.lastTr = tr
+				p.backlight.Transparency = tr
+			end
 		end
 		-- the mascot of the chosen pack bounces happily; the others stand still
 		local m = p.mascot
@@ -177,6 +221,10 @@ local function update(dt)
 	local n = #state.bulbs
 	if n > 0 then
 		local head = math.floor(t * 6) % 6
+		if head == state.bulbHead then
+			return
+		end
+		state.bulbHead = head
 		for i, b in ipairs(state.bulbs) do
 			local on = (i % 6) == head
 			b.Color = on and Color3.fromRGB(255, 250, 225) or Color3.fromRGB(235, 196, 120)
@@ -212,6 +260,7 @@ function PackShelf.attach()
 			if spot and def.mascot then
 				p.mascot = buildMascot(spot, def.mascot)
 			end
+			dressFace(m, def)
 			state.packs[def.id] = p
 		end
 	end

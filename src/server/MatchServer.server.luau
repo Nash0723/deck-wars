@@ -47,9 +47,9 @@ local LobbyEvent = Remotes:WaitForChild("LobbyEvent") -- server -> client: open 
 
 -- Pacing. Raise these numbers to make matches slower, lower them to speed up.
 local TURN_SECONDS = 75 -- time you get for your turn (the clock pauses while animations play)
-local BOT_TURN_START_PAUSE = 1.2 -- the bot "looks at the board" before its first move
+local BOT_TURN_START_PAUSE = 0.6 -- the bot "looks at the board" before its first move
 -- Pause before each bot action, by kind.
-local BOT_THINK_SECONDS = { play = 1.6, spark = 1.2, shift = 1.0, bigmove = 1.8, battle = 1.0 }
+local BOT_THINK_SECONDS = { play = 0.9, spark = 0.7, shift = 0.6, bigmove = 1.1, battle = 0.5 }
 local BOT_MAX_ACTIONS = 40 -- safety: the bot battles after this many actions
 -- The server waits for every player's screen to finish animating before it moves on, but never
 -- longer than this (in case someone's game is lagging or closed).
@@ -144,7 +144,25 @@ local function setupForSeat(seat)
 	return { deck = table.clone(practice.cards), hero = practice.hero, family = practice.family, themes = { practice.family } }
 end
 
--- Home Turf (a campaign rule): the human's lanes take the opponent's landscape.
+-- The lands a player picked for their lanes (the "Lands" pref, "Snack,Critter,Snack,Critter";
+-- LandPicker on the client), or nil for Auto (the deck's own lands).
+local function pickedLands(player)
+	local str = player and player:GetAttribute("PrefLands")
+	if type(str) ~= "string" or str == "" then
+		return nil
+	end
+	local out = {}
+	for word in string.gmatch(str, "[^,]+") do
+		if not CardData.Terrains[word] then
+			return nil
+		end
+		table.insert(out, word)
+	end
+	return #out == CardData.Cols and out or nil
+end
+
+-- Home Turf (a campaign rule): the human's lanes take the opponent's landscape. Otherwise a
+-- player's picked lands go under their lanes.
 do
 	local plainSetup = setupForSeat
 	setupForSeat = function(seat)
@@ -152,6 +170,12 @@ do
 		if seat.lanesOverride and setup then
 			setup = table.clone(setup)
 			setup.lanes = table.clone(seat.lanesOverride)
+		elseif setup and seat.kind == "human" then
+			local lands = pickedLands(seat.player)
+			if lands then
+				setup = table.clone(setup)
+				setup.lanes = lands
+			end
 		end
 		return setup
 	end
@@ -1679,7 +1703,7 @@ end
 -- Player, and PlayerData saves them with the cards.
 ---------------------------------------------------------------------------
 
-local PREF_KINDS = { Deck = "deck", Difficulty = "difficulty", Backdrop = "word", ActionCam = "bool", Fast = "bool", SeenHelp = "bool", Sound = "bool", SeenDaily = "bool", SeenTour = "bool", SeenBriefs = "list" }
+local PREF_KINDS = { Deck = "deck", Difficulty = "difficulty", Backdrop = "word", ActionCam = "bool", Fast = "bool", SeenHelp = "bool", Sound = "bool", SeenDaily = "bool", SeenTour = "bool", SeenBriefs = "list", Lands = "lands" }
 
 savePrefs = function(player, raw)
 	local clean = {}
@@ -1696,6 +1720,16 @@ savePrefs = function(player, raw)
 		elseif kind == "list" and type(v) == "string" and #v <= 400 and string.match(v, "^[%w,]*$") then
 			-- (the menu briefs you've seen: "DuelTable,Campaign,...")
 			clean[key] = v
+		elseif kind == "lands" and type(v) == "string" and #v <= 64 then
+			-- four lands, one per lane ("" = Auto)
+			local ok, n = true, 0
+			for word in string.gmatch(v, "[^,]+") do
+				n += 1
+				ok = ok and CardData.Terrains[word] ~= nil
+			end
+			if v == "" or (ok and n == CardData.Cols) then
+				clean[key] = v
+			end
 		end
 	end
 	for key, v in pairs(clean) do

@@ -36,7 +36,7 @@ Settings.VolumeMax = 10
 
 -- What the numbers behind some choices are (used by the client).
 Settings.ShakeScale = { Off = 0, Low = 0.45, Full = 1 }
-Settings.Pace = { Slow = 1.3, Normal = 1.0, Fast = 0.75 } -- multiplies every table animation's length
+Settings.Pace = { Slow = 1.2, Normal = 0.85, Fast = 0.65 } -- multiplies every table animation's length
 
 local function allowed(key, value)
 	local default = Settings.Defaults[key]

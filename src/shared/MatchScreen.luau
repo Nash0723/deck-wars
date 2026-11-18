@@ -738,11 +738,12 @@ function MatchScreen.init(ctx)
 		end
 		-- The seam where the two sides meet: a thin gold line.
 		part({ Name = "MidLine", Size = Vector3.new(2 * W, 0.03, 0.08), CFrame = CFrame.new(0, L.groundTop + 0.01, 0), Color = GOLD, Material = Enum.Material.SmoothPlastic, Transparency = 0.2, CanQuery = false })
-		-- The lanes rise out of the table one after another, from the middle outwards.
-		local mid = (v.width + 1) / 2
-		for t = 1, 2 do
+		-- The lands are laid down one after another, yours first (left to right from your chair),
+		-- then the other side's: each one drops onto the table and lands with its own effect.
+		for k, t in ipairs({ S.myTeam, 3 - S.myTeam }) do
 			for lane = 1, v.width do
-				F.riseLane(t, lane, (0.25 + math.abs(lane - mid) * 0.12 + (t == S.myTeam and 0 or 0.06)) * PACE, 2.2)
+				local order = (k - 1) * v.width + (t == S.myTeam and lane or (v.width + 1 - lane))
+				F.layLand(t, lane, v.lanes[t][lane].landscape, (0.2 + (order - 1) * 0.11) * PACE, order <= v.width)
 			end
 		end
 	end
@@ -815,6 +816,157 @@ function MatchScreen.init(ctx)
 		end
 	end
 
+	-- Laying a land: the lane drops onto the table from above, bounces once and settles, and as it
+	-- lands its biome shows off: fizzing soda bubbles, pillow fluff, a snow flurry and frost,
+	-- a burst of glitter, mushrooms popping up in a cloud of spores, or steam and lava sparks.
+	local TEX = {
+		spark = "rbxasset://textures/particles/sparkles_main.dds",
+		smoke = "rbxasset://textures/particles/smoke_main.dds",
+		fire = "rbxasset://textures/particles/fire_main.dds",
+	}
+	local LAND_FX = {
+		Snack = { -- Soda Swamp: fizzing bubbles
+			{ tex = "spark", colors = { Color3.fromRGB(255, 190, 110), Color3.fromRGB(255, 245, 220) }, size = { 0.18, 0.05 }, count = 30, speed = { 2, 4 }, accel = Vector3.new(0, 7, 0), life = { 0.6, 1.1 }, spread = 40, glow = 0.6 },
+			{ tex = "smoke", colors = { Color3.fromRGB(255, 220, 170) }, size = { 0.5, 1.2 }, count = 6, speed = { 1, 2 }, accel = Vector3.new(0, 1, 0), life = { 0.5, 0.8 }, spread = 180 },
+		},
+		Critter = { -- Pillow Peaks: soft pillow fluff
+			{ tex = "smoke", colors = { Color3.fromRGB(255, 250, 245), Color3.fromRGB(255, 220, 235) }, size = { 0.7, 1.8 }, count = 14, speed = { 2, 4 }, accel = Vector3.new(0, 0.6, 0), life = { 0.7, 1.2 }, spread = 180, drag = 3 },
+			{ tex = "spark", colors = { Color3.fromRGB(255, 200, 225) }, size = { 0.2, 0.05 }, count = 10, speed = { 3, 5 }, accel = Vector3.new(0, -3, 0), life = { 0.8, 1.2 }, spread = 70, glow = 0.4 },
+		},
+		Weather = { -- Static Snowfield: a snow flurry (and frost spreads over the ground)
+			{ tex = "spark", colors = { Color3.fromRGB(235, 248, 255), Color3.fromRGB(160, 215, 255) }, size = { 0.22, 0.08 }, count = 36, speed = { 3, 6 }, accel = Vector3.new(0, -5, 0), life = { 0.8, 1.3 }, spread = 70, glow = 0.7 },
+			{ tex = "smoke", colors = { Color3.fromRGB(220, 240, 255) }, size = { 0.6, 1.5 }, count = 8, speed = { 2, 3 }, accel = Vector3.new(0, 0.2, 0), life = { 0.5, 0.9 }, spread = 180 },
+			frost = true,
+		},
+		Junk = { -- Glitter Junkyard: a burst of glitter
+			{ tex = "spark", colors = { Color3.fromRGB(255, 120, 220), Color3.fromRGB(255, 225, 110), Color3.fromRGB(140, 230, 255) }, size = { 0.26, 0.04 }, count = 44, speed = { 5, 9 }, accel = Vector3.new(0, -9, 0), life = { 0.7, 1.2 }, spread = 60, glow = 1 },
+			{ tex = "smoke", colors = { Color3.fromRGB(160, 150, 140) }, size = { 0.4, 1 }, count = 6, speed = { 1, 2 }, accel = Vector3.new(0, 0.5, 0), life = { 0.4, 0.7 }, spread = 180 },
+		},
+		Spooky = { -- Mushroom Mall: spores (and little mushrooms pop up)
+			{ tex = "spark", colors = { Color3.fromRGB(200, 140, 255), Color3.fromRGB(140, 255, 200) }, size = { 0.16, 0.06 }, count = 26, speed = { 1, 2.5 }, accel = Vector3.new(0, 1.5, 0), life = { 1.0, 1.6 }, spread = 180, glow = 0.9 },
+			{ tex = "smoke", colors = { Color3.fromRGB(120, 80, 160) }, size = { 0.5, 1.4 }, count = 8, speed = { 1, 2 }, accel = Vector3.new(0, 0.4, 0), life = { 0.6, 1.0 }, spread = 180 },
+			mushrooms = true,
+		},
+		Robo = { -- Lava Laundromat: steam and lava sparks
+			{ tex = "fire", colors = { Color3.fromRGB(255, 160, 50), Color3.fromRGB(255, 80, 20) }, size = { 0.35, 0.05 }, count = 22, speed = { 4, 7 }, accel = Vector3.new(0, -8, 0), life = { 0.5, 0.9 }, spread = 50, glow = 1 },
+			{ tex = "smoke", colors = { Color3.fromRGB(240, 240, 240) }, size = { 0.6, 1.8 }, count = 12, speed = { 2, 4 }, accel = Vector3.new(0, 3, 0), life = { 0.6, 1.1 }, spread = 40 },
+			light = Color3.fromRGB(255, 130, 40),
+		},
+	}
+
+	function F.burst(pos, cfg)
+		local holder = F.fxPart(pos)
+		local pe = Instance.new("ParticleEmitter")
+		pe.Texture = TEX[cfg.tex] or TEX.smoke
+		local keys = {}
+		for i, c in ipairs(cfg.colors) do
+			table.insert(keys, ColorSequenceKeypoint.new(#cfg.colors == 1 and 0 or (i - 1) / (#cfg.colors - 1), c))
+		end
+		if #keys == 1 then
+			table.insert(keys, ColorSequenceKeypoint.new(1, cfg.colors[1]))
+		end
+		pe.Color = ColorSequence.new(keys)
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, cfg.size[1]), NumberSequenceKeypoint.new(1, cfg.size[2]) })
+		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.7, 0.4), NumberSequenceKeypoint.new(1, 1) })
+		pe.Lifetime = NumberRange.new(cfg.life[1], cfg.life[2])
+		pe.Speed = NumberRange.new(cfg.speed[1], cfg.speed[2])
+		pe.SpreadAngle = Vector2.new(cfg.spread or 60, cfg.spread or 60)
+		pe.EmissionDirection = Enum.NormalId.Top
+		pe.Acceleration = cfg.accel or Vector3.zero
+		pe.Drag = cfg.drag or 1
+		pe.RotSpeed = NumberRange.new(-120, 120)
+		pe.Rotation = NumberRange.new(0, 360)
+		pe.LightEmission = cfg.glow or 0
+		pe.Enabled = false
+		pe.Parent = holder
+		pe:Emit(cfg.count or 20)
+	end
+
+	function F.landFX(team, lane, family, big)
+		local pad = S.pads[team] and S.pads[team][lane]
+		if not (pad and pad.strip.Parent) then
+			return
+		end
+		local fx = LAND_FX[family]
+		local goal = S.rest[pad.strip] or pad.strip.CFrame
+		local center = Vector3.new(goal.Position.X, S.layout.groundTop + 0.15, goal.Position.Z)
+		if fx then
+			for _, cfg in ipairs(fx) do
+				local c = table.clone(cfg)
+				if not big then
+					c.count = math.max(4, math.floor(c.count * 0.6))
+				end
+				F.burst(center, c)
+			end
+			if fx.frost then
+				-- the ground flashes frost-white and thaws to its colour
+				local was = pad.strip.Color
+				pad.strip.Color = Color3.fromRGB(235, 248, 255)
+				TweenService:Create(pad.strip, TweenInfo.new(0.9 * PACE, Enum.EasingStyle.Quad), { Color = was }):Play()
+			end
+			if fx.light then
+				local holder = F.fxPart(center + Vector3.new(0, 0.6, 0))
+				local l = Instance.new("PointLight")
+				l.Color = fx.light
+				l.Range = 8
+				l.Brightness = 3
+				l.Parent = holder
+				TweenService:Create(l, TweenInfo.new(0.8 * PACE), { Brightness = 0 }):Play()
+			end
+			if fx.mushrooms then
+				-- three little mushrooms pop up and sink back
+				local caps = { Color3.fromRGB(190, 110, 255), Color3.fromRGB(255, 120, 170), Color3.fromRGB(120, 230, 190) }
+				for k = 1, 3 do
+					local at = center + Vector3.new((k - 2) * S.layout.pitch * 0.28, 0, (math.random() - 0.5) * S.layout.half * 0.6)
+					local m = Instance.new("Model")
+					m.Name = "FX"
+					part({ Name = "FX", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.45, 0.16, 0.16), CFrame = CFrame.new(at + Vector3.new(0, 0.22, 0)) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(245, 235, 220), CanQuery = false, Parent = m })
+					part({ Name = "FX", Shape = Enum.PartType.Ball, Size = Vector3.new(0.42, 0.42, 0.42), CFrame = CFrame.new(at + Vector3.new(0, 0.46, 0)), Color = caps[k], Material = Enum.Material.Neon, CanQuery = false, Parent = m })
+					m.Parent = S.boardFolder
+					m:ScaleTo(0.05)
+					local v = Instance.new("NumberValue")
+					v.Value = 0.05
+					v.Changed:Connect(function(x)
+						if m.Parent then
+							m:ScaleTo(math.max(0.05, x))
+						end
+					end)
+					local grow = TweenService:Create(v, TweenInfo.new(0.35 * PACE, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, (k - 1) * 0.08), { Value = 1 })
+					grow:Play()
+					task.delay((1.2 + k * 0.1) * PACE, function()
+						TweenService:Create(v, TweenInfo.new(0.3 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Value = 0.05 }):Play()
+						task.delay(0.35 * PACE, function()
+							m:Destroy()
+							v:Destroy()
+						end)
+					end)
+				end
+			end
+		end
+		F.flareRing(team, lane)
+		F.flareRing(team, lane, nil, 2)
+	end
+
+	function F.layLand(team, lane, family, delay, big)
+		local pad = S.pads[team] and S.pads[team][lane]
+		if not pad then
+			return
+		end
+		local seconds = 0.5 * PACE
+		local info = TweenInfo.new(seconds, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out, 0, false, delay)
+		for _, p in ipairs(F.laneParts(pad)) do
+			local goal = S.rest[p] or p.CFrame
+			p.CFrame = CFrame.new(0, 2.6, 0) * goal
+			TweenService:Create(p, info, { CFrame = goal }):Play()
+		end
+		task.delay(delay + seconds * 0.45, function()
+			if pad.strip.Parent then
+				F.landFX(team, lane, family, big)
+				F.sound("thudSmall", { volume = big and 0.35 or 0.2, pitch = 0.8 + math.random() * 0.3 })
+			end
+		end)
+	end
+
 	-- Bring a creature's ring to full glow for a moment (a creature landed, or it's battling).
 	function F.flareRing(team, lane, color, row)
 		local pad = S.pads[team] and S.pads[team][lane]
@@ -858,7 +1010,7 @@ function MatchScreen.init(ctx)
 		pad.backRing.Color = look.accent
 		pad.building.Color = groundColor(family):Lerp(Color3.fromRGB(20, 16, 18), 0.4)
 		F.decorate(team, lane)
-		F.riseLane(team, lane, 0, 0.9)
+		F.layLand(team, lane, family, 0, true)
 		F.flareRing(team, lane)
 	end
 
@@ -981,6 +1133,27 @@ function MatchScreen.init(ctx)
 		local l = label(bb, text, { TextColor3 = color or WHITE, TextStrokeTransparency = 0 })
 		TweenService:Create(bb, TweenInfo.new(1.1 * PACE, Enum.EasingStyle.Quad), { StudsOffset = Vector3.new(0, 2.2, 0) }):Play()
 		TweenService:Create(l, TweenInfo.new(1.1 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	end
+
+	-- A puff of dust (or sparks) where something left the board, so nothing just blinks out.
+	function F.poof(pos, color, count, sparkly)
+		local holder = F.fxPart(pos)
+		local pe = Instance.new("ParticleEmitter")
+		pe.Texture = sparkly and "rbxasset://textures/particles/sparkles_main.dds" or "rbxasset://textures/particles/smoke_main.dds"
+		pe.Color = ColorSequence.new(color or Color3.fromRGB(235, 225, 210))
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, sparkly and 0.1 or 1.3) })
+		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 1) })
+		pe.Lifetime = NumberRange.new(0.45, 0.8)
+		pe.Speed = NumberRange.new(2.5, 5)
+		pe.SpreadAngle = Vector2.new(180, 180)
+		pe.Acceleration = Vector3.new(0, sparkly and -4 or 2, 0)
+		pe.Drag = 4
+		pe.RotSpeed = NumberRange.new(-90, 90)
+		pe.LightEmission = sparkly and 0.8 or 0.1
+		pe.Enabled = false
+		pe.Parent = holder
+		pe:Emit(count or 16)
+		return holder
 	end
 
 	function F.flashModel(model, color, seconds)
@@ -1242,8 +1415,8 @@ function MatchScreen.init(ctx)
 			end
 		end
 		model.Parent = S.boardFolder
-		local entry = { uid = u.uid, id = u.id, kind = u.kind, slot = slot, row = u.row, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false }
-		S.units[u.uid] = entry
+		local entry = { uid = u.uid, id = u.id, kind = u.kind, slot = slot, row = u.row, team = u.team, lane = u.lane, owner = u.owner, model = model, home = home, height = info.height * s, scale = s, phase = math.random() * 6.28, busy = false, data = u }
+		S.units[u.uid] = entry -- (data: so a building whose model is lost can be built again too, not just creatures)
 		if u.enchant then
 			-- an enchanted creature stands in a slow glow of its enchant's colour
 			entry.enchant = u.enchant
@@ -2189,6 +2362,11 @@ function MatchScreen.init(ctx)
 			end
 		end
 		S.onlyBattle = can and not anything
+		local pulse = ui.battleButton:FindFirstChild("Pulse")
+		if not pulse then
+			pulse = make("UIStroke", { Name = "Pulse", Thickness = 4, Color = Color3.fromRGB(255, 220, 120), ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Enabled = false }, ui.battleButton)
+		end
+		pulse.Enabled = S.onlyBattle
 		ui.battleButton.AutoButtonColor = can
 		ui.battleButton.BackgroundColor3 = not can and Color3.fromRGB(90, 80, 95) or (S.onlyBattle and Color3.fromRGB(235, 110, 50) or Color3.fromRGB(205, 80, 60))
 		ui.battleButton.Text = (mine and v.turn == 1) and "End turn" or "⚔ BATTLE!"
@@ -2261,13 +2439,19 @@ function MatchScreen.init(ctx)
 	end
 
 	-- Make the 3D table match the view exactly.
+	local SLOT_KEYS = { "creature", "back", "building" }
+
 	function F.syncBoard(v)
 		local present = {}
 		for t = 1, 2 do
 			for lane, l in ipairs(v.lanes[t]) do
 				F.setLandscape(t, lane, l.landscape)
 				F.setScrap(t, lane, l.scrap or 0)
-				for _, u in ipairs({ l.creature, l.back, l.building }) do
+				-- (by slot name: a list like { l.creature, l.back, l.building } stops at the first empty
+				-- slot under ipairs, so with the front row empty the back-row creature and the building
+				-- were missed and taken off the table. That was the "cards vanish" bug.)
+				for _, key in ipairs(SLOT_KEYS) do
+					local u = l[key]
 					if u then
 						present[u.uid] = true
 						local entry = S.units[u.uid]
@@ -2285,9 +2469,65 @@ function MatchScreen.init(ctx)
 				end
 			end
 		end
-		for uid in pairs(S.units) do
+		for uid, entry in pairs(S.units) do
 			if not present[uid] then
+				F.boardWarn("removed without an event (not in the server's view): " .. tostring(entry.id) .. " uid " .. tostring(uid) .. " team " .. tostring(entry.team) .. " lane " .. tostring(entry.lane))
 				F.removeUnit(uid, "quick")
+			end
+		end
+	end
+
+	-- Board watch (Studio playtests only): a unit the server says is on the table but that you
+	-- can't see (no model, hidden under the table, shrunk away or see-through) is reported in the
+	-- Output once, with why. It changes nothing; it's how a "card vanished" gets caught in the act.
+	local WATCH = game:GetService("RunService"):IsStudio()
+	S.watchSaid = {}
+	function F.boardWarn(msg)
+		if WATCH then
+			warn("[BoardWatch] " .. msg)
+		end
+	end
+	function F.boardWatch()
+		if not WATCH or not S.view or not S.layout then
+			return
+		end
+		local tableTop = S.layout.padTop
+		for t = 1, 2 do
+			for lane, l in ipairs(S.view.lanes[t] or {}) do
+				for _, key in ipairs(SLOT_KEYS) do
+					local u = l[key]
+					if u then
+						local entry = S.units[u.uid]
+						local why = nil
+						if not entry then
+							why = "no entry"
+						elseif not entry.model or entry.model.Parent ~= S.boardFolder then
+							why = "model gone"
+						elseif not entry.busy then
+							local cf, size = entry.model:GetBoundingBox()
+							local visible = 0
+							for _, d in ipairs(entry.model:GetDescendants()) do
+								if d:IsA("BasePart") and d.Transparency < 0.9 and d.LocalTransparencyModifier < 0.9 and d.Size.Magnitude > 0.05 then
+									visible += 1
+								end
+							end
+							if cf.Position.Y + size.Y / 2 < tableTop + 0.15 then
+								why = string.format("under the table (top %.2f, table %.2f)", cf.Position.Y + size.Y / 2, tableTop)
+							elseif size.Magnitude < 0.3 then
+								why = string.format("shrunk to %.2f studs", size.Magnitude)
+							elseif visible == 0 then
+								why = "every part see-through"
+							elseif (cf.Position - entry.home.Position).Magnitude > 4 then
+								why = string.format("%.1f studs from its spot", (cf.Position - entry.home.Position).Magnitude)
+							end
+						end
+						local key = tostring(u.uid) .. ":" .. tostring(why)
+						if why and not S.watchSaid[key] then
+							S.watchSaid[key] = true
+							F.boardWarn(string.format("%s (uid %s, team %d lane %d row %s, %s) can't be seen: %s", tostring(u.id), tostring(u.uid), t, lane, tostring(u.row), t == S.myTeam and "yours" or "enemy", why))
+						end
+					end
+				end
 			end
 		end
 	end
@@ -2323,11 +2563,11 @@ function MatchScreen.init(ctx)
 		if mine then
 			S.actedThisTurn = false
 			S.battleArmedUntil = 0
-			F.banner("Your turn", 0.9, Color3.fromRGB(170, 255, 190))
+			F.banner("Your turn", 0.8, Color3.fromRGB(170, 255, 190))
 			F.sound("ding", { volume = 0.6 })
 		end
 		F.log("— " .. nm .. "'s turn (" .. e.magic .. " magic) —", Color3.fromRGB(200, 200, 230))
-		F.step(mine and 0.5 or 0.3)
+		F.step(mine and 0.3 or 0.2)
 	end
 
 	ANIM.draw = function(e)
@@ -2374,10 +2614,25 @@ function MatchScreen.init(ctx)
 		})
 	end
 
+	-- A unit is played over another one (yours or a bot's): say so before the old one goes, so it
+	-- never looks like it just vanished.
+	function F.swapOut(uid, newId)
+		local old = S.units[uid]
+		if not old then
+			return
+		end
+		F.floatText(F.unitPosition(old) + Vector3.new(0, 0.5, 0), "↺ Swapped out", Color3.fromRGB(255, 220, 150))
+		F.log(cardName(newId) .. " takes " .. cardName(old.id) .. "'s spot.", Color3.fromRGB(255, 220, 150))
+		F.flashModel(old.model, Color3.fromRGB(255, 220, 150), 0.3)
+		F.step(0.35)
+		F.poof(F.unitPosition(old), nil, 12)
+		F.removeUnit(uid)
+	end
+
 	ANIM.summon = function(e)
 		local u = e.unit
 		if e.replaced then
-			F.removeUnit(e.replaced)
+			F.swapOut(e.replaced, u.id)
 		end
 		local entry = F.spawnUnit(u)
 		F.sound("thudSmall", { volume = 0.7 })
@@ -2403,7 +2658,7 @@ function MatchScreen.init(ctx)
 
 	ANIM.build = function(e)
 		if e.replaced then
-			F.removeUnit(e.replaced)
+			F.swapOut(e.replaced, e.unit.id)
 		end
 		local built = F.spawnUnit(e.unit)
 		if built then
@@ -2618,32 +2873,42 @@ function MatchScreen.init(ctx)
 	end
 
 	ANIM.pop = function(e)
-		local gone = S.units[e.uid]
-		if gone then
-			F.fx("puff", F.unitPosition(gone), { palette = "smoke", size = 3 })
+		local entry = S.units[e.uid]
+		if entry then
+			local pos = F.unitPosition(entry)
+			F.fx("puff", pos, { palette = "smoke", size = 3 })
+			F.poof(pos, nil, 18)
+			F.poof(pos, Color3.fromRGB(255, 230, 160), 8, true)
+			F.floatText(pos + Vector3.new(0, 0.8, 0), "KO!", Color3.fromRGB(255, 200, 120))
+			F.log("💥 " .. cardName(entry.id) .. (entry.team == S.myTeam and " (yours)" or "") .. " is knocked out.", Color3.fromRGB(255, 180, 140))
 		end
 		F.removeUnit(e.uid)
 		F.sound("bonk", { volume = 0.45 })
-		F.step(0.35)
+		F.step(0.4)
 	end
 
 	ANIM.wreck = function(e)
-		local gone = S.units[e.uid]
-		if gone then
-			F.fx("puff", F.unitPosition(gone), { palette = "rust", size = 3 })
-			F.fx("gears", F.unitPosition(gone), { palette = "rust", size = 2.8, delay = 0.1 })
+		local entry = S.units[e.uid]
+		if entry then
+			F.fx("puff", F.unitPosition(entry), { palette = "rust", size = 3 })
+			F.fx("gears", F.unitPosition(entry), { palette = "rust", size = 2.8, delay = 0.1 })
+			F.poof(F.unitPosition(entry), Color3.fromRGB(170, 160, 150), 20)
+			F.floatText(F.unitPosition(entry) + Vector3.new(0, 0.6, 0), "🧱 Wrecked", Color3.fromRGB(230, 210, 190))
 		end
 		F.removeUnit(e.uid)
-		F.step(0.3)
+		F.step(0.35)
 	end
 
 	ANIM.bounce = function(e)
-		local gone = S.units[e.uid]
-		if gone then
-			F.fx("vortex", F.unitPosition(gone), { palette = "frost", size = 3 })
+		local entry = S.units[e.uid]
+		if entry then
+			F.fx("vortex", F.unitPosition(entry), { palette = "frost", size = 3 })
+			F.floatText(F.unitPosition(entry) + Vector3.new(0, 0.6, 0), "↩ Back to hand", Color3.fromRGB(190, 225, 255))
+			F.log(cardName(entry.id) .. " goes back to " .. (entry.owner == S.view.you and "your" or "its owner's") .. " hand.", Color3.fromRGB(190, 225, 255))
+			F.poof(F.unitPosition(entry), Color3.fromRGB(190, 225, 255), 10, true)
 		end
 		F.removeUnit(e.uid, "bounce")
-		F.step(0.35)
+		F.step(0.4)
 	end
 
 	ANIM.stats = function(e)
@@ -3074,8 +3339,8 @@ function MatchScreen.init(ctx)
 			local camp = payload.campaign or S.campaign
 			if camp and payload.started then
 				-- the stage's name and rules first
-				F.banner(camp.title, 1.6, Color3.fromRGB(255, 214, 120))
-				F.step(1.3)
+				F.banner(camp.title, 1.3, Color3.fromRGB(255, 214, 120))
+				F.step(0.9)
 				for _, rule in ipairs(camp.rules or {}) do
 					F.log((rule.emoji or "•") .. " " .. rule.name .. ": " .. rule.text, Color3.fromRGB(255, 200, 150))
 				end
@@ -3083,8 +3348,8 @@ function MatchScreen.init(ctx)
 					F.log("👑 Boss: " .. tostring(camp.name) .. " (" .. tostring(camp.enemyHp) .. " hit points)", Color3.fromRGB(255, 180, 120))
 				end
 			end
-			F.banner(opening, 1.4, Color3.fromRGB(255, 225, 140))
-			F.step(1.2)
+			F.banner(opening, 1.2, Color3.fromRGB(255, 225, 140))
+			F.step(0.8)
 		end
 		for _, e in ipairs(payload.events or {}) do
 			local ok, err = pcall(F.animate, e)
@@ -3341,7 +3606,15 @@ function MatchScreen.init(ctx)
 			return
 		end
 		local m = UserInputService:GetMouseLocation()
-		local hit = F.boardAt(m.X, m.Y, true)
+		-- (the board under a still mouse is looked up again a few times a second, not every frame)
+		local now = clock()
+		local hit
+		if S.hoverM and (S.hoverM - m).Magnitude < 0.5 and now - (S.hoverAt or 0) < 0.12 then
+			hit = S.hoverHit
+		else
+			hit = F.boardAt(m.X, m.Y, true)
+			S.hoverM, S.hoverAt, S.hoverHit = m, now, hit
+		end
 		local tip = nil
 		if hit and hit.lane then
 			local l = S.view.lanes[hit.team][hit.lane]
@@ -3487,11 +3760,13 @@ function MatchScreen.init(ctx)
 		if at.X ~= at.X or at.Y ~= at.Y or at.Z ~= at.Z or (at - entry.home.Position).Magnitude > 60 then
 			return "rebuild"
 		end
-		local ok, sc = pcall(function()
-			return model:GetScale()
-		end)
-		if ok and type(sc) == "number" and entry.scale and math.abs(sc - entry.scale) > 0.01 then
-			ctx.setScale(model, entry.scale)
+		entry.scaleCheck = (entry.scaleCheck or math.random() * 0.4) - dt
+		if entry.scaleCheck <= 0 then
+			entry.scaleCheck = 0.4 -- (a few times a second is plenty)
+			local ok, sc = pcall(model.GetScale, model)
+			if ok and type(sc) == "number" and entry.scale and math.abs(sc - entry.scale) > 0.01 then
+				ctx.setScale(model, entry.scale)
+			end
 		end
 		return true
 	end
@@ -3516,6 +3791,7 @@ function MatchScreen.init(ctx)
 		end
 		for _, uid in ipairs(rebuild or {}) do
 			local entry = S.units[uid]
+			F.boardWarn("rebuilding " .. tostring(entry and entry.id) .. " uid " .. tostring(uid) .. " (its model was lost or flung off)")
 			if entry and entry.data and S.boardFolder.Parent then
 				S.units[uid] = nil
 				if entry.model then
@@ -3591,6 +3867,24 @@ function MatchScreen.init(ctx)
 		F.updateHover()
 		F.updateGhost(dt)
 		F.idle(dt)
+		-- the BATTLE button breathes while it's the only thing left to do
+		local pulse = ui.battleButton:FindFirstChild("Pulse")
+		if pulse and pulse.Enabled then
+			pulse.Transparency = 0.15 + 0.6 * (0.5 + 0.5 * math.sin(t * 5))
+		end
+		-- Between updates, the board is checked against the last view a few times a second: any
+		-- unit the server says is there but has no model gets one again (and strays go), so a
+		-- glitch in an animation can never leave a creature missing for good.
+		S.reconcileT = (S.reconcileT or 0) + dt
+		if S.reconcileT > 0.6 then
+			S.reconcileT = 0
+			if not S.processing then
+				pcall(F.boardWatch)
+			end
+			if S.view and not S.view.over and not S.processing and #S.queue == 0 and S.boardFolder.Parent then
+				pcall(F.syncBoard, S.view)
+			end
+		end
 	end
 
 	MatchScreen.F = F

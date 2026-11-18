@@ -519,8 +519,33 @@ function PackArt.build(parent, pack, count, opts)
 			corner(tip, 2)
 		end
 	end
+	-- a holographic foil: a soft rainbow band across the whole pack (it drifts slowly on a live
+	-- pack; a still one, like on the shelf, keeps it in one place)
+	local holo = frame(body, { Name = "Holo", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 0.78, ZIndex = 40 })
+	corner(holo, 14)
+	local holoGrad = make("UIGradient", {
+		Rotation = 28,
+		Offset = Vector2.new(0.25, 0),
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, rgb(255, 120, 170)),
+			ColorSequenceKeypoint.new(0.35, rgb(255, 235, 130)),
+			ColorSequenceKeypoint.new(0.5, rgb(140, 255, 210)),
+			ColorSequenceKeypoint.new(0.65, rgb(130, 190, 255)),
+			ColorSequenceKeypoint.new(1, rgb(220, 140, 255)),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.3, 1),
+			NumberSequenceKeypoint.new(0.5, 0.15),
+			NumberSequenceKeypoint.new(0.7, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+	}, holo)
 	if not opts.static then
 		Juice.shine(body, 2.6, UDim.new(0, 14))
+		Juice.onFrame(holo, function(t)
+			holoGrad.Offset = Vector2.new(math.sin(t * 0.45) * 0.55, 0)
+		end)
 	end
 	return root
 end
