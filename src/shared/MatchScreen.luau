@@ -23,6 +23,7 @@ local CardLevels = require(Shared:WaitForChild("CardLevels"))
 local LayerFx = require(Shared:WaitForChild("LayerFx"))
 local EnchantFx = require(Shared:WaitForChild("EnchantFx")) -- (enchanted cards: rims, auras, trigger effects)
 local TableCardArt = require(Shared:WaitForChild("TableCardArt")) -- (the real cards lying on the table)
+local TableScenery = require(Shared:WaitForChild("TableScenery")) -- (the biome dressing of the lanes)
 
 local ABORT = "MatchScreenAbort" -- thrown to stop playback when the match ended meanwhile
 
@@ -579,7 +580,8 @@ function MatchScreen.init(ctx)
 	-- The lanes on the table
 	--
 	-- Like the Card Wars board: each side is one stretch of land split into lanes that touch.
-	-- Every lane is its landscape (sand, snow, grass...), kept plain so the creatures stand out,
+	-- Every lane is its landscape (sand, snow, grass...), dressed up as its biome (TableScenery: a
+	-- border, a small touch on the ground, set pieces behind the far edge and beside the field),
 	-- with a soft round spot where its creature stands and a flat stone foundation behind it for a
 	-- building. A wooden frame goes around the whole field and a gold seam runs where the two
 	-- sides meet.
@@ -1004,8 +1006,9 @@ function MatchScreen.init(ctx)
 		TweenService:Create(ring, TweenInfo.new(0.9 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = RING_REST, Color = look.accent }):Play()
 	end
 
-	-- Lanes are kept plain (just their ground) so the creatures stand out; this only clears anything
-	-- left over in a lane.
+	-- Dress one lane up as its biome (TableScenery: a border along the lane, a small touch on its
+	-- ground, and the set pieces behind the far edge and beside the field), clearing what it had.
+	-- The parts are kept with the lane, so they drop onto the table with it (F.layLand).
 	function F.decorate(team, lane)
 		local pad = S.pads[team] and S.pads[team][lane]
 		if not pad then
@@ -1015,7 +1018,110 @@ function MatchScreen.init(ctx)
 			d:Destroy()
 		end
 		pad.deco = {}
+		pad.life = {}
 		pad.weather = nil
+		local L = S.layout
+		if not L then
+			return
+		end
+		local land = pad.landscape
+		local look = LANDS[land] or PLAIN
+		local mine = team == S.myTeam
+		local width = L.width
+		-- (2v2: each hero stands on the felt behind its player's lanes; the set pieces keep away)
+		local keepClear = {}
+		if L.wide and S.view and S.view.seats then
+			for _, sv in pairs(S.view.seats) do
+				if sv.team == team and type(sv.lanes) == "table" and #sv.lanes > 0 then
+					local hx = 0
+					for _, l in ipairs(sv.lanes) do
+						hx += L.x(l)
+					end
+					table.insert(keepClear, hx / #sv.lanes)
+				end
+			end
+		end
+		local seed = team * 997 + lane * 131
+		for i = 1, #(land or "") do
+			seed += string.byte(land, i) * i
+		end
+		-- Which outer side of the field this lane is on (from your chair: lane 1 on the left).
+		local outer = nil
+		if not L.wide then
+			outer = (lane == 1 and -1) or (lane == width and 1) or nil
+		end
+		local out = TableScenery.build({
+			family = land,
+			cx = L.x(lane),
+			pitch = L.pitch,
+			groundTop = L.groundTop,
+			base = L.base,
+			half = L.half,
+			frameOut = L.half + L.frame,
+			fieldEdge = L.halfWidth + L.frame,
+			dir = mine and 1 or -1,
+			mine = mine,
+			seed = seed,
+			parent = S.boardFolder,
+			ground = groundColor(land),
+			groundMaterial = look.material,
+			keepClear = keepClear,
+			outer = outer,
+			avoid = outer and F.sceneryAvoid() or nil,
+		})
+		for _, p in ipairs(out.parts) do
+			S.rest[p] = p.CFrame
+			table.insert(pad.deco, p)
+		end
+		pad.life = out.life
+	end
+
+	-- What stands on the felt beside the field (1v1), for the side scenery to keep away from: the
+	-- heroes, the card mats (decks and trash pile) and the path the cards fly along between them.
+	function F.sceneryAvoid()
+		local out = {}
+		for _, name in ipairs({ "Hero_Near", "Hero_Far" }) do
+			local p = board:FindFirstChild(name)
+			if p then
+				table.insert(out, { p.Position.X, p.Position.Z, 1.9 })
+			end
+		end
+		-- the card mats (F.cardSpots: both decks and the shared trash pile) and the column
+		-- between them that the cards fly along
+		local spots = F.cardSpots and F.cardSpots()
+		if spots then
+			for _, key in ipairs({ "near", "far", "pile" }) do
+				local cf = spots[key]
+				if cf then
+					table.insert(out, { cf.Position.X, cf.Position.Z, 1.7 })
+				end
+			end
+			for _, key in ipairs({ "near", "far" }) do
+				local cf = spots[key]
+				if cf then
+					for _, f in ipairs({ 0.25, 0.5, 0.75 }) do
+						table.insert(out, { cf.Position.X, cf.Position.Z * f, 1.1 })
+					end
+				end
+			end
+		else
+			local L = S.layout
+			table.insert(out, { L.halfWidth + L.frame + 3, 0, 1.7 })
+		end
+		return out
+	end
+
+	-- Each frame: the glowing bits of the scenery breathe slowly.
+	function F.sceneryLife()
+		local lists = {}
+		for _, side in pairs(S.pads) do
+			for _, pad in pairs(side) do
+				if pad.life and #pad.life > 0 then
+					table.insert(lists, pad.life)
+				end
+			end
+		end
+		TableScenery.animate(lists, clock())
 	end
 
 	-- A card changed a lane's landscape: the new land rises out of the table.
@@ -4984,6 +5090,7 @@ function MatchScreen.init(ctx)
 		F.updateHover()
 		F.updateGhost(dt)
 		F.idle(dt)
+		F.sceneryLife()
 		-- the BATTLE button breathes while it's the only thing left to do
 		local pulse = ui.battleButton:FindFirstChild("Pulse")
 		if pulse and pulse.Enabled then
