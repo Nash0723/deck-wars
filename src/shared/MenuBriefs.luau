@@ -96,7 +96,7 @@ MenuBriefs.Briefs = {
 		tag = "Your collection, your decks, your style.",
 		accent = rgb(120, 162, 255),
 		beats = {
-			{ "Build a deck", "+ New or Edit: name it, pick a hero and up to 2 themes, then tap cards to add them. 20 to 30 cards." },
+			{ "Build a deck", "+ New or Edit: name it, pick a hero and up to 2 themes, then tap cards to add them. 20 to 40 cards; copies are fine (only one of each creature on the board at a time)." },
 			{ "Mind the land", "Your themes set the terrain of each lane. A creature on its own terrain hits +1 harder." },
 			{ "Level your cards", "Two copies of a card at the same level fuse into one copy a level higher." },
 		},
