@@ -16,7 +16,7 @@
 --   DeckBuilderUI.showShelf(body)    -- the right-hand station panel + the big left panel
 --   DeckBuilderUI.hide()             -- closes the big left panel (leaving the station)
 --
--- Deck rules live in DeckRules (shared with the server): 20-30 cards, at most 2 themes, 3 copies
+-- Deck rules live in DeckRules (shared with the server): 20-40 cards, at most 2 themes, 4 copies
 -- (1 of each Legendary and Secret), and you can only use cards you own.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -827,7 +827,8 @@ local function canAdd(id)
 		return false, ownedCount(id) == 0 and ("You don't own " .. d.name .. " yet") or ("You only own " .. ownedCount(id) .. " " .. d.name)
 	end
 	if have >= DeckRules.copyLimit(id) then
-		return false, DeckRules.copyLimit(id) == 1 and (d.name .. " is one of a kind: 1 per deck") or ("3 copies of a card at most")
+		local lim = DeckRules.copyLimit(id)
+		return false, lim == 1 and (d.name .. " is one of a kind: 1 per deck") or (lim .. " copies of " .. d.name .. " at most")
 	end
 	if not DeckRules.fits(id, deck.themes) then
 		if #deck.themes >= DeckRules.MaxThemes then
@@ -1278,7 +1279,7 @@ local function showSlots()
 			new.TextSize = 16
 		end
 	end
-	text(scroll, "A deck has " .. DeckRules.MinCards .. " to " .. DeckRules.MaxCards .. " cards from up to " .. DeckRules.MaxThemes .. " themes, plus any neutral cards. Up to 3 copies of a card, 1 of each Legendary and Secret. More deck slots are in the Shop.", {
+	text(scroll, "A deck has " .. DeckRules.MinCards .. " to " .. DeckRules.MaxCards .. " cards from up to " .. DeckRules.MaxThemes .. " themes, plus any neutral cards. Copies: " .. DeckRules.copyRuleText() .. ". In a match only one copy of a creature can be on the board at a time. More deck slots are in the Shop.", {
 		Size = UDim2.new(1, -8, 0, 70),
 		TextSize = 12,
 		TextWrapped = true,
