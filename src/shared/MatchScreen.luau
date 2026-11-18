@@ -23,6 +23,7 @@ local CardLevels = require(Shared:WaitForChild("CardLevels"))
 local LayerFx = require(Shared:WaitForChild("LayerFx"))
 local EnchantFx = require(Shared:WaitForChild("EnchantFx")) -- (enchanted cards: rims, auras, trigger effects)
 local TableCardArt = require(Shared:WaitForChild("TableCardArt")) -- (the real cards lying on the table)
+local TableScenery = require(Shared:WaitForChild("TableScenery")) -- (the biome dressing of the lanes)
 
 local ABORT = "MatchScreenAbort" -- thrown to stop playback when the match ended meanwhile
 
@@ -562,9 +563,10 @@ function MatchScreen.init(ctx)
 	-- The lanes on the table
 	--
 	-- Like the Card Wars board: each side is one stretch of land split into lanes that touch.
-	-- Every lane is its landscape (sand, snow, grass...), dressed up as its biome (see "Biome
-	-- scenery": flat bits between the spots, the bigger props behind the back edge), with a soft
-	-- round spot where its creature stands and a flat stone foundation behind it for a building. A wooden frame goes around the whole field and a gold seam runs where the two
+	-- Every lane is its landscape (sand, snow, grass...), dressed up as its biome (TableScenery: a
+	-- border, a small touch on the ground, set pieces behind the far edge and beside the field),
+	-- with a soft round spot where its creature stands and a flat stone foundation behind it for a
+	-- building. A wooden frame goes around the whole field and a gold seam runs where the two
 	-- sides meet.
 	---------------------------------------------------------------------------
 
@@ -983,624 +985,113 @@ function MatchScreen.init(ctx)
 		TweenService:Create(ring, TweenInfo.new(0.9 * PACE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = RING_REST, Color = look.accent }):Play()
 	end
 
-	do -- (a block of its own, so its helpers don't use up init's local slots)
-		---------------------------------------------------------------------------
-		-- Biome scenery
-		--
-		-- Every lane dresses up as its landscape, but never in the way of the fight:
-		--  * inside the lane only flat or tiny things (at most about 0.45 studs tall), and only in the
-		--    gaps between the creature spots and beside the building's foundation, so the cards and
-		--    creatures standing on the spots are never covered;
-		--  * the bigger props (lollipops, snowy pines, giant mushrooms, washing machines...) stand on the
-		--    felt BEHIND each side's back edge. On the far side they can be tall (they're behind the
-		--    enemy's buildings, so they hide nothing); on your side they're kept short, since they sit
-		--    between your chair and the board.
-		-- Nothing here can be clicked (CanQuery off). Glowing bits breathe slowly (F.sceneryLife) and a
-		-- few props give off a gentle puff of bubbles, snow, spores or steam. The scenery comes with
-		-- the lane: it drops onto the table with it in F.layLand and is rebuilt when a card changes the
-		-- landscape.
-		---------------------------------------------------------------------------
-
-		local SCENERY = {}
-		-- Where the inner bits may go, in lane coordinates (x across the lane, scaled to its width;
-		-- z from the middle line toward your chair): the gaps between and around the creature spots,
-		-- and beside the building foundation.
-		local INNER_GAPS = { { 1.2, 0.55 }, { -1.2, 0.55 }, { 1.22, 3.07 }, { -1.22, 3.07 }, { 1.2, 5.3 }, { -1.2, 5.3 } }
-		local BESIDE_BUILDING = { { 1.22, 6.5 }, { -1.22, 6.5 } }
-		-- The strip behind the back edge where the big props stand (z, from the middle line).
-		local EDGE_NEAR, EDGE_FAR = 8.25, 9.45
-		local MAX_SCENERY_GLOWS = 400 -- (a safety cap for the breathing glows)
-
-		local function c3(r, g, b)
-			return Color3.fromRGB(r, g, b)
+	-- Dress one lane up as its biome (TableScenery: a border along the lane, a small touch on its
+	-- ground, and the set pieces behind the far edge and beside the field), clearing what it had.
+	-- The parts are kept with the lane, so they drop onto the table with it (F.layLand).
+	function F.decorate(team, lane)
+		local pad = S.pads[team] and S.pads[team][lane]
+		if not pad then
+			return
 		end
-
-		-- A placer for one prop: offsets are in studs from the prop's foot, times its scale.
-		function F.sceneryPlacer(pad, foot, sc)
-			local P = { sc = sc }
-			local function put(props)
-				props.Name = props.Name or "Scenery"
-				props.CanQuery = false
-				props.CastShadow = false
-				local p = part(props)
-				table.insert(pad.deco, p)
-				return p
-			end
-			local function at(o)
-				return foot + Vector3.new(o[1] * sc, o[2] * sc, o[3] * sc)
-			end
-			-- a block; `rot` turns it about its own centre
-			function P.blk(size, o, color, mat, rot, extra)
-				local props = extra or {}
-				props.Size = Vector3.new(size[1] * sc, size[2] * sc, size[3] * sc)
-				props.CFrame = CFrame.new(at(o)) * (rot or CFrame.identity)
-				props.Color = color
-				props.Material = mat or Enum.Material.SmoothPlastic
-				return put(props)
-			end
-			function P.ball(d, o, color, mat, extra)
-				local props = extra or {}
-				props.Shape = Enum.PartType.Ball
-				props.Size = Vector3.new(d * sc, d * sc, d * sc)
-				props.CFrame = CFrame.new(at(o))
-				props.Color = color
-				props.Material = mat or Enum.Material.SmoothPlastic
-				return put(props)
-			end
-			-- a cylinder standing up, its bottom at `o` (it can lean with `rot`)
-			function P.post(h, d, o, color, mat, rot, extra)
-				local props = extra or {}
-				props.Shape = Enum.PartType.Cylinder
-				props.Size = Vector3.new(h * sc, d * sc, d * sc)
-				props.CFrame = CFrame.new(at(o)) * (rot or CFrame.identity) * CFrame.new(0, h * sc / 2, 0) * CFrame.Angles(0, 0, math.pi / 2)
-				props.Color = color
-				props.Material = mat or Enum.Material.SmoothPlastic
-				return put(props)
-			end
-			-- a disc lying flat, centred at `o`
-			function P.disc(d, t, o, color, mat, extra)
-				local props = extra or {}
-				props.Shape = Enum.PartType.Cylinder
-				props.Size = Vector3.new(t * sc, d * sc, d * sc)
-				props.CFrame = CFrame.new(at(o)) * CFrame.Angles(0, 0, math.pi / 2)
-				props.Color = color
-				props.Material = mat or Enum.Material.SmoothPlastic
-				return put(props)
-			end
-			-- a disc standing up and facing your chair (+z), centred at `o`
-			function P.face(d, t, o, color, mat, extra)
-				local props = extra or {}
-				props.Shape = Enum.PartType.Cylinder
-				props.Size = Vector3.new(t * sc, d * sc, d * sc)
-				props.CFrame = CFrame.new(at(o)) * CFrame.Angles(0, -math.pi / 2, 0)
-				props.Color = color
-				props.Material = mat or Enum.Material.SmoothPlastic
-				return put(props)
-			end
-			-- make a part breathe: its transparency drifts between `lo` and `hi`
-			function P.glow(p, lo, hi, speed)
-				pad.life = pad.life or {}
-				table.insert(pad.life, { p = p, lo = lo, hi = hi, speed = speed or 1.4, phase = math.random() * 6.28 })
-				return p
-			end
-			-- a soft, never-ending trickle of particles from a box at `o`
-			function P.emit(o, box, cfg)
-				local holder = put({ Name = "SceneryFx", Size = Vector3.new(math.max(0.1, box[1] * sc), math.max(0.1, box[2] * sc), math.max(0.1, box[3] * sc)), CFrame = CFrame.new(at(o)), Transparency = 1 })
-				local pe = Instance.new("ParticleEmitter")
-				pe.Texture = TEX[cfg.tex] or TEX.smoke
-				local keys = {}
-				for i, c in ipairs(cfg.colors) do
-					table.insert(keys, ColorSequenceKeypoint.new(#cfg.colors == 1 and 0 or (i - 1) / (#cfg.colors - 1), c))
-				end
-				if #keys == 1 then
-					table.insert(keys, ColorSequenceKeypoint.new(1, cfg.colors[1]))
-				end
-				pe.Color = ColorSequence.new(keys)
-				pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, cfg.size[1] * sc), NumberSequenceKeypoint.new(1, cfg.size[2] * sc) })
-				pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, cfg.alpha or 0.35), NumberSequenceKeypoint.new(0.75, 0.6), NumberSequenceKeypoint.new(1, 1) })
-				pe.Lifetime = NumberRange.new(cfg.life[1], cfg.life[2])
-				pe.Speed = NumberRange.new(cfg.speed[1], cfg.speed[2])
-				pe.SpreadAngle = Vector2.new(cfg.spread or 20, cfg.spread or 20)
-				pe.EmissionDirection = cfg.dir or Enum.NormalId.Top
-				pe.Acceleration = cfg.accel or Vector3.zero
-				pe.Drag = cfg.drag or 0.5
-				pe.Rotation = NumberRange.new(0, 360)
-				pe.RotSpeed = NumberRange.new(-40, 40)
-				pe.LightEmission = cfg.glow or 0
-				pe.Shape = Enum.ParticleEmitterShape.Box
-				pe.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
-				pe.Rate = cfg.rate or 2
-				pe.Parent = holder
-				return pe
-			end
-			return P
+		for _, d in ipairs(pad.deco) do
+			d:Destroy()
 		end
-
-		-- Small helpers shared by the biomes.
-		local function pick(r, list)
-			return list[r:NextInteger(1, #list)]
+		pad.deco = {}
+		pad.life = {}
+		pad.weather = nil
+		local L = S.layout
+		if not L then
+			return
 		end
-		local function turn(r, max)
-			return CFrame.Angles(0, r:NextNumber(-max, max), 0)
-		end
-
-		---------------------------------------------------------------------------
-		-- Soda Swamp (Snack): a candy shore. Lollipops, gumdrops, candy canes and fizzing soda.
-		---------------------------------------------------------------------------
-		local CANDY = { c3(255, 90, 140), c3(255, 170, 60), c3(120, 210, 255), c3(170, 120, 255), c3(120, 230, 150), c3(255, 225, 90) }
-		local function lollipop(P, r, h)
-			local a, b = pick(r, CANDY), c3(255, 250, 245)
-			P.post(h, 0.12, { 0, 0, 0 }, c3(250, 245, 235))
-			local d = h * 0.62
-			local cy = h + d * 0.42
-			-- a swirl: rings of two colours, front and back
-			local rings = { 1, 0.78, 0.56, 0.34, 0.14 }
-			for i, f in ipairs(rings) do
-				local col = (i % 2 == 1) and a or b
-				P.face(d * f, 0.14 + i * 0.012, { 0, cy, 0 }, col, Enum.Material.SmoothPlastic, { Reflectance = 0.08 })
-			end
-			-- a ribbon bow where the stick meets the sweet
-			P.blk({ 0.22, 0.1, 0.06 }, { -0.1, h - 0.02, 0.06 }, a, nil, CFrame.Angles(0, 0, 0.5))
-			P.blk({ 0.22, 0.1, 0.06 }, { 0.1, h - 0.02, 0.06 }, a, nil, CFrame.Angles(0, 0, -0.5))
-		end
-		local function gumdrop(P, r, d, o)
-			local col = pick(r, CANDY)
-			-- half sunk into the table, so it's a dome; a few sugar grains on top glint
-			local g = P.ball(d, { o[1], 0, o[3] }, col, Enum.Material.Glass, { Transparency = 0.12, Reflectance = 0.05 })
-			P.ball(d * 0.12, { o[1] + d * 0.12, d * 0.45, o[3] + d * 0.08 }, c3(255, 255, 255), Enum.Material.Neon, { Transparency = 0.3 })
-			return g
-		end
-		local function candyCane(P, r, h, o)
-			local red, white = c3(230, 40, 60), c3(250, 248, 245)
-			local n = 6
-			for i = 0, n - 1 do
-				P.post(h / n, 0.13, { o[1], i * h / n, o[3] }, (i % 2 == 0) and red or white)
-			end
-			-- the hook
-			local hook = 0.2
-			for i = 1, 5 do
-				local ang = i / 5 * math.pi
-				P.ball(0.14, { o[1] + hook - math.cos(ang) * hook, h + math.sin(ang) * hook * 0.9, o[3] }, (i % 2 == 0) and white or red)
-			end
-		end
-		local function sodaBottle(P, r, h, o)
-			local glass = pick(r, { c3(150, 80, 40), c3(80, 170, 90), c3(230, 120, 50) })
-			P.post(h * 0.62, 0.42, { o[1], 0, o[3] }, glass, Enum.Material.Glass, nil, { Transparency = 0.25 })
-			P.post(h * 0.12, 0.3, { o[1], h * 0.62, o[3] }, glass, Enum.Material.Glass, nil, { Transparency = 0.25 })
-			P.post(h * 0.2, 0.16, { o[1], h * 0.74, o[3] }, glass, Enum.Material.Glass, nil, { Transparency = 0.25 })
-			P.disc(0.2, 0.06, { o[1], h * 0.95, o[3] }, c3(230, 50, 60), Enum.Material.Metal)
-			P.face(0.34, 0.44, { o[1], h * 0.32, o[3] }, c3(255, 245, 225)) -- the label
-			P.emit({ o[1], h + 0.1, o[3] }, { 0.1, 0.1, 0.1 }, { tex = "spark", colors = { c3(255, 245, 220), c3(255, 200, 130) }, size = { 0.12, 0.03 }, life = { 0.6, 1.1 }, speed = { 0.6, 1.2 }, accel = Vector3.new(0, 1.2, 0), rate = 3, glow = 0.5, spread = 15 })
-		end
-		SCENERY.Snack = {
-			edge = function(P, r, slot)
-				if slot == 1 then
-					lollipop(P, r, r:NextNumber(1.1, 1.6))
-					gumdrop(P, r, 0.4, { 0.45, 0, 0.25 })
-				elseif slot == 2 then
-					gumdrop(P, r, r:NextNumber(0.5, 0.65), { 0, 0, 0 })
-					gumdrop(P, r, 0.35, { -0.4, 0, 0.2 })
-					gumdrop(P, r, 0.3, { 0.38, 0, -0.15 })
-				else
-					if r:NextNumber() < 0.5 then
-						candyCane(P, r, r:NextNumber(0.9, 1.3), { 0, 0, 0 })
-					else
-						sodaBottle(P, r, r:NextNumber(0.9, 1.2), { 0, 0, 0 })
+		local land = pad.landscape
+		local look = LANDS[land] or PLAIN
+		local mine = team == S.myTeam
+		local width = L.width
+		-- (2v2: each hero stands on the felt behind its player's lanes; the set pieces keep away)
+		local keepClear = {}
+		if L.wide and S.view and S.view.seats then
+			for _, sv in pairs(S.view.seats) do
+				if sv.team == team and type(sv.lanes) == "table" and #sv.lanes > 0 then
+					local hx = 0
+					for _, l in ipairs(sv.lanes) do
+						hx += L.x(l)
 					end
-					gumdrop(P, r, 0.3, { -0.35, 0, 0.2 })
+					table.insert(keepClear, hx / #sv.lanes)
 				end
-			end,
-			inner = function(P, r, beside)
-				if beside then
-					gumdrop(P, r, 0.32, { 0, 0, 0 })
-				elseif r:NextNumber() < 0.45 then
-					-- a little fizzing soda puddle
-					P.disc(0.6, 0.02, { 0, 0.01, 0 }, c3(255, 160, 70), Enum.Material.Glass, { Transparency = 0.3 })
-					P.glow(P.ball(0.08, { 0.12, 0.02, 0.05 }, c3(255, 245, 220), Enum.Material.Neon), 0.1, 0.8, 2.2)
-					P.glow(P.ball(0.06, { -0.1, 0.02, -0.08 }, c3(255, 245, 220), Enum.Material.Neon), 0.1, 0.8, 1.7)
-				elseif r:NextNumber() < 0.5 then
-					gumdrop(P, r, 0.26, { 0, 0, 0 })
-				else
-					-- sprinkles
-					for _ = 1, 6 do
-						P.blk({ 0.16, 0.03, 0.045 }, { r:NextNumber(-0.25, 0.25), 0.015, r:NextNumber(-0.25, 0.25) }, pick(r, CANDY), nil, turn(r, math.pi))
-					end
-				end
-			end,
-		}
+			end
+		end
+		local seed = team * 997 + lane * 131
+		for i = 1, #(land or "") do
+			seed += string.byte(land, i) * i
+		end
+		-- Which outer side of the field this lane is on (from your chair: lane 1 on the left).
+		local outer = nil
+		if not L.wide then
+			outer = (lane == 1 and -1) or (lane == width and 1) or nil
+		end
+		local out = TableScenery.build({
+			family = land,
+			cx = L.x(lane),
+			pitch = L.pitch,
+			groundTop = L.groundTop,
+			base = L.base,
+			half = L.half,
+			frameOut = L.half + L.frame,
+			fieldEdge = L.halfWidth + L.frame,
+			dir = mine and 1 or -1,
+			mine = mine,
+			seed = seed,
+			parent = S.boardFolder,
+			ground = groundColor(land),
+			groundMaterial = look.material,
+			keepClear = keepClear,
+			outer = outer,
+			avoid = outer and F.sceneryAvoid() or nil,
+		})
+		for _, p in ipairs(out.parts) do
+			S.rest[p] = p.CFrame
+			table.insert(pad.deco, p)
+		end
+		pad.life = out.life
+	end
 
-		---------------------------------------------------------------------------
-		-- Glitter Junkyard (Junk): heaps of scrap, old tyres and a crooked sign, all sparkling.
-		---------------------------------------------------------------------------
-		local RUST = { c3(150, 85, 55), c3(90, 120, 125), c3(120, 115, 110), c3(170, 140, 70), c3(110, 70, 90) }
-		local GLITTER = { c3(255, 120, 220), c3(255, 225, 110), c3(140, 230, 255) }
-		local function junkHeap(P, r, h)
-			local y = 0
-			for i = 1, 4 do
-				local w = r:NextNumber(0.45, 0.8) * (1.15 - i * 0.15)
-				local th = h / 4
-				P.blk({ w, th, w * r:NextNumber(0.7, 1) }, { r:NextNumber(-0.12, 0.12), y + th / 2, r:NextNumber(-0.1, 0.1) }, pick(r, RUST), pick(r, { Enum.Material.CorrodedMetal, Enum.Material.Metal, Enum.Material.DiamondPlate }), CFrame.Angles(r:NextNumber(-0.25, 0.25), r:NextNumber(-1, 1), r:NextNumber(-0.25, 0.25)))
-				y = y + th * 0.85
+	-- What stands on the felt beside the field (1v1), for the side scenery to keep away from: the
+	-- heroes, the decks, the trash pile and the path the cards fly along between them.
+	function F.sceneryAvoid()
+		local out = {}
+		for _, name in ipairs({ "Hero_Near", "Hero_Far" }) do
+			local p = board:FindFirstChild(name)
+			if p then
+				table.insert(out, { p.Position.X, p.Position.Z, 1.9 })
 			end
-			-- a mirror ball sitting on top, catching the light
-			P.glow(P.ball(0.26, { 0, y + 0.1, 0 }, pick(r, GLITTER), Enum.Material.Neon), 0, 0.45, 1.2)
 		end
-		local function tyre(P, r, d, o)
-			P.face(d, 0.28, { o[1], d / 2 - 0.04, o[3] }, c3(35, 32, 34), Enum.Material.Rubber)
-			P.face(d * 0.5, 0.3, { o[1], d / 2 - 0.04, o[3] }, c3(140, 140, 150), Enum.Material.Metal)
-			P.face(d * 0.2, 0.32, { o[1], d / 2 - 0.04, o[3] }, pick(r, GLITTER), Enum.Material.Neon)
+		local pileX = nil
+		for _, name in ipairs({ "Deck_Near", "Deck_Far" }) do
+			local p = board:FindFirstChild(name)
+			if p then
+				table.insert(out, { p.Position.X, p.Position.Z, 1.5 })
+				pileX = pileX or p.Position.X
+				for _, f in ipairs({ 0.25, 0.5, 0.75 }) do
+					table.insert(out, { p.Position.X, p.Position.Z * f, 0.6 })
+				end
+			end
 		end
-		local function junkSign(P, r, h, o)
-			P.post(h, 0.1, { o[1], 0, o[3] }, c3(110, 100, 95), Enum.Material.CorrodedMetal, CFrame.Angles(0, 0, 0.08))
-			P.blk({ 0.7, 0.36, 0.05 }, { o[1] + 0.05, h - 0.1, o[3] + 0.06 }, c3(240, 110, 200), Enum.Material.Metal, CFrame.Angles(0, 0, -0.12))
-			P.glow(P.blk({ 0.56, 0.08, 0.06 }, { o[1] + 0.05, h - 0.1, o[3] + 0.08 }, c3(255, 240, 150), Enum.Material.Neon, CFrame.Angles(0, 0, -0.12)), 0, 0.6, 2.4)
-		end
-		SCENERY.Junk = {
-			edge = function(P, r, slot)
-				if slot == 1 then
-					junkHeap(P, r, r:NextNumber(0.8, 1.2))
-					P.emit({ 0, 0.8, 0 }, { 0.6, 0.6, 0.6 }, { tex = "spark", colors = GLITTER, size = { 0.12, 0.02 }, life = { 0.8, 1.4 }, speed = { 0.1, 0.4 }, accel = Vector3.new(0, -0.3, 0), rate = 2, glow = 1, spread = 180, alpha = 0.2 })
-				elseif slot == 2 then
-					tyre(P, r, 0.75, { 0, 0, 0 })
-					tyre(P, r, 0.6, { 0.45, 0, 0.25 })
-				else
-					junkSign(P, r, r:NextNumber(0.9, 1.3), { 0, 0, 0 })
-					P.blk({ 0.3, 0.3, 0.3 }, { -0.35, 0.15, 0.15 }, pick(r, RUST), Enum.Material.CorrodedMetal, turn(r, 1))
-				end
-			end,
-			inner = function(P, r, beside)
-				if beside then
-					tyre(P, r, 0.4, { 0, 0, 0 })
-					return
-				end
-				-- a nut and bolt, a flattened can and glitter flecks
-				P.post(0.07, 0.16, { r:NextNumber(-0.2, 0.2), 0, r:NextNumber(-0.2, 0.2) }, c3(150, 150, 160), Enum.Material.Metal)
-				P.disc(0.26, 0.04, { r:NextNumber(-0.2, 0.2), 0.02, r:NextNumber(-0.2, 0.2) }, pick(r, { c3(220, 60, 60), c3(70, 140, 230), c3(90, 200, 120) }), Enum.Material.Metal)
-				for _ = 1, 4 do
-					P.glow(P.blk({ 0.07, 0.02, 0.07 }, { r:NextNumber(-0.3, 0.3), 0.01, r:NextNumber(-0.3, 0.3) }, pick(r, GLITTER), Enum.Material.Neon, turn(r, 1)), 0, 0.8, r:NextNumber(1.5, 3))
-				end
-			end,
-		}
+		local L = S.layout
+		table.insert(out, { pileX or (L.halfWidth + L.frame + 3), 0, 1.5 })
+		return out
+	end
 
-		---------------------------------------------------------------------------
-		-- Static Snowfield (Weather): snowy pines, a snowman, crackling ice crystals and light snow.
-		---------------------------------------------------------------------------
-		local PINE, SNOW, ICE = c3(40, 95, 75), c3(245, 250, 255), c3(170, 225, 255)
-		local function pine(P, r, h, o)
-			P.post(h * 0.18, 0.14, { o[1], 0, o[3] }, c3(100, 70, 50), Enum.Material.Wood)
-			local tiers = 4
-			for i = 0, tiers - 1 do
-				local f = 1 - i / tiers
-				local y = h * 0.15 + i * h * 0.19
-				P.post(h * 0.17, h * 0.55 * f + 0.1, { o[1], y, o[3] }, PINE, Enum.Material.Grass)
-				P.post(0.04, (h * 0.55 * f + 0.1) * 0.85, { o[1], y + h * 0.17, o[3] }, SNOW, Enum.Material.Snow)
-			end
-			P.ball(0.12, { o[1], h * 0.98, o[3] }, SNOW, Enum.Material.Snow)
-		end
-		local function crystal(P, r, h, o)
-			for k = -1, 1 do
-				local hh = h * (k == 0 and 1 or 0.65)
-				P.blk({ 0.16, hh, 0.16 }, { o[1] + k * 0.13, hh / 2 - 0.05, o[3] }, ICE, Enum.Material.Glass, CFrame.Angles(0, 0.78, k * 0.35), { Transparency = 0.3, Reflectance = 0.2 })
-			end
-			-- static crackles in its core
-			P.glow(P.blk({ 0.05, h * 0.7, 0.05 }, { o[1], h * 0.38, o[3] }, c3(200, 240, 255), Enum.Material.Neon), 0, 0.85, 3.2)
-		end
-		local function snowman(P, r, h, o)
-			P.ball(h * 0.48, { o[1], h * 0.2, o[3] }, SNOW, Enum.Material.Snow)
-			P.ball(h * 0.36, { o[1], h * 0.55, o[3] }, SNOW, Enum.Material.Snow)
-			P.ball(h * 0.26, { o[1], h * 0.82, o[3] }, SNOW, Enum.Material.Snow)
-			P.blk({ 0.04, 0.04, 0.16 }, { o[1], h * 0.82, o[3] + h * 0.15 }, c3(255, 140, 40))
-			P.blk({ h * 0.32, 0.05, 0.07 }, { o[1], h * 0.67, o[3] + h * 0.02 }, c3(80, 160, 230), Enum.Material.Fabric) -- a scarf
-		end
-		SCENERY.Weather = {
-			edge = function(P, r, slot)
-				if slot == 1 then
-					pine(P, r, r:NextNumber(1.3, 1.8), { 0, 0, 0 })
-					pine(P, r, 0.8, { 0.45, 0, 0.3 })
-				elseif slot == 2 then
-					if r:NextNumber() < 0.5 then
-						snowman(P, r, 1, { 0, 0, 0 })
-					else
-						crystal(P, r, r:NextNumber(0.9, 1.2), { 0, 0, 0 })
-					end
-					P.ball(0.6, { 0.35, -0.12, 0.2 }, SNOW, Enum.Material.Snow) -- a snowdrift
-				else
-					crystal(P, r, r:NextNumber(0.6, 0.9), { 0, 0, 0 })
-					pine(P, r, r:NextNumber(0.9, 1.2), { -0.4, 0, -0.1 })
-					-- a few flakes drifting down over the back of the table
-					P.emit({ 0, 2.2, 0 }, { 1.6, 0.1, 0.9 }, { tex = "spark", colors = { SNOW, ICE }, size = { 0.08, 0.05 }, life = { 2.5, 3.5 }, speed = { 0.3, 0.6 }, dir = Enum.NormalId.Bottom, accel = Vector3.new(0, -0.15, 0), rate = 2.5, glow = 0.4, spread = 25, alpha = 0.25 })
-				end
-			end,
-			inner = function(P, r, beside)
-				if beside then
-					P.ball(0.42, { 0, -0.1, 0 }, SNOW, Enum.Material.Snow)
-					crystal(P, r, 0.35, { 0.1, 0, 0.12 })
-				elseif r:NextNumber() < 0.5 then
-					P.disc(r:NextNumber(0.45, 0.65), 0.02, { 0, 0.01, 0 }, ICE, Enum.Material.Glass, { Transparency = 0.35, Reflectance = 0.25 })
-				else
-					P.ball(0.36, { 0, -0.1, 0 }, SNOW, Enum.Material.Snow)
-					P.ball(0.24, { 0.18, -0.07, 0.1 }, SNOW, Enum.Material.Snow)
-				end
-			end,
-		}
-
-		---------------------------------------------------------------------------
-		-- Pillow Peaks (Critter): soft pillow hills, stacked cushions, yarn balls, buttons and fluff.
-		---------------------------------------------------------------------------
-		local PASTEL = { c3(255, 200, 225), c3(200, 225, 255), c3(255, 240, 190), c3(210, 245, 210), c3(230, 210, 255) }
-		local function cushion(P, r, w, t, o, rot)
-			local col = pick(r, PASTEL)
-			P.blk({ w, t, w * 0.7 }, o, col, Enum.Material.Fabric, rot)
-			P.ball(t * 0.9, { o[1], o[2] + t * 0.15, o[3] }, col:Lerp(c3(255, 255, 255), 0.3), Enum.Material.Fabric) -- the puffed middle
-		end
-		local function pillowStack(P, r, n)
-			local y = 0
-			for i = 1, n do
-				local w = 0.95 - i * 0.12
-				cushion(P, r, w, 0.24, { r:NextNumber(-0.06, 0.06), y + 0.12, r:NextNumber(-0.05, 0.05) }, turn(r, 0.4))
-				y = y + 0.22
-			end
-			-- a tassel on top
-			P.ball(0.12, { 0, y + 0.06, 0 }, c3(255, 215, 120), Enum.Material.Fabric)
-		end
-		local function peak(P, r, d, o)
-			-- a soft quilted hill (mostly sunk into the table) with a button on top
-			local col = pick(r, PASTEL)
-			P.ball(d, { o[1], -d * 0.22, o[3] }, col, Enum.Material.Fabric)
-			P.disc(0.18, 0.04, { o[1], d * 0.28, o[3] }, col:Lerp(c3(80, 60, 90), 0.4))
-		end
-		local function yarn(P, r, d, o)
-			local col = pick(r, PASTEL)
-			P.ball(d, { o[1], d / 2 - 0.03, o[3] }, col:Lerp(c3(255, 110, 150), 0.35), Enum.Material.Fabric)
-			P.face(d * 1.02, 0.05, { o[1], d / 2 - 0.03, o[3] }, col, Enum.Material.Fabric)
-			P.blk({ 0.4, 0.03, 0.04 }, { o[1] + d * 0.6, 0.02, o[3] + 0.1 }, col:Lerp(c3(255, 110, 150), 0.35), Enum.Material.Fabric, CFrame.Angles(0, 0.5, 0)) -- loose thread
-		end
-		SCENERY.Critter = {
-			edge = function(P, r, slot)
-				if slot == 1 then
-					peak(P, r, r:NextNumber(1.3, 1.7), { 0, 0, 0 })
-					P.emit({ 0, 0.6, 0 }, { 0.6, 0.2, 0.6 }, { tex = "smoke", colors = { c3(255, 250, 245), c3(255, 225, 240) }, size = { 0.18, 0.3 }, life = { 2, 3 }, speed = { 0.15, 0.35 }, accel = Vector3.new(0, 0.05, 0), rate = 1, spread = 60, alpha = 0.45 })
-				elseif slot == 2 then
-					pillowStack(P, r, r:NextInteger(2, 4))
-				else
-					yarn(P, r, r:NextNumber(0.45, 0.6), { 0, 0, 0 })
-					peak(P, r, 0.9, { -0.45, 0, -0.15 })
-				end
-			end,
-			inner = function(P, r, beside)
-				if beside then
-					yarn(P, r, 0.32, { 0, 0, 0 })
-				elseif r:NextNumber() < 0.5 then
-					-- a sewn-on button
-					local col = pick(r, PASTEL):Lerp(c3(90, 70, 110), 0.25)
-					P.disc(0.3, 0.04, { 0, 0.02, 0 }, col)
-					for _, d in ipairs({ { -0.05, -0.05 }, { 0.05, -0.05 }, { -0.05, 0.05 }, { 0.05, 0.05 } }) do
-						P.disc(0.04, 0.05, { d[1], 0.025, d[2] }, c3(60, 45, 70))
-					end
-				else
-					-- fluff tufts
-					P.ball(0.22, { 0, 0.02, 0 }, c3(255, 250, 248), Enum.Material.Fabric)
-					P.ball(0.15, { 0.15, 0.0, 0.08 }, c3(255, 236, 244), Enum.Material.Fabric)
-				end
-			end,
-		}
-
-		---------------------------------------------------------------------------
-		-- Mushroom Mall (Spooky): giant glowing mushrooms, little lantern posts, drifting spores.
-		---------------------------------------------------------------------------
-		local CAPS = { c3(170, 90, 230), c3(230, 90, 160), c3(90, 200, 170), c3(120, 110, 230) }
-		local function mushroom(P, r, h, d, o)
-			local cap = pick(r, CAPS)
-			P.post(h * 0.8, d * 0.26, { o[1], 0, o[3] }, c3(235, 225, 210))
-			P.post(0.1, d, { o[1], h * 0.78, o[3] }, cap:Lerp(c3(20, 10, 30), 0.25)) -- the gills
-			P.post(h * 0.14, d * 0.98, { o[1], h * 0.8, o[3] }, cap)
-			P.post(h * 0.1, d * 0.66, { o[1], h * 0.92, o[3] }, cap)
-			P.post(h * 0.06, d * 0.3, { o[1], h * 1.0, o[3] }, cap)
-			-- glowing spots
-			for k = 1, 3 do
-				local a = k / 3 * math.pi * 2 + r:NextNumber(0, 1)
-				P.glow(P.ball(math.max(0.07, d * 0.14), { o[1] + math.cos(a) * d * 0.3, h * 0.95, o[3] + math.sin(a) * d * 0.3 }, c3(250, 240, 255), Enum.Material.Neon), 0, 0.6, r:NextNumber(0.8, 1.4))
-			end
-		end
-		local function lantern(P, r, h, o)
-			P.post(h, 0.09, { o[1], 0, o[3] }, c3(45, 35, 55), Enum.Material.Metal)
-			P.blk({ 0.3, 0.06, 0.3 }, { o[1], h + 0.02, o[3] }, c3(45, 35, 55), Enum.Material.Metal)
-			P.glow(P.ball(0.24, { o[1], h - 0.14, o[3] }, c3(150, 255, 200), Enum.Material.Neon), 0, 0.35, 0.9)
-		end
-		SCENERY.Spooky = {
-			edge = function(P, r, slot)
-				if slot == 1 then
-					mushroom(P, r, r:NextNumber(1.2, 1.7), r:NextNumber(1.0, 1.3), { 0, 0, 0 })
-					mushroom(P, r, 0.5, 0.45, { 0.45, 0, 0.3 })
-					P.emit({ 0, 0.8, 0 }, { 1.2, 0.8, 0.6 }, { tex = "spark", colors = { c3(200, 140, 255), c3(140, 255, 200) }, size = { 0.1, 0.03 }, life = { 2.5, 4 }, speed = { 0.1, 0.25 }, accel = Vector3.new(0, 0.12, 0), rate = 1.5, glow = 0.9, spread = 180, alpha = 0.3 })
-				elseif slot == 2 then
-					lantern(P, r, r:NextNumber(1.0, 1.4), { 0, 0, 0 })
-					mushroom(P, r, 0.55, 0.5, { -0.35, 0, 0.2 })
-				else
-					mushroom(P, r, r:NextNumber(0.8, 1.1), r:NextNumber(0.7, 0.9), { 0, 0, 0 })
-					mushroom(P, r, 0.4, 0.36, { -0.38, 0, 0.25 })
-					mushroom(P, r, 0.32, 0.3, { 0.36, 0, 0.3 })
-				end
-			end,
-			inner = function(P, r, beside)
-				if beside then
-					mushroom(P, r, 0.38, 0.32, { 0, 0, 0 })
-					mushroom(P, r, 0.24, 0.22, { 0.15, 0, 0.14 })
-				elseif r:NextNumber() < 0.55 then
-					mushroom(P, r, 0.22, 0.24, { 0, 0, 0 })
-				else
-					-- cracked slate tiles of the old mall floor
-					P.blk({ 0.4, 0.02, 0.4 }, { -0.1, 0.01, 0 }, c3(70, 60, 85), Enum.Material.Slate, turn(r, 0.3))
-					P.blk({ 0.3, 0.02, 0.3 }, { 0.2, 0.01, 0.18 }, c3(85, 72, 100), Enum.Material.Slate, turn(r, 0.3))
-				end
-			end,
-		}
-
-		---------------------------------------------------------------------------
-		-- Lava Laundromat (Robo): washers with lava churning behind the door, laundry baskets,
-		-- bubbling lava pools with sparks and steam.
-		---------------------------------------------------------------------------
-		local LAVA = c3(255, 120, 30)
-		local function washer(P, r, h, o)
-			local body = pick(r, { c3(235, 235, 240), c3(200, 210, 220), c3(170, 185, 200) })
-			P.blk({ 0.95, h, 0.85 }, { o[1], h / 2, o[3] }, body, Enum.Material.Metal)
-			P.blk({ 0.95, h * 0.16, 0.08 }, { o[1], h * 0.9, o[3] + 0.43 }, c3(60, 65, 75), Enum.Material.Metal) -- control panel
-			P.glow(P.disc(0.1, 0.04, { o[1] + 0.3, h * 0.9, o[3] + 0.47 }, c3(120, 255, 140), Enum.Material.Neon), 0, 0.5, 2)
-			P.face(h * 0.62, 0.06, { o[1], h * 0.42, o[3] + 0.43 }, c3(70, 75, 85), Enum.Material.Metal) -- door rim
-			P.glow(P.face(h * 0.48, 0.08, { o[1], h * 0.42, o[3] + 0.43 }, LAVA, Enum.Material.Neon), 0, 0.3, 1.1) -- lava in the drum
-			P.emit({ o[1], h + 0.1, o[3] }, { 0.5, 0.1, 0.4 }, { tex = "smoke", colors = { c3(240, 240, 240), c3(255, 220, 200) }, size = { 0.25, 0.6 }, life = { 1.2, 2 }, speed = { 0.4, 0.7 }, accel = Vector3.new(0, 0.3, 0), rate = 1.2, spread = 20, alpha = 0.5 })
-		end
-		local function lavaPool(P, r, d, o)
-			P.disc(d + 0.18, 0.04, { o[1], 0.02, o[3] }, c3(50, 40, 40), Enum.Material.Basalt)
-			P.glow(P.disc(d, 0.06, { o[1], 0.03, o[3] }, LAVA, Enum.Material.Neon), 0, 0.35, 0.8)
-			P.emit({ o[1], 0.1, o[3] }, { d * 0.6, 0.05, d * 0.6 }, { tex = "fire", colors = { c3(255, 200, 80), c3(255, 90, 20) }, size = { 0.08, 0.02 }, life = { 0.6, 1.1 }, speed = { 0.6, 1.4 }, accel = Vector3.new(0, -1, 0), rate = 2, glow = 1, spread = 25, alpha = 0.1 })
-		end
-		local function basket(P, r, o)
-			local wicker = c3(190, 150, 95)
-			P.blk({ 0.7, 0.04, 0.5 }, { o[1], 0.02, o[3] }, wicker, Enum.Material.WoodPlanks)
-			for _, s in ipairs({ -1, 1 }) do
-				P.blk({ 0.7, 0.35, 0.04 }, { o[1], 0.18, o[3] + s * 0.24 }, wicker, Enum.Material.WoodPlanks)
-				P.blk({ 0.04, 0.35, 0.5 }, { o[1] + s * 0.34, 0.18, o[3] }, wicker, Enum.Material.WoodPlanks)
-			end
-			-- socks spilling out
-			for k = 1, 3 do
-				P.blk({ 0.12, 0.08, 0.3 }, { o[1] + (k - 2) * 0.18, 0.36, o[3] + r:NextNumber(-0.1, 0.1) }, pick(r, { c3(255, 90, 90), c3(90, 170, 255), c3(255, 220, 90), c3(160, 110, 255) }), Enum.Material.Fabric, CFrame.Angles(r:NextNumber(-0.4, 0.4), r:NextNumber(-1, 1), 0))
-			end
-		end
-		SCENERY.Robo = {
-			edge = function(P, r, slot)
-				if slot == 1 then
-					washer(P, r, r:NextNumber(0.95, 1.15), { 0, 0, 0 })
-				elseif slot == 2 then
-					lavaPool(P, r, r:NextNumber(0.8, 1.0), { 0, 0, 0 })
-					basket(P, r, { 0.2, 0, 0.45 })
-				else
-					washer(P, r, 0.9, { 0, 0, 0 })
-					basket(P, r, { -0.25, 0, 0.55 })
-				end
-			end,
-			inner = function(P, r, beside)
-				if beside then
-					lavaPool(P, r, 0.3, { 0, 0, 0 })
-				elseif r:NextNumber() < 0.55 then
-					-- a glowing crack in the floor
-					local x, z = -0.25, r:NextNumber(-0.1, 0.1)
-					for _ = 1, 3 do
-						local nx, nz = x + 0.18, z + r:NextNumber(-0.14, 0.14)
-						local mid = Vector3.new((x + nx) / 2, 0.01, (z + nz) / 2)
-						local len = math.sqrt((nx - x) ^ 2 + (nz - z) ^ 2)
-						P.glow(P.blk({ len + 0.03, 0.02, 0.045 }, { mid.X, mid.Y, mid.Z }, LAVA, Enum.Material.Neon, CFrame.Angles(0, -math.atan2(nz - z, nx - x), 0)), 0, 0.4, 1.3)
-						x, z = nx, nz
-					end
-				else
-					-- laundromat floor tiles and a lost sock
-					P.blk({ 0.36, 0.02, 0.36 }, { -0.1, 0.01, 0 }, c3(200, 205, 215), Enum.Material.Marble, turn(r, 0.2))
-					P.blk({ 0.12, 0.05, 0.3 }, { 0.18, 0.03, 0.12 }, pick(r, { c3(255, 90, 90), c3(90, 170, 255) }), Enum.Material.Fabric, turn(r, 1.2))
-				end
-			end,
-		}
-
-		-- Dress one lane up as its landscape (and clear what it had before).
-		function F.decorate(team, lane)
-			local pad = S.pads[team] and S.pads[team][lane]
-			if not pad then
-				return
-			end
-			for _, d in ipairs(pad.deco) do
-				d:Destroy()
-			end
-			pad.deco = {}
-			pad.life = {}
-			pad.weather = nil
-			local L = S.layout
-			local look = SCENERY[pad.landscape]
-			if not (L and look) then
-				return
-			end
-			local mine = team == S.myTeam
-			local s = mine and 1 or -1
-			local k = L.pitch / 3.075 -- (2v2 lanes are narrower)
-			local cx = L.x(lane)
-			local seed = team * 997 + lane * 131
-			for i = 1, #pad.landscape do
-				seed = seed + string.byte(pad.landscape, i) * i
-			end
-			local r = Random.new(seed)
-			-- Inside the lane: a few of the gaps get a small thing each (never all of them, so it stays
-			-- calm), and one side of the building foundation.
-			local gaps = table.clone(INNER_GAPS)
-			for i = #gaps, 2, -1 do
-				local j = r:NextInteger(1, i)
-				gaps[i], gaps[j] = gaps[j], gaps[i]
-			end
-			for i = 1, 3 do
-				local g = gaps[i]
-				local P = F.sceneryPlacer(pad, Vector3.new(cx + g[1] * k, L.groundTop, s * g[2]), k * 0.9)
-				look.inner(P, r, false)
-			end
-			local b = BESIDE_BUILDING[r:NextInteger(1, 2)]
-			look.inner(F.sceneryPlacer(pad, Vector3.new(cx + b[1] * k, L.groundTop, s * b[2]), k * 0.9), r, true)
-			-- Behind the back edge: three props spread across the lane. Yours are kept small (they're
-			-- between you and the board); the far side's stand full size behind the enemy's buildings.
-			local edgeScale = (mine and 0.55 or 1) * k
-			local xs = { -0.3, 0.02, 0.32 }
-			local order = { 1, 2, 3 }
-			for i = 3, 2, -1 do
-				local j = r:NextInteger(1, i)
-				order[i], order[j] = order[j], order[i]
-			end
-			-- (In 2v2 each hero stands on the felt behind its player's lanes: leave room around it.)
-			local heroXs = {}
-			if L.wide and S.view and S.view.seats then
-				for _, sv in pairs(S.view.seats) do
-					if sv.team == team and type(sv.lanes) == "table" and #sv.lanes > 0 then
-						local hx = 0
-						for _, l in ipairs(sv.lanes) do
-							hx += L.x(l)
-						end
-						table.insert(heroXs, hx / #sv.lanes)
-					end
-				end
-			end
-			for i, slot in ipairs(order) do
-				local x = cx + (xs[i] + r:NextNumber(-0.04, 0.04)) * L.pitch
-				local clear = true
-				for _, hx in ipairs(heroXs) do
-					if math.abs(x - hx) < 1.8 then
-						clear = false
-					end
-				end
-				if not clear then
-					continue
-				end
-				local z = r:NextNumber(EDGE_NEAR, EDGE_FAR)
-				if mine then
-					z = math.min(z, 8.9) -- (closer to the frame, below your view of the board)
-				end
-				look.edge(F.sceneryPlacer(pad, Vector3.new(x, L.base, s * z), edgeScale), r, slot)
-			end
-		end
-
-		-- Each frame: the glowing bits of the scenery breathe slowly.
-		function F.sceneryLife()
-			local t = clock()
-			local n = 0
-			for _, side in pairs(S.pads) do
-				for _, pad in pairs(side) do
-					if pad.life then
-						for _, g in ipairs(pad.life) do
-							n = n + 1
-							if n > MAX_SCENERY_GLOWS then
-								return
-							end
-							if g.p.Parent then
-								g.p.Transparency = g.lo + (g.hi - g.lo) * (0.5 + 0.5 * math.sin(t * g.speed + g.phase))
-							end
-						end
-					end
+	-- Each frame: the glowing bits of the scenery breathe slowly.
+	function F.sceneryLife()
+		local lists = {}
+		for _, side in pairs(S.pads) do
+			for _, pad in pairs(side) do
+				if pad.life and #pad.life > 0 then
+					table.insert(lists, pad.life)
 				end
 			end
 		end
+		TableScenery.animate(lists, clock())
 	end
 
 	-- A card changed a lane's landscape: the new land rises out of the table.
