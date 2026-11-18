@@ -160,7 +160,17 @@ do -- playing into a chosen row, and the default row
 	local e2 = give(m, 1, "tin_can_tom")
 	check(m:act(1, { kind = "play", handUid = e2.uid, lane = 3 }), "play without a row")
 	check(m:unitAt(1, 3, 1) ~= nil, "without a row it takes the Front tile")
-	local e3 = give(m, 1, "tin_can_tom")
+	-- one copy of each creature on the board at a time: a second Tin Can Tom waits
+	local twin = give(m, 1, "tin_can_tom")
+	check(not m:act(1, { kind = "play", handUid = twin.uid, lane = 4 }), "a second copy of a creature on the board is refused")
+	local twinListed = false
+	for _, a in ipairs(m:listActions(1)) do
+		if a.kind == "play" and a.handUid == twin.uid then
+			twinListed = true
+		end
+	end
+	check(not twinListed, "a creature with a copy on the board isn't offered")
+	local e3 = give(m, 1, "pocket_mouse")
 	check(not m:act(1, { kind = "play", handUid = e3.uid, lane = 3, row = 3 }), "row 3 is refused")
 	local list = m:listActions(1)
 	local tiles = nil
